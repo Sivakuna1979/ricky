@@ -1,0 +1,24 @@
+{
+  "name": "vantrack",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "db:migrate": "supabase db push",
+    "db:types": "supabase gen types typescript --local > packages/database/types/supabase.ts",
+    "db:reset": "supabase db reset"
+  },
+  "devDependencies": {
+    "turbo": "^1.13.4",
+    "typescript": "^5.4.5",
+    "prettier": "^3.3.2",
+    "eslint": "^8.57.0"
+  }
+}

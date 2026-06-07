@@ -1,0 +1,17 @@
+node_modules/
+.pnp
+.pnp.js
+.next/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+.turbo/
+supabase/.branches
+supabase/.temp
+.DS_Store
+*.pem
+.vercel
+*.tsbuildinfo
+coverage/

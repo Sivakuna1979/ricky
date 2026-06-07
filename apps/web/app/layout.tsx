@@ -1,0 +1,32 @@
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+import { Toaster } from '@/components/ui/toaster'
+
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata: Metadata = {
+  title: {
+    default: 'VanTrack — Find Mobile Food Vans Near You',
+    template: '%s | VanTrack',
+  },
+  description: 'Track mobile food vans, order online, and manage your mobile food business all in one platform.',
+  keywords: ['mobile food van', 'fish and chips van', 'burger van', 'coffee van', 'food truck near me'],
+  openGraph: {
+    type: 'website',
+    locale: 'en_GB',
+    url: process.env.NEXT_PUBLIC_APP_URL,
+    siteName: 'VanTrack',
+  },
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        {children}
+        <Toaster />
+      </body>
+    </html>
+  )
+}
