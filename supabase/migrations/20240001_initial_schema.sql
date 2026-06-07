@@ -1,5 +1,5 @@
 -- ============================================================
--- VanTrack Platform — Initial Database Schema
+-- Food Taxi Platform — Initial Database Schema
 -- ============================================================
 
 -- Extensions

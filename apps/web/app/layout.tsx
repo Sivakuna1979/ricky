@@ -7,8 +7,8 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: {
-    default: 'VanTrack — Find Mobile Food Vans Near You',
-    template: '%s | VanTrack',
+    default: 'Food Taxi — Find Mobile Food Vans Near You',
+    template: '%s | Food Taxi',
   },
   description: 'Track mobile food vans, order online, and manage your mobile food business all in one platform.',
   keywords: ['mobile food van', 'fish and chips van', 'burger van', 'coffee van', 'food truck near me'],
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_GB',
     url: process.env.NEXT_PUBLIC_APP_URL,
-    siteName: 'VanTrack',
+    siteName: 'Food Taxi',
   },
 }
 

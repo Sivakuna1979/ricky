@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         role: 'user',
         content: `Write a short, friendly, professional introduction email to ${contact_name ?? 'the business owner'} at ${business_name} in ${area}.
 
-        The email is from VanTrack — a platform that helps mobile food businesses with live GPS tracking, online ordering, QR codes, food hygiene management and more.
+        The email is from Food Taxi — a platform that helps mobile food businesses with live GPS tracking, online ordering, QR codes, food hygiene management and more.
 
         Keep it brief (3-4 short paragraphs). Don't be pushy. End with a link to start a free trial: ${onboarding_url}
 

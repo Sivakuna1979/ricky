@@ -1,5 +1,5 @@
 -- ============================================================
--- VanTrack Platform — Row Level Security Policies
+-- Food Taxi Platform — Row Level Security Policies
 -- ============================================================
 
 -- Enable RLS on all tables

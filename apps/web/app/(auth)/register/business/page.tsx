@@ -199,7 +199,7 @@ export default function BusinessRegisterPage() {
               <div className="flex items-start gap-3">
                 <input {...register('gdpr_consent')} type="checkbox" id="gdpr" className="mt-1 h-4 w-4" />
                 <label htmlFor="gdpr" className="text-sm text-gray-600">
-                  I agree to the Privacy Policy and Terms of Service. I understand my data will be used to run the VanTrack platform.
+                  I agree to the Privacy Policy and Terms of Service. I understand my data will be used to run the Food Taxi platform.
                 </label>
               </div>
               {errors.gdpr_consent && <p className="error">{errors.gdpr_consent.message}</p>}

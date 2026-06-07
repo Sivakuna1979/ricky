@@ -15,8 +15,8 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@vantrack/database": ["./packages/database/index.ts"],
-      "@vantrack/shared": ["./packages/shared/index.ts"]
+      "@food-taxi/database": ["./packages/database/index.ts"],
+      "@food-taxi/shared": ["./packages/shared/index.ts"]
     }
   },
   "exclude": ["node_modules"]

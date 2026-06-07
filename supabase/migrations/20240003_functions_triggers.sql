@@ -1,5 +1,5 @@
 -- ============================================================
--- VanTrack Platform — DB Functions & Triggers
+-- Food Taxi Platform — DB Functions & Triggers
 -- ============================================================
 
 -- Auto-update updated_at on any table that has it
@@ -97,7 +97,7 @@ CREATE OR REPLACE FUNCTION generate_order_number()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.order_number IS NULL OR NEW.order_number = '' THEN
-    NEW.order_number = 'VT-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' ||
+    NEW.order_number = 'FT-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' ||
       LPAD(nextval('order_number_seq')::TEXT, 4, '0');
   END IF;
   RETURN NEW;

@@ -27,12 +27,12 @@ serve(async (req) => {
 
     const prompt = messageCount === 0
       ? `Write a brief, friendly introduction email to ${lead.contact_name ?? 'the business owner'} at ${lead.business_name} in ${lead.area}.
-         You are reaching out from VanTrack, a platform for mobile food businesses.
+         You are reaching out from Food Taxi, a platform for mobile food businesses.
          Mention live GPS tracking, online ordering, QR codes and food hygiene management.
          Keep it under 200 words. End with their onboarding link: ${lead.onboarding_url}`
       : `Write a polite follow-up email to ${lead.contact_name ?? 'the business owner'} at ${lead.business_name}.
          This is follow-up #${messageCount}. Keep it very brief (under 100 words).
-         Reference that you reached out before about VanTrack.
+         Reference that you reached out before about Food Taxi.
          Their onboarding link: ${lead.onboarding_url}`
 
     const message = await anthropic.messages.create({
@@ -44,7 +44,7 @@ serve(async (req) => {
     const emailBody = (message.content[0] as { text: string }).text
     const subject = messageCount === 0
       ? `Help ${lead.business_name} get found by more customers`
-      : `Following up — VanTrack for ${lead.business_name}`
+      : `Following up — Food Taxi for ${lead.business_name}`
 
     // Log message (email sending handled by the web API)
     await supabase.from('sales_agent_messages').insert({
