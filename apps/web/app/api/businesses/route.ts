@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     .from('users')
     .select('id, role')
     .eq('auth_id', user.id)
-    .single()
+    .single() as { data: { id: string; role: string } | null }
 
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
