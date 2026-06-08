@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const getResend = () => new Resend(process.env.RESEND_API_KEY ?? 're_placeholder')
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     const emailBody = (message.content[0] as { text: string }).text
 
     // Send via Resend
-    await resend.emails.send({
+    await getResend().emails.send({
       from: process.env.EMAIL_FROM!,
       to: email,
       subject: `Help ${business_name} get found by more customers`,
