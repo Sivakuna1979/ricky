@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { Order, OrderItem } from '@/types/database'
+import type { Order, OrderItem } from '../../types/database'
 import { toast } from 'sonner'
-import { formatCurrency } from '@/lib/utils/format'
+import { formatCurrency } from '../../lib/utils/format'
 
 type OrderWithItems = Order & {
   order_items: OrderItem[]

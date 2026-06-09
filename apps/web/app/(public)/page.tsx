@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
-import { VanSearchBar } from '@/components/van/VanSearchBar'
-import { VanMapPublic } from '@/components/map/VanMapPublic'
-import { FeaturedVans } from '@/components/van/FeaturedVans'
-import { VanTypeGrid } from '@/components/van/VanTypeGrid'
+import { VanSearchBar } from '../../components/van/VanSearchBar'
+import { VanMapPublic } from '../../components/map/VanMapPublic'
+import { FeaturedVans } from '../../components/van/FeaturedVans'
+import { VanTypeGrid } from '../../components/van/VanTypeGrid'
 
 const SCHEDULE_CARDS = [
   {

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { OPENING_CHECKLIST, CLOSING_CHECKLIST } from '@/lib/utils/checklists'
+import { OPENING_CHECKLIST, CLOSING_CHECKLIST } from '../../lib/utils/checklists'
 
 interface Props {
   businessId: string

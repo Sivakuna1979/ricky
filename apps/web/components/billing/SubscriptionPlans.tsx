@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import type { SubscriptionPlan, Subscription } from '@/types/database'
-import { formatCurrency } from '@/lib/utils/format'
+import type { SubscriptionPlan, Subscription } from '../../types/database'
+import { formatCurrency } from '../../lib/utils/format'
 import { toast } from 'sonner'
 
 interface Props {

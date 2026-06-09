@@ -35,7 +35,6 @@
     "@radix-ui/react-toast": "^1.2.0",
     "@radix-ui/react-label": "^2.1.0",
     "@radix-ui/react-switch": "^1.1.0",
-    "@radix-ui/react-badge": "^1.0.0",
     "sonner": "^1.5.0",
     "recharts": "^2.12.7",
     "jspdf": "^2.5.1",

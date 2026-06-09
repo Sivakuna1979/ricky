@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, Syne } from 'next/font/google'
 import './globals.css'
-import { Toaster } from '@/components/ui/toaster'
+import { Toaster } from '../components/ui/toaster'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const syne = Syne({ subsets: ['latin'], variable: '--font-syne', weight: ['700', '800'] })
