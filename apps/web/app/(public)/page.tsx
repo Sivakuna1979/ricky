@@ -99,7 +99,7 @@ export default function HomePage() {
             <a href="/vans" className="text-sm font-medium" style={{ color: '#f97316' }}>View all →</a>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
             {SCHEDULE_CARDS.map((card) => (
               <div
                 key={card.name}
