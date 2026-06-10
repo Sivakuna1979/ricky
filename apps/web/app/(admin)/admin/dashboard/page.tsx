@@ -13,7 +13,9 @@ export default async function AdminDashboardPage() {
   if (!user) redirect('/login')
 
   const { data: userData } = await supabase.from('users').select('role').eq('auth_id', user.id).single()
-  if (userData?.role !== 'super_admin') redirect('/dashboard')
+  const ownerEmail = process.env.SUPER_ADMIN_EMAIL ?? 'sivakuna@icloud.com'
+  const isAdmin = userData?.role === 'super_admin' || userData?.role === 'admin' || user.email === ownerEmail
+  if (!isAdmin) redirect('/dashboard')
 
   const [
     { count: totalBusinesses },
