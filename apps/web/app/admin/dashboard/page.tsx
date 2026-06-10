@@ -20,6 +20,7 @@ async function getStats(supabase: any) {
 
 const NAV = [
   { label: 'Dashboard',  icon: '📊', href: '/admin/dashboard' },
+  { label: 'Homepage',   icon: '🏠', href: '/admin/homepage'  },
   { label: 'Users',      icon: '👥', href: '/admin/users'     },
   { label: 'Businesses', icon: '🚐', href: '/admin/businesses'},
   { label: 'Orders',     icon: '📦', href: '/admin/orders'    },
