@@ -42,9 +42,7 @@ const HOW = [
 ]
 
 const PRICING = [
-  { name: 'Starter',      price: '£29',  period: '/month', highlight: false, badge: '',             glow: '#3b82f6',  bg: '#07111f',  features: ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews', 'Email Support'] },
-  { name: 'Professional', price: '£79',  period: '/month', highlight: true,  badge: 'Most Popular', glow: '#8b5cf6',  bg: '#110a24',  features: ['Up to 5 Vans', 'Everything in Starter', 'Live Order Dashboard', 'Hygiene Management', 'Analytics & Reports', 'Priority Support', 'Custom Branding'] },
-  { name: 'Enterprise',   price: '£199', period: '/month', highlight: false, badge: 'Best Value',   glow: '#10b981',  bg: '#061510',  features: ['Unlimited Vans', 'Everything in Pro', 'AI Sales Agent', 'API Access', 'White Label Option', 'Dedicated Account Manager', 'Custom Integrations'] },
+  { name: 'Starter', price: '£29', period: '/month', highlight: true, badge: '', glow: '#3b82f6', bg: '#07111f', features: ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews', 'Email Support'] },
 ]
 
 const TESTIMONIALS = [
