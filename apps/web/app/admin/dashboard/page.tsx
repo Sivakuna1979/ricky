@@ -25,6 +25,7 @@ const NAV = [
   { label: 'Businesses', icon: '🚐', href: '/admin/businesses'},
   { label: 'Orders',     icon: '📦', href: '/admin/orders'    },
   { label: 'Settings',   icon: '⚙️', href: '/admin/settings'  },
+  { label: 'Discovery',  icon: '🔍', href: '/admin/discovery' },
 ]
 
 export default async function AdminDashboardPage() {

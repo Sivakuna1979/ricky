@@ -4,6 +4,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '../../lib/supabase/client'
 
+const DISC_EMOJI_MAP: Record<string, string> = {
+  fast_food: '🍔', cafe: '☕', ice_cream: '🍦', food_court: '🥙',
+  marketplace: '🥙', bakery: '🥙', deli: '🥙', confectionery: '🍦',
+  mobile_food: '🍔', mobile_food_vendor: '🍔',
+}
+
+function getDiscEmoji(type: string): string {
+  return DISC_EMOJI_MAP[type] ?? '🥙'
+}
+
 interface Props {
   height?: string
   vanId?: string
@@ -164,6 +174,127 @@ function buildPopupHTML(
   `
 }
 
+function makeDiscoveredIcon(L: any, emoji: string) {
+  return L.divIcon({
+    html: `
+      <div style="position:relative;width:36px;height:36px">
+        <div style="position:absolute;inset:3px;border-radius:50%;background:#374151;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,.6),0 0 0 2px rgba(255,255,255,.15)">${emoji}</div>
+      </div>
+    `,
+    className: '',
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+    popupAnchor: [0, -22],
+  })
+}
+
+// Global invite handler — called from discovered popup button
+if (typeof window !== 'undefined') {
+  (window as any).__ftInvite = async (
+    btnId: string, name: string, address: string,
+    lat: number, lng: number, phone: string, website: string,
+    businessType: string, osmId: string
+  ) => {
+    const btn = document.getElementById(btnId)
+    if (!btn) return
+    btn.textContent = '⏳ Saving…'
+    btn.style.opacity = '0.75'
+    btn.style.pointerEvents = 'none'
+    try {
+      await fetch('/api/discovery/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, address, lat, lng, phone, website, business_type: businessType, source: 'overpass', osm_id: osmId }),
+      })
+      btn.textContent = '✅ Invited!'
+      btn.style.background = 'rgba(16,185,129,.15)'
+      btn.style.borderColor = 'rgba(16,185,129,.3)'
+      btn.style.color = '#34d399'
+    } catch {
+      btn.textContent = '✉️ Invite to FoodTaxi'
+      btn.style.opacity = '1'
+      btn.style.pointerEvents = 'auto'
+    }
+  }
+}
+
+function buildDiscoveredPopupHTML(
+  biz: any, userLat: number | null, userLng: number | null
+) {
+  const emoji = getDiscEmoji(biz.business_type)
+  const km = (userLat !== null && userLng !== null)
+    ? haversine(userLat, userLng, biz.lat, biz.lng)
+    : null
+  const navBtnId = `ft-nav-disc-${biz.id}`
+  const invBtnId = `ft-inv-disc-${biz.id}`
+
+  const osmId = biz.id.startsWith('osm_') ? biz.id : ''
+  const safeEscape = (s: string) => (s ?? '').replace(/'/g, "\\'").replace(/"/g, '&quot;')
+
+  return `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#070b14;border-radius:16px;width:260px;overflow:hidden;">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,rgba(107,114,128,.15),rgba(107,114,128,.08));border-bottom:1px solid rgba(107,114,128,.2);padding:14px 16px 12px;display:flex;align-items:center;gap:10px">
+        <div style="width:40px;height:40px;border-radius:50%;background:rgba(107,114,128,.2);border:1.5px solid rgba(107,114,128,.4);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${emoji}</div>
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:800;color:#fff;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${safeEscape(biz.name)}</div>
+          <div style="margin-top:4px">
+            <span style="font-size:10px;font-weight:700;color:#9ca3af;background:rgba(107,114,128,.2);padding:2px 7px;border-radius:20px;border:1px solid rgba(107,114,128,.3)">Not Yet On FoodTaxi</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Address -->
+      ${biz.address ? `
+      <div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:12px;color:rgba(255,255,255,.45)">📍 ${safeEscape(biz.address)}</div>
+      </div>` : ''}
+
+      <!-- Distance & ETA -->
+      ${km !== null ? `
+      <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:8px 10px;text-align:center">
+          <div style="font-size:10px;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;letter-spacing:.04em">Distance</div>
+          <div style="font-size:15px;font-weight:800;color:#fff;margin-top:2px">${formatDistance(km)}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:8px 10px;text-align:center">
+          <div style="font-size:10px;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;letter-spacing:.04em">ETA</div>
+          <div style="font-size:15px;font-weight:800;color:#fff;margin-top:2px">${formatTime(km)}</div>
+        </div>
+      </div>
+      ` : `
+      <div style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:12px;color:rgba(255,255,255,.35);text-align:center">📍 Location permission needed for ETA</div>
+      </div>
+      `}
+
+      <!-- Buttons -->
+      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+        <button id="${navBtnId}"
+          onclick="window.__ftNavigate(${biz.lat},${biz.lng},'${navBtnId}')"
+          style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:10px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;font-size:13px;font-weight:800;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(249,115,22,.4);width:100%">
+          📍 Get Directions
+        </button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${biz.phone ? `
+          <a href="tel:${safeEscape(biz.phone)}"
+            style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.85);font-size:12px;font-weight:700;text-decoration:none">
+            📞 Call
+          </a>` : `
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);color:rgba(255,255,255,.25);font-size:12px;font-weight:700">
+            📞 Call
+          </div>`}
+          <button id="${invBtnId}"
+            onclick="window.__ftInvite('${invBtnId}','${safeEscape(biz.name)}','${safeEscape(biz.address ?? '')}',${biz.lat},${biz.lng},'${safeEscape(biz.phone ?? '')}','${safeEscape(biz.website ?? '')}','${safeEscape(biz.business_type ?? '')}','${osmId}')"
+            style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border-radius:10px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.3);color:#a5b4fc;font-size:12px;font-weight:700;cursor:pointer;border:1px solid rgba(99,102,241,.3)">
+            ✉️ Invite
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
 function makeVanIcon(L: any, emoji: string, color: string) {
   return L.divIcon({
     html: `
@@ -187,6 +318,8 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
   const [vanCount, setVanCount] = useState(0)
   const [isDemo, setIsDemo] = useState(false)
   const demoIntervalRef = useRef<any>(null)
+  const discoveryMarkersRef = useRef<any[]>([])
+  const leafletRef = useRef<any>(null)
 
   // Get user location silently
   const requestUserLocation = useCallback((L: any) => {
@@ -206,6 +339,30 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
       () => {}, // silently ignore permission denial
       { enableHighAccuracy: true, timeout: 8000 }
     )
+  }, [])
+
+  // Fetch and render discovered nearby businesses
+  const loadDiscoveredBusinesses = useCallback((L: any) => {
+    fetch('/api/discovery/nearby?lat=53.4808&lng=-2.2426')
+      .then(r => r.json())
+      .then(({ discovered }) => {
+        if (!discovered || !mapRef.current) return
+        discovered.forEach((biz: any) => {
+          const icon = makeDiscoveredIcon(L, getDiscEmoji(biz.business_type))
+          const marker = L.marker([biz.lat, biz.lng], { icon }).addTo(mapRef.current)
+          marker.on('click', () => {
+            const ul = userLocationRef.current
+            const html = buildDiscoveredPopupHTML(biz, ul?.lat ?? null, ul?.lng ?? null)
+            marker.bindPopup(html, {
+              maxWidth: 280,
+              minWidth: 260,
+              className: 'ft-van-popup',
+            }).openPopup()
+          })
+          discoveryMarkersRef.current.push(marker)
+        })
+      })
+      .catch(() => {}) // silently fail
   }, [])
 
   const buildMarker = useCallback((L: any, id: string, name: string, emoji: string, color: string,
@@ -272,6 +429,7 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
         attributionControl: false,
       })
       mapRef.current = map
+      leafletRef.current = L
 
       // Dark tile layer
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -284,6 +442,9 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
 
       // Get user location
       requestUserLocation(L)
+
+      // Load nearby discovered businesses
+      loadDiscoveredBusinesses(L)
 
       // Fetch live vans
       const supabase = createClient()
@@ -335,10 +496,12 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
     return () => {
       if (supabaseChannel) createClient().removeChannel(supabaseChannel)
       if (demoIntervalRef.current) clearInterval(demoIntervalRef.current)
+      discoveryMarkersRef.current.forEach(m => { try { m.remove() } catch {} })
+      discoveryMarkersRef.current = []
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
       markersRef.current.clear()
     }
-  }, [vanId, requestUserLocation, buildMarker, startDemoMovement])
+  }, [vanId, requestUserLocation, buildMarker, startDemoMovement, loadDiscoveredBusinesses])
 
   return (
     <div style={{ position: 'relative', height, borderRadius: 24, overflow: 'hidden', background: '#0d1117' }}>
@@ -385,6 +548,22 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
         {isDemo && (
           <span style={{ fontSize:10, color:'#fbbf24', fontWeight:600, background:'rgba(251,191,36,.15)', padding:'2px 6px', borderRadius:6 }}>DEMO</span>
         )}
+      </div>
+
+      {/* Map legend — bottom right */}
+      <div style={{ position:'absolute', bottom:50, right:14, zIndex:1000, background:'rgba(6,9,20,.88)', backdropFilter:'blur(10px)', borderRadius:12, padding:'10px 14px', border:'1px solid rgba(255,255,255,.08)', display:'flex', flexDirection:'column', gap:6 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+          <span style={{ width:12, height:12, borderRadius:'50%', background:'#f97316', display:'inline-block', boxShadow:'0 0 6px #f97316' }} />
+          <span style={{ fontSize:11, color:'rgba(255,255,255,.6)', fontWeight:600 }}>FoodTaxi Van (Live)</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+          <span style={{ width:12, height:12, borderRadius:'50%', background:'#6b7280', display:'inline-block' }} />
+          <span style={{ fontSize:11, color:'rgba(255,255,255,.6)', fontWeight:600 }}>Local Food Business</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+          <span style={{ width:12, height:12, borderRadius:'50%', background:'#60a5fa', display:'inline-block' }} />
+          <span style={{ fontSize:11, color:'rgba(255,255,255,.6)', fontWeight:600 }}>You Are Here</span>
+        </div>
       </div>
 
       {/* Tap hint */}

@@ -9,6 +9,7 @@ export const ADMIN_NAV = [
   { label: 'Businesses', icon: '🚐', href: '/admin/businesses'},
   { label: 'Orders',     icon: '📦', href: '/admin/orders'    },
   { label: 'Settings',   icon: '⚙️', href: '/admin/settings'  },
+  { label: 'Discovery',  icon: '🔍', href: '/admin/discovery' },
 ]
 
 export function AdminShell({ children, active }: { children: ReactNode; active: string }) {
