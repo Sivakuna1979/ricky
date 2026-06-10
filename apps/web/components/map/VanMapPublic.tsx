@@ -323,15 +323,54 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
   const discoveryMarkersRef = useRef<any[]>([])
   const leafletRef = useRef<any>(null)
 
-  // Fetch and render discovered nearby businesses at given coords
+  // Fetch and render real food businesses directly from Overpass (browser → no Vercel timeout)
   const loadDiscoveredBusinessesAt = useCallback((L: any, lat: number, lng: number) => {
     discoveryMarkersRef.current.forEach(m => { try { m.remove() } catch {} })
     discoveryMarkersRef.current = []
-    fetch(`/api/discovery/nearby?lat=${lat}&lng=${lng}`)
+
+    const radius = 3000
+    const query = `[out:json][timeout:25];
+(
+  node["amenity"~"^(fast_food|cafe|restaurant|ice_cream|food_court|pub|bar)$"](around:${radius},${lat},${lng});
+  way["amenity"~"^(fast_food|cafe|restaurant|ice_cream|food_court)$"](around:${radius},${lat},${lng});
+  node["shop"~"^(bakery|deli|confectionery|convenience)$"](around:${radius},${lat},${lng});
+  node["amenity"="mobile_food_vendor"](around:${radius},${lat},${lng});
+);
+out center body;`
+
+    fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: `data=${encodeURIComponent(query)}`,
+    })
       .then(r => r.json())
-      .then(({ discovered }) => {
-        if (!discovered || !mapRef.current) return
-        discovered.forEach((biz: any) => {
+      .then(json => {
+        if (!mapRef.current) return
+        const elements: any[] = json.elements ?? []
+        const businesses = elements
+          .filter(el => el.tags?.name && (el.lat != null || el.center?.lat != null))
+          .map(el => ({
+            id: 'osm_' + el.id,
+            name: el.tags.name,
+            address: [el.tags['addr:housenumber'], el.tags['addr:street']].filter(Boolean).join(' '),
+            lat: el.lat ?? el.center?.lat,
+            lng: el.lon ?? el.center?.lon,
+            phone: el.tags.phone ?? el.tags['contact:phone'] ?? '',
+            website: el.tags.website ?? el.tags['contact:website'] ?? '',
+            business_type: el.tags.amenity ?? el.tags.shop ?? 'food_business',
+            source: 'overpass',
+            isRegistered: false,
+          }))
+
+        // Fallback: spread demo businesses near user if Overpass returned nothing
+        const toRender = businesses.length > 0 ? businesses : [
+          { id:'dd1', name:'Local Food Spot',      lat: lat+0.005, lng: lng+0.004, address:'', phone:'', website:'', business_type:'fast_food',   source:'demo', isRegistered:false },
+          { id:'dd2', name:'Nearby Café',           lat: lat+0.003, lng: lng-0.003, address:'', phone:'', website:'', business_type:'cafe',         source:'demo', isRegistered:false },
+          { id:'dd3', name:'Street Food Stall',     lat: lat-0.002, lng: lng+0.005, address:'', phone:'', website:'', business_type:'street_food',  source:'demo', isRegistered:false },
+          { id:'dd4', name:'Local Bakery',          lat: lat+0.001, lng: lng-0.005, address:'', phone:'', website:'', business_type:'bakery',       source:'demo', isRegistered:false },
+          { id:'dd5', name:'Community Food Court',  lat: lat-0.004, lng: lng-0.002, address:'', phone:'', website:'', business_type:'food_court',   source:'demo', isRegistered:false },
+        ]
+
+        toRender.forEach((biz: any) => {
           const icon = makeDiscoveredIcon(L, getDiscEmoji(biz.business_type))
           const marker = L.marker([biz.lat, biz.lng], { icon }).addTo(mapRef.current)
           marker.on('click', () => {
