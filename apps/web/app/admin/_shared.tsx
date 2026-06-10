@@ -1,4 +1,5 @@
 // @ts-nocheck
+import type { ReactNode } from 'react'
 // Shared layout shell for all admin pages
 
 export const ADMIN_NAV = [
@@ -10,7 +11,7 @@ export const ADMIN_NAV = [
   { label: 'Settings',   icon: '⚙️', href: '/admin/settings'  },
 ]
 
-export function AdminShell({ children, active }: { children: React.ReactNode; active: string }) {
+export function AdminShell({ children, active }: { children: ReactNode; active: string }) {
   return (
     <>
       <style>{`
