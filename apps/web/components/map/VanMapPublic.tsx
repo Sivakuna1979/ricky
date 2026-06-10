@@ -344,29 +344,24 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
       .catch(() => {})
   }, [])
 
-  // Get user location, centre map on it, then reload discovery with real coords
-  const requestUserLocation = useCallback((L: any) => {
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords
-        userLocationRef.current = { lat, lng }
-        if (mapRef.current) mapRef.current.flyTo([lat, lng], 14, { duration: 1.2 })
-        L.circleMarker([lat, lng], {
-          radius: 8, fillColor: '#60a5fa', color: '#fff', weight: 2, fillOpacity: 0.9,
-        }).addTo(mapRef.current).bindTooltip('You are here', { permanent: false, direction: 'top' })
-        loadDiscoveredBusinessesAt(L, lat, lng)
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
-  }, [loadDiscoveredBusinessesAt])
+  // Add "You are here" blue dot
+  const addUserDot = useCallback((L: any, lat: number, lng: number) => {
+    L.circleMarker([lat, lng], {
+      radius: 8, fillColor: '#60a5fa', color: '#fff', weight: 2, fillOpacity: 0.9,
+    }).addTo(mapRef.current).bindTooltip('You are here', { permanent: false, direction: 'top' })
+  }, [])
 
-  // Initial discovery load — uses real coords if available, otherwise fallback
-  const loadDiscoveredBusinesses = useCallback((L: any) => {
-    const ul = userLocationRef.current
-    loadDiscoveredBusinessesAt(L, ul?.lat ?? 53.4808, ul?.lng ?? -2.2426)
-  }, [loadDiscoveredBusinessesAt])
+  // Get GPS and resolve with coords (or null on failure)
+  const getUserLocation = useCallback((): Promise<{ lat: number; lng: number } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) { resolve(null); return }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      )
+    })
+  }, [])
 
   const buildMarker = useCallback((L: any, id: string, name: string, emoji: string, color: string,
     lat: number, lng: number, isLive: boolean, slug: string, phone: string) => {
@@ -388,10 +383,17 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
     return marker
   }, [])
 
-  const startDemoMovement = useCallback((L: any) => {
+  // Place demo vans around a given centre (user's real GPS or fallback)
+  const startDemoMovement = useCallback((L: any, centreLat: number, centreLng: number) => {
     setIsDemo(true)
-    DEMO_VANS.forEach(van => {
-      buildMarker(L, van.id, van.name, van.emoji, van.color, van.lat, van.lng, true, van.slug, van.phone)
+    // Spread demo vans within ~500m of centre
+    const offsets = [
+      [0.003, 0.004], [-0.004, 0.002], [0.002, -0.005],
+    ]
+    DEMO_VANS.forEach((van, i) => {
+      const lat = centreLat + offsets[i][0]
+      const lng = centreLng + offsets[i][1]
+      buildMarker(L, van.id, van.name, van.emoji, van.color, lat, lng, true, van.slug, van.phone)
     })
     setVanCount(DEMO_VANS.length)
 
@@ -443,11 +445,21 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
         .addAttribution('© <a href="https://carto.com" style="color:#555">CARTO</a>')
         .addTo(map)
 
-      // Get user location
-      requestUserLocation(L)
+      // Get user GPS first — everything centres around them
+      const userLoc = await getUserLocation()
+      const FALLBACK = { lat: 53.4808, lng: -2.2426 }
+      const centre = userLoc ?? FALLBACK
 
-      // Load nearby discovered businesses
-      loadDiscoveredBusinesses(L)
+      userLocationRef.current = userLoc
+
+      // Centre map on user (or fallback)
+      map.setView([centre.lat, centre.lng], 14)
+
+      // Add blue "You are here" dot
+      if (userLoc) addUserDot(L, userLoc.lat, userLoc.lng)
+
+      // Load nearby discovered businesses around user
+      loadDiscoveredBusinessesAt(L, centre.lat, centre.lng)
 
       // Fetch live vans
       const supabase = createClient()
@@ -469,9 +481,9 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
           buildMarker(L, van.id, van.name, emoji, color, loc.latitude, loc.longitude, true, van.slug ?? van.id, van.phone ?? '')
         })
         setVanCount(liveData.length)
-        map.setView([liveData[0].latitude, liveData[0].longitude], 13)
       } else {
-        startDemoMovement(L)
+        // Demo vans spawn near user's actual location
+        startDemoMovement(L, centre.lat, centre.lng)
       }
 
       // Real-time position updates
@@ -504,7 +516,7 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
       markersRef.current.clear()
     }
-  }, [vanId, requestUserLocation, buildMarker, startDemoMovement, loadDiscoveredBusinesses])
+  }, [vanId, getUserLocation, addUserDot, buildMarker, startDemoMovement, loadDiscoveredBusinessesAt])
 
   return (
     <div style={{ position: 'relative', height, borderRadius: 24, overflow: 'hidden', background: '#0d1117' }}>
