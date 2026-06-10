@@ -1,4 +1,5 @@
-// @ts-nocheck
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+import type { ReactNode } from 'react'
+
+export default function AdminLayout({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
