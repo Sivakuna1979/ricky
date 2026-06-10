@@ -1,6 +1,16 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+
+async function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  // Service role bypasses RLS; fall back to anon key if not configured
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createServerClient(url, key, {
+    cookies: { getAll: () => [], setAll: () => {} },
+    auth: { persistSession: false },
+  })
+}
 
 const DEFAULT_SECTIONS = [
   { key: 'hero',         title: 'Hero Banner',       position: 1,  visible: true },
@@ -17,7 +27,7 @@ const DEFAULT_SECTIONS = [
 
 export async function GET() {
   try {
-    const supabase = await createAdminClient()
+    const supabase = await getSupabase()
     const { data, error } = await supabase
       .from('homepage_sections')
       .select('*')
@@ -39,13 +49,20 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const sections = await req.json()
-    const supabase = await createAdminClient()
+    if (!Array.isArray(sections) || !sections.length) {
+      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
+    }
+    const supabase = await getSupabase()
     const { error } = await supabase
       .from('homepage_sections')
       .upsert(sections, { onConflict: 'key' })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('homepage_sections PATCH:', error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     return NextResponse.json({ ok: true })
   } catch (e: any) {
+    console.error('homepage_sections PATCH exception:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
