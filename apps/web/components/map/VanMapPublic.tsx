@@ -318,6 +318,7 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
   const [vanCount, setVanCount] = useState(0)
   const [isDemo, setIsDemo] = useState(false)
   const [findingNearest, setFindingNearest] = useState(false)
+  const [locationStatus, setLocationStatus] = useState<'waiting'|'granted'|'denied'|'done'>('waiting')
   const demoIntervalRef = useRef<any>(null)
   const discoveryMarkersRef = useRef<any[]>([])
   const leafletRef = useRef<any>(null)
@@ -351,14 +352,15 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
     }).addTo(mapRef.current).bindTooltip('You are here', { permanent: false, direction: 'top' })
   }, [])
 
-  // Get GPS and resolve with coords (or null on failure)
+  // Get GPS — allows cached position (up to 60s) so it resolves instantly if already granted
   const getUserLocation = useCallback((): Promise<{ lat: number; lng: number } | null> => {
     return new Promise((resolve) => {
       if (!navigator.geolocation) { resolve(null); return }
+      // Try cached position first (fast)
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         () => resolve(null),
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
       )
     })
   }, [])
@@ -451,6 +453,7 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
       const centre = userLoc ?? FALLBACK
 
       userLocationRef.current = userLoc
+      setLocationStatus(userLoc ? 'granted' : 'denied')
 
       // Centre map on user (or fallback)
       map.setView([centre.lat, centre.lng], 14)
@@ -610,6 +613,46 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
           <span style={{ fontSize:11, color:'rgba(255,255,255,.6)', fontWeight:600 }}>You Are Here</span>
         </div>
       </div>
+
+      {/* Location denied banner — shows manual centre button */}
+      {locationStatus === 'denied' && (
+        <div style={{ position:'absolute', bottom:50, left:'50%', transform:'translateX(-50%)', zIndex:1100, background:'rgba(239,68,68,.15)', backdropFilter:'blur(12px)', border:'1px solid rgba(239,68,68,.35)', borderRadius:14, padding:'10px 16px', display:'flex', alignItems:'center', gap:10, whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:13, color:'#fca5a5', fontWeight:600 }}>📍 Location not shared</span>
+          <button
+            onClick={() => {
+              if (!navigator.geolocation) return
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  const { latitude: lat, longitude: lng } = pos.coords
+                  userLocationRef.current = { lat, lng }
+                  setLocationStatus('granted')
+                  if (mapRef.current) mapRef.current.flyTo([lat, lng], 15, { duration: 1.2 })
+                  if (leafletRef.current) {
+                    addUserDot(leafletRef.current, lat, lng)
+                    loadDiscoveredBusinessesAt(leafletRef.current, lat, lng)
+                    // Reposition demo vans near user
+                    if (isDemo) {
+                      markersRef.current.forEach((data, id) => {
+                        const offsets: Record<string, number[]> = { 'demo-1': [0.003,0.004], 'demo-2': [-0.004,0.002], 'demo-3': [0.002,-0.005] }
+                        const off = offsets[id] ?? [0,0]
+                        const newLat = lat + off[0]; const newLng = lng + off[1]
+                        data.marker.setLatLng([newLat, newLng])
+                        data.lat = newLat; data.lng = newLng
+                        markersRef.current.set(id, data)
+                      })
+                    }
+                  }
+                },
+                () => {},
+                { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+              )
+            }}
+            style={{ background:'rgba(239,68,68,.25)', border:'1px solid rgba(239,68,68,.4)', borderRadius:8, padding:'5px 12px', color:'#fca5a5', fontSize:12, fontWeight:700, cursor:'pointer' }}
+          >
+            Allow & Centre
+          </button>
+        </div>
+      )}
 
       {/* Tap hint */}
       <div style={{ position:'absolute', bottom:14, left:'50%', transform:'translateX(-50%)', zIndex:1000, background:'rgba(6,9,20,.8)', backdropFilter:'blur(8px)', borderRadius:20, padding:'6px 14px', border:'1px solid rgba(255,255,255,.08)', whiteSpace:'nowrap' }}>
