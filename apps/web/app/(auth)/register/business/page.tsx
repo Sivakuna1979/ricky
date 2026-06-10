@@ -7,16 +7,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '../../../../lib/supabase/client'
-import { toast } from 'sonner'
 import { VAN_TYPES } from '../../../../lib/utils/constants'
 
 const schema = z.object({
-  // Account
   full_name: z.string().min(2, 'Enter your full name'),
   email: z.string().email('Enter a valid email'),
   password: z.string().min(8, 'Minimum 8 characters'),
   confirm_password: z.string(),
-  // Business
   business_name: z.string().min(2, 'Enter your business name'),
   business_type: z.enum(['fish_and_chips','burger','coffee','ice_cream','pizza','dessert','street_food','catering_trailer','other']),
   phone: z.string().optional(),
@@ -32,10 +29,47 @@ type FormData = z.infer<typeof schema>
 
 const STEPS = ['Account Details', 'Business Info', 'Review & Submit']
 
+const inputStyle = {
+  width: '100%',
+  padding: '13px 16px',
+  borderRadius: 12,
+  border: '1px solid rgba(255,255,255,.12)',
+  background: 'rgba(255,255,255,.06)',
+  color: '#fff',
+  fontSize: 15,
+  outline: 'none',
+  boxSizing: 'border-box' as const,
+}
+
+const labelStyle = {
+  display: 'block',
+  fontSize: 13,
+  fontWeight: 600,
+  color: 'rgba(255,255,255,.6)',
+  marginBottom: 6,
+}
+
+const errorStyle = {
+  fontSize: 12,
+  color: '#f87171',
+  marginTop: 5,
+}
+
+function Field({ label, error, children }: any) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={labelStyle}>{label}</label>
+      {children}
+      {error && <p style={errorStyle}>⚠ {error}</p>}
+    </div>
+  )
+}
+
 export default function BusinessRegisterPage() {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [serverError, setServerError] = useState('')
 
   const { register, handleSubmit, trigger, getValues, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -53,184 +87,199 @@ export default function BusinessRegisterPage() {
 
   const onSubmit = async (data: FormData) => {
     setLoading(true)
+    setServerError('')
     const supabase = createClient()
 
-    // 1. Create auth user
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
-      options: {
-        data: { full_name: data.full_name, role: 'business_owner' },
-      },
+      options: { data: { full_name: data.full_name, role: 'business_owner' } },
     })
 
     if (authError || !authData.user) {
-      toast.error(authError?.message ?? 'Registration failed')
+      setServerError(authError?.message ?? 'Registration failed')
       setLoading(false)
       return
     }
 
-    // 2. Create business via API route (uses service role)
     const slug = data.business_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
     const res = await fetch('/api/businesses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: data.business_name,
-        slug,
-        business_type: data.business_type,
-        phone: data.phone,
-        postcode: data.postcode,
-        city: data.city,
-        email: data.email,
+        name: data.business_name, slug, business_type: data.business_type,
+        phone: data.phone, postcode: data.postcode, city: data.city, email: data.email,
       }),
     })
 
     if (!res.ok) {
       const err = await res.json()
-      toast.error(err.error ?? 'Failed to create business')
+      setServerError(err.error ?? 'Failed to create business')
       setLoading(false)
       return
     }
 
-    toast.success('Business registered! Please check your email to confirm your account.')
     router.push('/dashboard')
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Register Your Food Business</h1>
-          <p className="mt-2 text-gray-600">Get live tracking, online orders, QR codes and more.</p>
+    <div style={{ minHeight: '100vh', background: '#080c18', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}>
+      <div style={{ width: '100%', maxWidth: 480 }}>
+
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg,#f97316,#ea580c)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🚐</div>
+            <span style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>FoodTaxi</span>
+          </div>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#fff', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Register Your Food Business</h1>
+          <p style={{ fontSize: 14, color: 'rgba(255,255,255,.45)', margin: 0 }}>Get live tracking, online orders, QR codes and more.</p>
         </div>
 
-        {/* Progress */}
-        <div className="flex items-center justify-between mb-8">
+        {/* Step progress */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 28, gap: 0 }}>
           {STEPS.map((label, i) => (
-            <div key={i} className="flex items-center flex-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                i <= step ? 'bg-brand-500 text-white' : 'bg-gray-200 text-gray-500'
-              }`}>
-                {i + 1}
+            <div key={i} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 800,
+                  background: i < step ? '#10b981' : i === step ? 'linear-gradient(135deg,#f97316,#ea580c)' : 'rgba(255,255,255,.08)',
+                  color: i <= step ? '#fff' : 'rgba(255,255,255,.3)',
+                  border: i === step ? 'none' : i < step ? 'none' : '1px solid rgba(255,255,255,.1)',
+                  boxShadow: i === step ? '0 4px 14px rgba(249,115,22,.4)' : 'none',
+                  flexShrink: 0,
+                }}>
+                  {i < step ? '✓' : i + 1}
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 600, color: i === step ? '#f97316' : 'rgba(255,255,255,.3)', whiteSpace: 'nowrap' }}>{label}</span>
               </div>
               {i < STEPS.length - 1 && (
-                <div className={`flex-1 h-1 mx-2 ${i < step ? 'bg-brand-500' : 'bg-gray-200'}`} />
+                <div style={{ flex: 1, height: 2, background: i < step ? '#10b981' : 'rgba(255,255,255,.08)', margin: '0 6px', marginBottom: 18 }} />
               )}
             </div>
           ))}
         </div>
-        <div className="text-center text-sm font-medium text-gray-700 mb-6">{STEPS[step]}</div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="bg-white p-8 rounded-2xl shadow space-y-5">
-          {/* Step 0: Account */}
-          {step === 0 && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                <input {...register('full_name')} className="input" placeholder="John Smith" />
-                {errors.full_name && <p className="error">{errors.full_name.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                <input {...register('email')} type="email" className="input" placeholder="john@example.com" />
-                {errors.email && <p className="error">{errors.email.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input {...register('password')} type="password" className="input" placeholder="••••••••" />
-                {errors.password && <p className="error">{errors.password.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-                <input {...register('confirm_password')} type="password" className="input" placeholder="••••••••" />
-                {errors.confirm_password && <p className="error">{errors.confirm_password.message}</p>}
-              </div>
-            </>
+        {/* Card */}
+        <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 20, padding: '28px 24px' }}>
+
+          {serverError && (
+            <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, color: '#fca5a5', fontSize: 13 }}>
+              ⚠️ {serverError}
+            </div>
           )}
 
-          {/* Step 1: Business Info */}
-          {step === 1 && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
-                <input {...register('business_name')} className="input" placeholder="Smith's Fish & Chips" />
-                {errors.business_name && <p className="error">{errors.business_name.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Business Type</label>
-                <select {...register('business_type')} className="input">
-                  <option value="">Select type...</option>
-                  {VAN_TYPES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+          <form onSubmit={handleSubmit(onSubmit)}>
+
+            {/* Step 0: Account */}
+            {step === 0 && (
+              <>
+                <Field label="Full Name" error={errors.full_name?.message}>
+                  <input {...register('full_name')} style={inputStyle} placeholder="John Smith" />
+                </Field>
+                <Field label="Email Address" error={errors.email?.message}>
+                  <input {...register('email')} type="email" style={inputStyle} placeholder="john@example.com" />
+                </Field>
+                <Field label="Password" error={errors.password?.message}>
+                  <input {...register('password')} type="password" style={inputStyle} placeholder="Minimum 8 characters" />
+                </Field>
+                <Field label="Confirm Password" error={errors.confirm_password?.message}>
+                  <input {...register('confirm_password')} type="password" style={inputStyle} placeholder="••••••••" />
+                </Field>
+              </>
+            )}
+
+            {/* Step 1: Business */}
+            {step === 1 && (
+              <>
+                <Field label="Business Name" error={errors.business_name?.message}>
+                  <input {...register('business_name')} style={inputStyle} placeholder="Smith's Fish & Chips" />
+                </Field>
+                <Field label="Business Type" error={errors.business_type?.message}>
+                  <select {...register('business_type')} style={{ ...inputStyle, cursor: 'pointer' }}>
+                    <option value="" style={{ background: '#0a0f1e' }}>Select type…</option>
+                    {VAN_TYPES.map(t => (
+                      <option key={t.value} value={t.value} style={{ background: '#0a0f1e' }}>{t.label}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Phone Number (optional)">
+                  <input {...register('phone')} type="tel" style={inputStyle} placeholder="07700 900000" />
+                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Town / City" error={errors.city?.message}>
+                    <input {...register('city')} style={inputStyle} placeholder="Manchester" />
+                  </Field>
+                  <Field label="Postcode" error={errors.postcode?.message}>
+                    <input {...register('postcode')} style={inputStyle} placeholder="M1 1AA" />
+                  </Field>
+                </div>
+              </>
+            )}
+
+            {/* Step 2: Review */}
+            {step === 2 && (
+              <>
+                <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, padding: 16, marginBottom: 20 }}>
+                  {[
+                    ['Name', getValues('full_name')],
+                    ['Email', getValues('email')],
+                    ['Business', getValues('business_name')],
+                    ['Type', getValues('business_type')],
+                    ['Location', `${getValues('city')}, ${getValues('postcode')}`],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,.06)', fontSize: 14 }}>
+                      <span style={{ color: 'rgba(255,255,255,.4)', fontWeight: 600 }}>{k}</span>
+                      <span style={{ color: '#fff', fontWeight: 600 }}>{v}</span>
+                    </div>
                   ))}
-                </select>
-                {errors.business_type && <p className="error">{errors.business_type.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                <input {...register('phone')} type="tel" className="input" placeholder="07700 900000" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Town / City</label>
-                  <input {...register('city')} className="input" placeholder="Manchester" />
-                  {errors.city && <p className="error">{errors.city.message}</p>}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Postcode</label>
-                  <input {...register('postcode')} className="input" placeholder="M1 1AA" />
-                  {errors.postcode && <p className="error">{errors.postcode.message}</p>}
+
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+                  <input {...register('gdpr_consent')} type="checkbox" id="gdpr" style={{ marginTop: 2, width: 16, height: 16, accentColor: '#f97316', flexShrink: 0 }} />
+                  <label htmlFor="gdpr" style={{ fontSize: 13, color: 'rgba(255,255,255,.5)', lineHeight: 1.5, cursor: 'pointer' }}>
+                    I agree to the <span style={{ color: '#f97316' }}>Privacy Policy</span> and <span style={{ color: '#f97316' }}>Terms of Service</span>. I understand my data will be used to run the Food Taxi platform.
+                  </label>
                 </div>
-              </div>
-            </>
-          )}
-
-          {/* Step 2: Review */}
-          {step === 2 && (
-            <>
-              <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-                <p><span className="font-medium">Name:</span> {getValues('full_name')}</p>
-                <p><span className="font-medium">Email:</span> {getValues('email')}</p>
-                <p><span className="font-medium">Business:</span> {getValues('business_name')}</p>
-                <p><span className="font-medium">Type:</span> {getValues('business_type')}</p>
-                <p><span className="font-medium">Location:</span> {getValues('city')}, {getValues('postcode')}</p>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <input {...register('gdpr_consent')} type="checkbox" id="gdpr" className="mt-1 h-4 w-4" />
-                <label htmlFor="gdpr" className="text-sm text-gray-600">
-                  I agree to the Privacy Policy and Terms of Service. I understand my data will be used to run the Food Taxi platform.
-                </label>
-              </div>
-              {errors.gdpr_consent && <p className="error">{errors.gdpr_consent.message}</p>}
-            </>
-          )}
-
-          {/* Navigation */}
-          <div className="flex justify-between pt-4">
-            {step > 0 && (
-              <button type="button" onClick={() => setStep(s => s - 1)} className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                Back
-              </button>
+                {errors.gdpr_consent && <p style={errorStyle}>⚠ {errors.gdpr_consent.message}</p>}
+              </>
             )}
-            {step < STEPS.length - 1 ? (
-              <button type="button" onClick={nextStep} className="ml-auto px-6 py-2 bg-brand-500 text-white rounded-lg font-semibold hover:bg-brand-600">
-                Next
-              </button>
-            ) : (
-              <button type="submit" disabled={loading} className="ml-auto px-6 py-2 bg-brand-500 text-white rounded-lg font-semibold hover:bg-brand-600 disabled:opacity-50">
-                {loading ? 'Registering...' : 'Register Business'}
-              </button>
-            )}
-          </div>
-        </form>
+
+            {/* Navigation buttons */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, gap: 12 }}>
+              {step > 0 ? (
+                <button type="button" onClick={() => setStep(s => s - 1)}
+                  style={{ padding: '13px 24px', borderRadius: 12, border: '1px solid rgba(255,255,255,.15)', background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.7)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                  ← Back
+                </button>
+              ) : (
+                <div />
+              )}
+
+              {step < STEPS.length - 1 ? (
+                <button type="button" onClick={nextStep}
+                  style={{ padding: '13px 28px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 18px rgba(249,115,22,.4)' }}>
+                  Next →
+                </button>
+              ) : (
+                <button type="submit" disabled={loading}
+                  style={{ padding: '13px 28px', borderRadius: 12, border: 'none', background: loading ? 'rgba(249,115,22,.4)' : 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: loading ? 'wait' : 'pointer', boxShadow: loading ? 'none' : '0 4px 18px rgba(249,115,22,.4)' }}>
+                  {loading ? 'Registering…' : '🚀 Register Business'}
+                </button>
+              )}
+            </div>
+
+          </form>
+        </div>
+
+        {/* Sign in link */}
+        <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(255,255,255,.35)' }}>
+          Already have an account?{' '}
+          <a href="/login" style={{ color: '#f97316', fontWeight: 700, textDecoration: 'none' }}>Sign in</a>
+        </p>
+
       </div>
-
-      <style jsx>{`
-        .input { @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none; }
-        .error { @apply mt-1 text-sm text-red-500; }
-      `}</style>
     </div>
   )
 }
