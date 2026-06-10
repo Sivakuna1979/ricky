@@ -1,8 +1,6 @@
 // @ts-nocheck
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { StatCard } from '@/components/ui/StatCard'
-import { formatCurrency } from '@/lib/utils/format'
 import Link from 'next/link'
 
 export const metadata = { title: 'Super Admin Dashboard' }
@@ -12,102 +10,100 @@ export default async function AdminDashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: userData } = await supabase.from('users').select('role').eq('auth_id', user.id).single()
   const ownerEmail = process.env.SUPER_ADMIN_EMAIL ?? 'sivakuna@icloud.com'
+  const { data: userData } = await supabase.from('users').select('role, full_name').eq('auth_id', user.id).single()
   const isAdmin = userData?.role === 'super_admin' || userData?.role === 'admin' || user.email === ownerEmail
-  if (!isAdmin) redirect('/dashboard')
+  if (!isAdmin) redirect('/login')
 
-  const [
-    { count: totalBusinesses },
-    { count: pendingBusinesses },
-    { count: totalVans },
-    { count: liveVans },
-    { count: totalOrders },
-    { data: activeSubscriptions },
-    { count: totalLeads },
-  ] = await Promise.all([
-    supabase.from('businesses').select('*', { count: 'exact', head: true }),
-    supabase.from('businesses').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabase.from('vans').select('*', { count: 'exact', head: true }),
-    supabase.from('vans').select('*', { count: 'exact', head: true }).eq('tracking_status', 'live'),
-    supabase.from('orders').select('*', { count: 'exact', head: true }),
-    supabase.from('subscriptions').select('*, subscription_plans(price_monthly)').in('status', ['active', 'trialing']),
-    supabase.from('leads').select('*', { count: 'exact', head: true }),
+  // Safe counts — return 0 if table missing or RLS blocks
+  const safeCount = async (table: string, filter?: Record<string, string>) => {
+    try {
+      let q = supabase.from(table).select('*', { count: 'exact', head: true })
+      if (filter) Object.entries(filter).forEach(([k, v]) => { q = q.eq(k, v) })
+      const { count } = await q
+      return count ?? 0
+    } catch { return 0 }
+  }
+
+  const [businesses, pending, vans, liveVans, orders, users, events] = await Promise.all([
+    safeCount('businesses'),
+    safeCount('businesses', { status: 'pending' }),
+    safeCount('vans'),
+    safeCount('vans', { tracking_status: 'live' }),
+    safeCount('orders'),
+    safeCount('users'),
+    safeCount('event_bookings', { status: 'pending' }),
   ])
 
-  const mrr = (activeSubscriptions ?? []).reduce((sum: number, s: any) => {
-    return sum + (s.subscription_plans?.price_monthly ?? 0)
-  }, 0)
+  const adminName = userData?.full_name ?? user.email ?? 'Admin'
 
-  const { data: pendingBusinessList } = await supabase
-    .from('businesses')
-    .select('id, name, business_type, created_at, owner_id, users!businesses_owner_id_fkey(full_name, email)')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
-    .limit(5)
+  const stats = [
+    { label: 'Total Businesses', value: businesses, icon: '🏢', color: '#3b82f6' },
+    { label: 'Pending Approval', value: pending, icon: '⏳', color: '#f59e0b' },
+    { label: 'Total Vans', value: vans, icon: '🚐', color: '#8b5cf6' },
+    { label: 'Live Now', value: liveVans, icon: '📍', color: '#10b981' },
+    { label: 'Total Orders', value: orders, icon: '🛒', color: '#06b6d4' },
+    { label: 'Total Users', value: users, icon: '👥', color: '#f97316' },
+    { label: 'Event Requests', value: events, icon: '🎪', color: '#ec4899' },
+    { label: 'MRR', value: '—', icon: '£', color: '#10b981' },
+  ]
+
+  const navItems = [
+    { href: '/admin/businesses', label: 'Businesses', icon: '🏢' },
+    { href: '/admin/businesses/pending', label: 'Pending', icon: '⏳' },
+    { href: '/admin/users', label: 'Users', icon: '👥' },
+    { href: '/admin/vans', label: 'Live Vans', icon: '🗺️' },
+    { href: '/admin/orders', label: 'Orders', icon: '🛒' },
+    { href: '/admin/events', label: 'Event Bookings', icon: '🎪' },
+    { href: '/admin/subscriptions', label: 'Subscriptions', icon: '💳' },
+    { href: '/admin/leads', label: 'Sales Leads', icon: '🎯' },
+    { href: '/admin/menus', label: 'Price Lists', icon: '🍽️' },
+    { href: '/admin/reports', label: 'Reports', icon: '📈' },
+    { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
+  ]
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Super Admin Dashboard</h1>
-        <p className="text-gray-500">Platform overview</p>
-      </div>
+    <div style={{ minHeight:'100vh', background:'#070b14', color:'#fff', fontFamily:"var(--font-inter),-apple-system,sans-serif", padding:'0' }}>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Businesses" value={String(totalBusinesses ?? 0)} icon="🏢" color="blue" />
-        <StatCard label="Live Vans Now" value={String(liveVans ?? 0)} icon="📍" color="green" />
-        <StatCard label="Total Orders" value={String(totalOrders ?? 0)} icon="🛒" color="brand" />
-        <StatCard label="MRR" value={formatCurrency(mrr)} icon="£" color="green" />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Pending Approval" value={String(pendingBusinesses ?? 0)} icon="⏳" color="orange" />
-        <StatCard label="Total Vans" value={String(totalVans ?? 0)} icon="🚐" color="blue" />
-        <StatCard label="Active Subscriptions" value={String(activeSubscriptions?.length ?? 0)} icon="💳" color="brand" />
-        <StatCard label="Sales Leads" value={String(totalLeads ?? 0)} icon="🎯" color="orange" />
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { href: '/admin/businesses', label: 'Manage Businesses', icon: '🏢' },
-          { href: '/admin/vans/live', label: 'Live Van Map', icon: '🗺️' },
-          { href: '/admin/discovery', label: 'Business Discovery', icon: '🔍' },
-          { href: '/admin/leads', label: 'Sales Leads', icon: '🎯' },
-        ].map(action => (
-          <Link key={action.href} href={action.href}
-            className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3">
-            <span className="text-2xl">{action.icon}</span>
-            <span className="font-medium text-gray-700 text-sm">{action.label}</span>
-          </Link>
-        ))}
-      </div>
-
-      {/* Pending Businesses */}
-      {(pendingBusinessList?.length ?? 0) > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900">Pending Approval</h2>
-            <Link href="/admin/businesses?status=pending" className="text-sm text-brand-500 hover:underline">View all</Link>
+      {/* Header */}
+      <div style={{ background:'#0d1220', borderBottom:'1px solid rgba(255,255,255,.07)', padding:'16px 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:36, height:36, borderRadius:10, background:'linear-gradient(135deg,#f97316,#dc2626)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <span style={{ color:'#fff', fontSize:13, fontWeight:900 }}>FT</span>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
-            {pendingBusinessList!.map((b: any) => (
-              <div key={b.id} className="flex items-center justify-between px-5 py-4">
-                <div>
-                  <p className="font-medium text-gray-900">{b.name}</p>
-                  <p className="text-sm text-gray-500">{(b.users as any)?.email}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Link href={`/admin/businesses/${b.id}`}
-                    className="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600">
-                    Review
-                  </Link>
-                </div>
-              </div>
-            ))}
+          <div>
+            <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Food<span style={{ color:'#f97316' }}>Taxi</span> <span style={{ color:'#fbbf24', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.1em' }}>Super Admin</span></div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>Welcome, {adminName}</div>
           </div>
         </div>
-      )}
+        <Link href="/" style={{ fontSize:12, color:'rgba(255,255,255,.3)', textDecoration:'none' }}>← View Site</Link>
+      </div>
+
+      <div style={{ padding:'24px', maxWidth:1200, margin:'0 auto' }}>
+
+        {/* Stats */}
+        <h2 style={{ fontSize:13, fontWeight:700, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:16 }}>Platform Overview</h2>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12, marginBottom:32 }}>
+          {stats.map(s => (
+            <div key={s.label} style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)', borderRadius:14, padding:'16px 18px' }}>
+              <div style={{ fontSize:24, marginBottom:6 }}>{s.icon}</div>
+              <div style={{ fontSize:28, fontWeight:800, color:s.color, lineHeight:1 }}>{s.value}</div>
+              <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginTop:4 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Nav */}
+        <h2 style={{ fontSize:13, fontWeight:700, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:16 }}>Manage</h2>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10 }}>
+          {navItems.map(item => (
+            <Link key={item.href} href={item.href} style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', borderRadius:12, padding:'16px', textDecoration:'none', display:'flex', alignItems:'center', gap:10, color:'rgba(255,255,255,.7)', fontSize:13, fontWeight:600, transition:'all .15s' }}>
+              <span style={{ fontSize:20 }}>{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

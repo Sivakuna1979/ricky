@@ -28,7 +28,7 @@ function LoginForm() {
       return
     }
 
-    window.location.replace('/?loggedin=1')
+    window.location.replace('/admin/dashboard')
   }
 
   return (
