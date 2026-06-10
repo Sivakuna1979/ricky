@@ -28,8 +28,7 @@ function LoginForm() {
       return
     }
 
-    // Go directly to admin dashboard — avoids role-lookup redirect failures
-    window.location.href = '/admin/dashboard'
+    window.location.replace('/admin/dashboard')
   }
 
   return (
