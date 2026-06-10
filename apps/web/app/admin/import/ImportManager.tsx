@@ -36,9 +36,14 @@ export function ImportManager({ initial }: { initial: any[] }) {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<'idle'|'ok'|'err'>('idle')
   const [msg, setMsg] = useState('')
-  const [tab, setTab] = useState<'list'|'add'|'bulk'|'seed'>('list')
+  const [tab, setTab] = useState<'list'|'add'|'bulk'|'seed'|'google'>('list')
   const [geocoding, setGeocoding] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
+  const [gpPostcode, setGpPostcode] = useState('')
+  const [gpRadius, setGpRadius] = useState(10)
+  const [gpRunning, setGpRunning] = useState(false)
+  const [gpResult, setGpResult] = useState<any>(null)
+  const [gpApiStatus, setGpApiStatus] = useState<'unknown'|'ok'|'missing'>('unknown')
 
   const flash = (ok: boolean, m: string) => { setStatus(ok ? 'ok' : 'err'); setMsg(m); setTimeout(() => setStatus('idle'), 4000) }
 
@@ -131,6 +136,33 @@ export function ImportManager({ initial }: { initial: any[] }) {
 
   const visible = businesses.filter(b => filterStatus === 'all' || b.status === filterStatus)
 
+  const checkGoogleKey = async () => {
+    const res = await fetch('/api/discovery/google-places')
+    const data = await res.json()
+    setGpApiStatus(data.configured ? 'ok' : 'missing')
+  }
+
+  const runGoogleImport = async () => {
+    if (!gpPostcode.trim()) { flash(false, 'Enter a postcode or town'); return }
+    setGpRunning(true)
+    setGpResult(null)
+    const res = await fetch('/api/discovery/google-places', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postcode: gpPostcode.trim(), radius_miles: gpRadius }),
+    })
+    const data = await res.json()
+    setGpRunning(false)
+    setGpResult(data)
+    if (res.ok && data.saved > 0) {
+      flash(true, `${data.saved} businesses imported from Google Places!`)
+      const updated = await fetch('/api/admin/import-businesses').then(r => r.json())
+      setBusinesses(updated)
+    } else if (!res.ok) {
+      flash(false, data.error ?? 'Import failed')
+    }
+  }
+
   const tabStyle = (t: string) => ({
     padding: '9px 18px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
     background: tab === t ? 'linear-gradient(135deg,#f97316,#ea580c)' : 'rgba(255,255,255,.06)',
@@ -164,6 +196,9 @@ export function ImportManager({ initial }: { initial: any[] }) {
         <button style={tabStyle('add')} onClick={() => setTab('add')}>➕ Add Single</button>
         <button style={tabStyle('bulk')} onClick={() => setTab('bulk')}>📥 Bulk Import</button>
         <button style={tabStyle('seed')} onClick={() => setTab('seed')}>🌱 Seed KT9 Area</button>
+        <button style={tabStyle('google')} onClick={() => { setTab('google'); checkGoogleKey() }}>
+          🌐 Google Places Import
+        </button>
       </div>
 
       {/* LIST TAB */}
@@ -319,10 +354,130 @@ export function ImportManager({ initial }: { initial: any[] }) {
         </div>
       )}
 
+      {/* GOOGLE PLACES TAB */}
+      {tab === 'google' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* API key status */}
+          <div style={{ background: gpApiStatus === 'ok' ? 'rgba(16,185,129,.08)' : gpApiStatus === 'missing' ? 'rgba(239,68,68,.08)' : 'rgba(255,255,255,.04)', border:`1px solid ${gpApiStatus === 'ok' ? 'rgba(16,185,129,.3)' : gpApiStatus === 'missing' ? 'rgba(239,68,68,.3)' : 'rgba(255,255,255,.1)'}`, borderRadius:12, padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color: gpApiStatus === 'ok' ? '#34d399' : gpApiStatus === 'missing' ? '#fca5a5' : 'rgba(255,255,255,.6)' }}>
+                {gpApiStatus === 'ok' && '✅ Google Places API key is configured'}
+                {gpApiStatus === 'missing' && '⚠️ GOOGLE_PLACES_API_KEY not set in Vercel'}
+                {gpApiStatus === 'unknown' && '🔑 Checking API key…'}
+              </div>
+              {gpApiStatus === 'missing' && (
+                <div style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginTop:4 }}>
+                  Go to Vercel → Project → Settings → Environment Variables → Add GOOGLE_PLACES_API_KEY
+                </div>
+              )}
+            </div>
+            <button onClick={checkGoogleKey} style={{ padding:'6px 14px', borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.06)', color:'rgba(255,255,255,.6)', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+              Re-check
+            </button>
+          </div>
+
+          {gpApiStatus === 'missing' && (
+            <div style={{ background:'rgba(251,191,36,.06)', border:'1px solid rgba(251,191,36,.2)', borderRadius:12, padding:'14px 16px' }}>
+              <p style={{ fontSize:13, fontWeight:700, color:'#fbbf24', margin:'0 0 8px' }}>How to add Google Places API key:</p>
+              <ol style={{ fontSize:12, color:'rgba(255,255,255,.5)', margin:0, paddingLeft:18, lineHeight:1.8 }}>
+                <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style={{ color:'#60a5fa' }}>console.cloud.google.com</a></li>
+                <li>Create or select a project</li>
+                <li>Enable <strong style={{ color:'#fff' }}>Places API</strong> (Legacy) or <strong style={{ color:'#fff' }}>Places API (New)</strong></li>
+                <li>Create an API key under Credentials</li>
+                <li>Add to Vercel: Settings → Environment Variables → <code style={{ background:'rgba(255,255,255,.08)', padding:'1px 5px', borderRadius:3, color:'#fbbf24' }}>GOOGLE_PLACES_API_KEY</code></li>
+                <li>Redeploy on Vercel</li>
+              </ol>
+            </div>
+          )}
+
+          {/* Import form */}
+          <div style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', borderRadius:16, padding:'20px' }}>
+            <h3 style={{ fontSize:15, fontWeight:800, color:'#fff', margin:'0 0 16px' }}>🌐 Import Local Food Businesses from Google Places</h3>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:12, marginBottom:14, alignItems:'end' }}>
+              <div>
+                <label style={{ display:'block', fontSize:12, fontWeight:600, color:'rgba(255,255,255,.5)', marginBottom:5 }}>Postcode or Town</label>
+                <input value={gpPostcode} onChange={e => setGpPostcode(e.target.value)}
+                  placeholder="e.g. KT9 2AN or Chessington"
+                  style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,.12)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:14, outline:'none', boxSizing:'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display:'block', fontSize:12, fontWeight:600, color:'rgba(255,255,255,.5)', marginBottom:5 }}>Radius (miles)</label>
+                <select value={gpRadius} onChange={e => setGpRadius(Number(e.target.value))}
+                  style={{ padding:'11px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,.12)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:14, outline:'none', cursor:'pointer' }}>
+                  {[1,2,5,10,15,20,25].map(r => <option key={r} value={r} style={{ background:'#0a0f1e' }}>{r} miles</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.06)', borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
+              <p style={{ fontSize:12, color:'rgba(255,255,255,.4)', margin:'0 0 6px', fontWeight:600 }}>Searches for these keywords near the location:</p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                {['fish and chips van','mobile food van','burger van','pizza van','coffee van','ice cream van','street food van','food truck','catering van','kebab van','burger truck'].map(k => (
+                  <span key={k} style={{ fontSize:10, padding:'2px 8px', borderRadius:12, background:'rgba(249,115,22,.12)', color:'#fb923c', fontWeight:600 }}>{k}</span>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={runGoogleImport} disabled={gpRunning || gpApiStatus === 'missing'}
+              style={{ width:'100%', padding:'13px', borderRadius:12, border:'none', background: gpRunning || gpApiStatus === 'missing' ? 'rgba(249,115,22,.3)' : 'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:14, fontWeight:800, cursor: gpRunning || gpApiStatus === 'missing' ? 'not-allowed' : 'pointer', boxShadow: gpApiStatus === 'missing' ? 'none' : '0 4px 18px rgba(249,115,22,.4)' }}>
+              {gpRunning ? '⏳ Searching Google Places… (may take 30-60 seconds)' : '🌐 Import Local Food Businesses'}
+            </button>
+
+            {gpRunning && (
+              <p style={{ fontSize:12, color:'rgba(255,255,255,.35)', textAlign:'center', marginTop:10 }}>
+                Searching {11} keywords × paginating results… please wait.
+              </p>
+            )}
+          </div>
+
+          {/* Results */}
+          {gpResult && (
+            <div style={{ background: gpResult.error ? 'rgba(239,68,68,.08)' : 'rgba(16,185,129,.08)', border:`1px solid ${gpResult.error ? 'rgba(239,68,68,.3)' : 'rgba(16,185,129,.3)'}`, borderRadius:14, padding:'16px' }}>
+              {gpResult.error ? (
+                <>
+                  <p style={{ fontSize:13, fontWeight:700, color:'#fca5a5', margin:'0 0 8px' }}>⚠️ {gpResult.error}</p>
+                  {gpResult.sql && (
+                    <>
+                      <p style={{ fontSize:12, color:'rgba(255,255,255,.4)', margin:'0 0 6px' }}>Run this SQL in Supabase first:</p>
+                      <pre style={{ fontSize:11, background:'rgba(255,255,255,.04)', padding:10, borderRadius:8, color:'rgba(255,255,255,.5)', margin:0, whiteSpace:'pre-wrap', overflow:'auto' }}>{gpResult.sql}</pre>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize:14, fontWeight:800, color:'#34d399', margin:'0 0 10px' }}>
+                    ✅ {gpResult.saved} businesses saved from Google Places
+                  </p>
+                  <p style={{ fontSize:12, color:'rgba(255,255,255,.45)', margin:'0 0 10px' }}>
+                    Centred on {gpPostcode} · {gpRadius} mile radius
+                  </p>
+                  <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:200, overflow:'auto' }}>
+                    {(gpResult.results ?? []).map((r: any) => (
+                      <div key={r.id} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}>
+                        <span style={{ color:'#fff', fontWeight:600 }}>{r.name}</span>
+                        <span style={{ color:'rgba(255,255,255,.4)' }}>{r.business_type} {r.rating ? `· ⭐${r.rating}` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {gpResult.saved > 0 && (
+                    <p style={{ fontSize:12, color:'rgba(255,255,255,.4)', marginTop:10, marginBottom:0 }}>
+                      These now appear as grey markers when you search {gpPostcode} on the map.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SQL setup */}
       <div style={{ marginTop:24, background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:14, padding:'16px' }}>
         <p style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,.4)', margin:'0 0 8px' }}>📋 Required Supabase SQL (run once in SQL Editor):</p>
-        <pre style={{ fontSize:11, color:'rgba(255,255,255,.5)', background:'rgba(255,255,255,.04)', padding:12, borderRadius:10, overflow:'auto', margin:0, whiteSpace:'pre-wrap' }}>{`create table if not exists imported_businesses (
+        <pre style={{ fontSize:11, color:'rgba(255,255,255,.5)', background:'rgba(255,255,255,.04)', padding:12, borderRadius:10, overflow:'auto', margin:0, whiteSpace:'pre-wrap' }}>{`-- 1. imported_businesses table
+create table if not exists imported_businesses (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   food_type text,
@@ -341,7 +496,35 @@ export function ImportManager({ initial }: { initial: any[] }) {
   unique(name, postcode)
 );
 alter table imported_businesses enable row level security;
-create policy "Allow all" on imported_businesses for all using (true) with check (true);`}</pre>
+create policy "Allow all" on imported_businesses for all using (true) with check (true);
+
+-- 2. discovered_businesses — add Google Places columns
+create table if not exists discovered_businesses (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  address text,
+  postcode text,
+  lat double precision,
+  lng double precision,
+  phone text,
+  website text,
+  business_type text,
+  source text default 'overpass',
+  osm_id text unique,
+  google_place_id text unique,
+  rating numeric,
+  status text default 'discovered',
+  invitation_sent_at timestamptz,
+  notes text,
+  created_at timestamptz default now()
+);
+alter table discovered_businesses enable row level security;
+create policy "Allow all" on discovered_businesses for all using (true) with check (true);
+
+-- If discovered_businesses already exists, just add the new columns:
+alter table discovered_businesses add column if not exists google_place_id text unique;
+alter table discovered_businesses add column if not exists rating numeric;
+alter table discovered_businesses add column if not exists postcode text;`}</pre>
       </div>
     </div>
   )

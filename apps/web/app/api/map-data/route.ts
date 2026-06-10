@@ -62,14 +62,15 @@ export async function GET(req: NextRequest) {
       .gte('longitude', lngMin).lte('longitude', lngMax)
       .limit(100),
 
-    // Discovered businesses (from OSM / manual)
+    // Discovered businesses (OSM + Google Places + manual)
     db.from('discovered_businesses')
-      .select('*')
+      .select('id, name, address, postcode, lat, lng, phone, website, business_type, source, status, google_place_id, rating')
       .neq('status', 'hidden')
+      .neq('status', 'converted')
       .not('lat', 'is', null)
       .gte('lat', latMin).lte('lat', latMax)
       .gte('lng', lngMin).lte('lng', lngMax)
-      .limit(100),
+      .limit(200),
   ])
 
   // Filter by actual radius & deduplicate

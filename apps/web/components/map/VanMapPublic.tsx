@@ -173,10 +173,14 @@ function localBizPopup(b: any, uLat: number|null, uLng: number|null, source: 'im
         <div style="font-size:14px;font-weight:800;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${safe(b.name)}</div>
         <div style="margin-top:3px">
           <span style="font-size:10px;color:#9ca3af;background:rgba(107,114,128,.2);padding:2px 7px;border-radius:20px;border:1px solid rgba(107,114,128,.3)">Not Yet On FoodTaxi</span>
+          ${b.source === 'google_places' ? `<span style="font-size:10px;color:#60a5fa;background:rgba(96,165,250,.1);padding:2px 7px;border-radius:20px;border:1px solid rgba(96,165,250,.2);margin-left:4px">Google</span>` : ''}
         </div>
       </div>
     </div>
-    ${b.address ? `<div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06)"><div style="font-size:12px;color:rgba(255,255,255,.45)">📍 ${safe(b.address)}</div></div>` : ''}
+    ${b.address ? `<div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:12px;color:rgba(255,255,255,.45)">📍 ${safe(b.address)}</div>
+      ${b.rating ? `<div style="font-size:12px;color:#fbbf24;font-weight:700;flex-shrink:0;margin-left:8px">⭐ ${b.rating}</div>` : ''}
+    </div>` : b.rating ? `<div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06)"><span style="font-size:12px;color:#fbbf24;font-weight:700">⭐ ${b.rating}</span></div>` : ''}
     ${km != null ? `<div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-bottom:1px solid rgba(255,255,255,.06)">
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:8px 10px;text-align:center">
         <div style="font-size:10px;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase">Distance</div>
