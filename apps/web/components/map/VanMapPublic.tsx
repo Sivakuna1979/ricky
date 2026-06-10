@@ -47,14 +47,51 @@ function formatTime(km: number) {
   return `${driveMins} min drive`
 }
 
+// Global navigate function — called from popup button onclick
+// Gets fresh GPS on every tap, never uses a cached position
+if (typeof window !== 'undefined') {
+  (window as any).__ftNavigate = (vanLat: number, vanLng: number, btnId: string) => {
+    const btn = document.getElementById(btnId)
+    if (btn) {
+      btn.textContent = '📍 Finding your location…'
+      btn.style.opacity = '0.75'
+      btn.style.pointerEvents = 'none'
+    }
+
+    const openMaps = (originLat?: number, originLng?: number) => {
+      const dest = `${vanLat},${vanLng}`
+      const url = originLat != null && originLng != null
+        ? `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLng}&destination=${dest}&travelmode=driving`
+        : `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`
+      window.open(url, '_blank')
+      if (btn) {
+        btn.textContent = '📍 Navigate from My Location'
+        btn.style.opacity = '1'
+        btn.style.pointerEvents = 'auto'
+      }
+    }
+
+    if (!navigator.geolocation) { openMaps(); return }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => openMaps(pos.coords.latitude, pos.coords.longitude),
+      ()    => openMaps(), // permission denied — use destination only
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    )
+  }
+}
+
 function buildPopupHTML(
   name: string, emoji: string, color: string, vanLat: number, vanLng: number,
   userLat: number | null, userLng: number | null,
   isLive: boolean, slug: string, phone: string, vanId: string
 ) {
-  const hasLocation = userLat !== null && userLng !== null
-  const km = hasLocation ? haversine(userLat!, userLng!, vanLat, vanLng) : null
-  const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${vanLat},${vanLng}&travelmode=driving`
+  const km = (userLat !== null && userLng !== null)
+    ? haversine(userLat, userLng, vanLat, vanLng)
+    : null
+
+  // Unique button id so the global handler can find it
+  const btnId = `ft-nav-btn-${vanId}`
 
   return `
     <div style="
@@ -90,19 +127,19 @@ function buildPopupHTML(
       </div>
       ` : `
       <div style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.06)">
-        <div style="font-size:12px;color:rgba(255,255,255,.35);text-align:center">Enable location for distance & ETA</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.35);text-align:center">📍 Location permission needed for ETA</div>
       </div>
       `}
 
       <!-- Buttons -->
       <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
 
-        <!-- Navigate button -->
-        <a href="${navUrl}" target="_blank" rel="noopener noreferrer"
-          onclick="window.open('${navUrl}','_blank');return false;"
-          style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;border-radius:10px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;font-size:13px;font-weight:800;text-decoration:none;box-shadow:0 4px 14px rgba(249,115,22,.4);letter-spacing:-.01em">
-          📍 Navigate To Van
-        </a>
+        <!-- Navigate button — calls window.__ftNavigate on click for live GPS -->
+        <button id="${btnId}"
+          onclick="window.__ftNavigate(${vanLat},${vanLng},'${btnId}')"
+          style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:10px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;font-size:13px;font-weight:800;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(249,115,22,.4);letter-spacing:-.01em;width:100%">
+          📍 Navigate from My Location
+        </button>
 
         <!-- Call + Menu row -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -112,7 +149,7 @@ function buildPopupHTML(
             📞 Call Van
           </a>
           ` : `
-          <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);color:rgba(255,255,255,.25);font-size:12px;font-weight:700;cursor:not-allowed">
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);color:rgba(255,255,255,.25);font-size:12px;font-weight:700">
             📞 Call Van
           </div>
           `}
