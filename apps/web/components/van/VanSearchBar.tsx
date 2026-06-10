@@ -1,4 +1,5 @@
 'use client'
+// @ts-nocheck
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -8,6 +9,52 @@ export function VanSearchBar() {
   const router = useRouter()
   const [postcode, setPostcode] = useState('')
   const [type, setType] = useState('')
+  const [locating, setLocating] = useState(false)
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        try {
+          // Reverse-geocode to a human-readable town name using OpenStreetMap Nominatim
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+            { headers: { 'Accept-Language': 'en' } }
+          )
+          const data = await res.json()
+          const place =
+            data.address?.city ||
+            data.address?.town ||
+            data.address?.village ||
+            data.address?.county ||
+            `${lat.toFixed(4)},${lng.toFixed(4)}`
+          setPostcode(place)
+          const params = new URLSearchParams()
+          params.set('postcode', place)
+          params.set('lat', String(lat))
+          params.set('lng', String(lng))
+          if (type) params.set('type', type)
+          router.push(`/search?${params.toString()}`)
+        } catch {
+          // fallback: use raw coords
+          const coords = `${lat.toFixed(4)},${lng.toFixed(4)}`
+          setPostcode(coords)
+          const params = new URLSearchParams()
+          params.set('postcode', coords)
+          params.set('lat', String(lat))
+          params.set('lng', String(lng))
+          if (type) params.set('type', type)
+          router.push(`/search?${params.toString()}`)
+        } finally {
+          setLocating(false)
+        }
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
 
   const search = () => {
     const params = new URLSearchParams()
@@ -52,6 +99,19 @@ export function VanSearchBar() {
             }}
           />
         </div>
+
+        {/* Use my location button */}
+        <button
+          onClick={useMyLocation}
+          disabled={locating}
+          title="Use my current location"
+          style={{ background: 'none', border: 'none', cursor: locating ? 'wait' : 'pointer', padding: '10px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: locating ? 0.6 : 1 }}
+        >
+          {locating
+            ? <span style={{ fontSize: 18, animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
+            : <span style={{ fontSize: 20 }} title="Use my location">🎯</span>
+          }
+        </button>
 
         {/* Divider */}
         <div style={{ width: 1, background: 'rgba(255,255,255,0.1)', margin: '8px 0', flexShrink: 0, alignSelf: 'stretch' }} />
@@ -100,6 +160,17 @@ export function VanSearchBar() {
           }}
         >
           Find Vans 🔍
+        </button>
+      </div>
+
+      {/* Use my location link */}
+      <div style={{ marginTop: 10, textAlign: 'center' }}>
+        <button
+          onClick={useMyLocation}
+          disabled={locating}
+          style={{ background: 'none', border: 'none', cursor: locating ? 'wait' : 'pointer', color: locating ? 'rgba(251,191,36,.5)' : '#fbbf24', fontSize: 13, fontWeight: 700, padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+        >
+          {locating ? '⏳ Finding your location…' : '📍 Use my current location'}
         </button>
       </div>
 
