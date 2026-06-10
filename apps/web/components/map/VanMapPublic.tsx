@@ -317,33 +317,16 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
   const userLocationRef = useRef<{ lat: number; lng: number } | null>(null)
   const [vanCount, setVanCount] = useState(0)
   const [isDemo, setIsDemo] = useState(false)
+  const [findingNearest, setFindingNearest] = useState(false)
   const demoIntervalRef = useRef<any>(null)
   const discoveryMarkersRef = useRef<any[]>([])
   const leafletRef = useRef<any>(null)
 
-  // Get user location silently
-  const requestUserLocation = useCallback((L: any) => {
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        userLocationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-        // Add a subtle "You are here" marker
-        L.circleMarker([pos.coords.latitude, pos.coords.longitude], {
-          radius: 8,
-          fillColor: '#60a5fa',
-          color: '#fff',
-          weight: 2,
-          fillOpacity: 0.9,
-        }).addTo(mapRef.current).bindTooltip('You are here', { permanent: false, direction: 'top' })
-      },
-      () => {}, // silently ignore permission denial
-      { enableHighAccuracy: true, timeout: 8000 }
-    )
-  }, [])
-
-  // Fetch and render discovered nearby businesses
-  const loadDiscoveredBusinesses = useCallback((L: any) => {
-    fetch('/api/discovery/nearby?lat=53.4808&lng=-2.2426')
+  // Fetch and render discovered nearby businesses at given coords
+  const loadDiscoveredBusinessesAt = useCallback((L: any, lat: number, lng: number) => {
+    discoveryMarkersRef.current.forEach(m => { try { m.remove() } catch {} })
+    discoveryMarkersRef.current = []
+    fetch(`/api/discovery/nearby?lat=${lat}&lng=${lng}`)
       .then(r => r.json())
       .then(({ discovered }) => {
         if (!discovered || !mapRef.current) return
@@ -353,17 +336,37 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
           marker.on('click', () => {
             const ul = userLocationRef.current
             const html = buildDiscoveredPopupHTML(biz, ul?.lat ?? null, ul?.lng ?? null)
-            marker.bindPopup(html, {
-              maxWidth: 280,
-              minWidth: 260,
-              className: 'ft-van-popup',
-            }).openPopup()
+            marker.bindPopup(html, { maxWidth: 280, minWidth: 260, className: 'ft-van-popup' }).openPopup()
           })
           discoveryMarkersRef.current.push(marker)
         })
       })
-      .catch(() => {}) // silently fail
+      .catch(() => {})
   }, [])
+
+  // Get user location, centre map on it, then reload discovery with real coords
+  const requestUserLocation = useCallback((L: any) => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        userLocationRef.current = { lat, lng }
+        if (mapRef.current) mapRef.current.flyTo([lat, lng], 14, { duration: 1.2 })
+        L.circleMarker([lat, lng], {
+          radius: 8, fillColor: '#60a5fa', color: '#fff', weight: 2, fillOpacity: 0.9,
+        }).addTo(mapRef.current).bindTooltip('You are here', { permanent: false, direction: 'top' })
+        loadDiscoveredBusinessesAt(L, lat, lng)
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }, [loadDiscoveredBusinessesAt])
+
+  // Initial discovery load — uses real coords if available, otherwise fallback
+  const loadDiscoveredBusinesses = useCallback((L: any) => {
+    const ul = userLocationRef.current
+    loadDiscoveredBusinessesAt(L, ul?.lat ?? 53.4808, ul?.lng ?? -2.2426)
+  }, [loadDiscoveredBusinessesAt])
 
   const buildMarker = useCallback((L: any, id: string, name: string, emoji: string, color: string,
     lat: number, lng: number, isLive: boolean, slug: string, phone: string) => {
@@ -538,6 +541,36 @@ export function VanMapPublic({ height = '480px', vanId }: Props) {
       `}</style>
 
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Find Nearest Van button */}
+      <button
+        onClick={() => {
+          if (!navigator.geolocation || !mapRef.current) return
+          setFindingNearest(true)
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude: uLat, longitude: uLng } = pos.coords
+              userLocationRef.current = { lat: uLat, lng: uLng }
+              let nearest: any = null
+              let minDist = Infinity
+              markersRef.current.forEach((data) => {
+                const d = haversine(uLat, uLng, data.lat, data.lng)
+                if (d < minDist) { minDist = d; nearest = data }
+              })
+              setFindingNearest(false)
+              if (nearest) {
+                mapRef.current.flyTo([nearest.lat, nearest.lng], 16, { duration: 1.4 })
+                setTimeout(() => nearest.marker.fire('click'), 1500)
+              }
+            },
+            () => setFindingNearest(false),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          )
+        }}
+        style={{ position:'absolute', top:14, right:14, zIndex:1000, background: findingNearest ? 'rgba(251,191,36,.3)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)', color:'#0a0a14', border:'none', borderRadius:10, padding:'9px 16px', fontWeight:800, fontSize:13, cursor: findingNearest ? 'wait' : 'pointer', display:'flex', alignItems:'center', gap:7, boxShadow:'0 4px 14px rgba(251,191,36,.35)', backdropFilter:'blur(8px)' }}
+      >
+        {findingNearest ? '📍 Finding…' : '📍 Find Nearest Van'}
+      </button>
 
       {/* Status badge */}
       <div style={{ position:'absolute', top:14, left:14, zIndex:1000, background:'rgba(6,9,20,.85)', backdropFilter:'blur(10px)', borderRadius:10, padding:'8px 14px', display:'flex', alignItems:'center', gap:8, border:'1px solid rgba(255,255,255,.1)' }}>
