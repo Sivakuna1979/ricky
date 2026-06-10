@@ -20,7 +20,8 @@ function LoginForm() {
 
     setLoading(true)
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
       setLoading(false)
@@ -28,7 +29,14 @@ function LoginForm() {
       return
     }
 
-    window.location.replace('/admin/dashboard')
+    // Session is now stored in cookies by @supabase/ssr
+    // Use hard navigation so server-side middleware sees the new cookies
+    const dest = '/admin/dashboard'
+
+    // Small delay to ensure cookies are written before navigation
+    setTimeout(() => {
+      window.location.href = dest
+    }, 300)
   }
 
   return (
