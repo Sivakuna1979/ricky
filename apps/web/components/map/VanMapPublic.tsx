@@ -11,7 +11,38 @@ interface VanWithLocation extends Van {
 
 interface Props {
   height?: string
-  vanId?: string  // if set, show only this van
+  vanId?: string
+}
+
+// OpenStreetMap embed — always works, no API key needed
+function OSMFallback({ height, vans }: { height: string; vans: VanWithLocation[] }) {
+  // Centre on Manchester by default
+  const lat = 53.4808
+  const lng = -2.2426
+  const zoom = 13
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.08}%2C${lat - 0.05}%2C${lng + 0.08}%2C${lat + 0.05}&layer=mapnik&marker=${lat}%2C${lng}`
+
+  return (
+    <div style={{ position: 'relative', height, borderRadius: 24, overflow: 'hidden' }}>
+      <iframe
+        src={src}
+        style={{ width: '100%', height: '100%', border: 'none', display: 'block', filter: 'invert(0.9) hue-rotate(180deg) saturate(0.8)' }}
+        title="Van Map"
+        loading="lazy"
+      />
+      {/* overlay badge */}
+      <div style={{ position: 'absolute', top: 14, left: 14, background: 'rgba(6,9,20,0.85)', backdropFilter: 'blur(10px)', borderRadius: 10, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: vans.length > 0 ? '#4ade80' : '#9ca3af', display: 'inline-block' }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
+          {vans.length > 0 ? `${vans.length} van${vans.length > 1 ? 's' : ''} live nearby` : 'Live map — Manchester'}
+        </span>
+      </div>
+      {/* OpenStreetMap attribution fix for dark filter */}
+      <div style={{ position: 'absolute', bottom: 0, right: 0, background: 'rgba(6,9,20,0.7)', padding: '3px 8px', fontSize: 10, color: 'rgba(255,255,255,.5)' }}>
+        © OpenStreetMap contributors
+      </div>
+    </div>
+  )
 }
 
 export function VanMapPublic({ height = '400px', vanId }: Props) {
@@ -20,22 +51,27 @@ export function VanMapPublic({ height = '400px', vanId }: Props) {
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map())
   const [vans, setVans] = useState<VanWithLocation[]>([])
   const [mapsLoaded, setMapsLoaded] = useState(false)
+  const [mapsError, setMapsError] = useState(false)
 
-  // Load Google Maps script
+  // Load Google Maps script — fall back to OSM if no key or load fails
   useEffect(() => {
     if (window.google?.maps) { setMapsLoaded(true); return }
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!apiKey) { setMapsError(true); return }
+
     const script = document.createElement('script')
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`
     script.async = true
     script.onload = () => setMapsLoaded(true)
+    script.onerror = () => setMapsError(true)
     document.head.appendChild(script)
   }, [])
 
-  // Init map
+  // Init Google Map
   useEffect(() => {
     if (!mapsLoaded || !mapRef.current) return
     googleMapRef.current = new google.maps.Map(mapRef.current, {
-      center: { lat: 53.4808, lng: -2.2426 }, // Manchester default
+      center: { lat: 53.4808, lng: -2.2426 },
       zoom: 12,
       mapTypeControl: false,
       fullscreenControl: false,
@@ -46,11 +82,9 @@ export function VanMapPublic({ height = '400px', vanId }: Props) {
 
   const updateMarkers = useCallback((updatedVans: VanWithLocation[]) => {
     if (!googleMapRef.current) return
-
     updatedVans.forEach(van => {
       if (!van.location) return
       const pos = { lat: van.location.latitude, lng: van.location.longitude }
-
       if (markersRef.current.has(van.id)) {
         markersRef.current.get(van.id)!.setPosition(pos)
       } else {
@@ -68,9 +102,8 @@ export function VanMapPublic({ height = '400px', vanId }: Props) {
             scaledSize: new google.maps.Size(40, 40),
           },
         })
-
         const infoWindow = new google.maps.InfoWindow({
-          content: `<div class="font-semibold">${van.name}</div><div class="text-xs text-green-600">● Live</div>`,
+          content: `<div style="font-weight:700">${van.name}</div><div style="font-size:12px;color:#16a34a">● Live</div>`,
         })
         marker.addListener('click', () => infoWindow.open(googleMapRef.current, marker))
         markersRef.current.set(van.id, marker)
@@ -78,18 +111,15 @@ export function VanMapPublic({ height = '400px', vanId }: Props) {
     })
   }, [])
 
-  // Subscribe to real-time location updates
+  // Fetch vans from Supabase
   useEffect(() => {
     const supabase = createClient()
-
     let query = supabase
       .from('live_locations')
       .select('*, vans!inner(id, name, slug, tracking_status, van_type)')
       .eq('vans.tracking_status', 'live')
-
     if (vanId) query = (query as any).eq('van_id', vanId)
 
-    // Initial fetch
     const fetchInitial = async () => {
       const { data } = await (query as any).order('recorded_at', { ascending: false }).limit(1)
       if (data) {
@@ -100,19 +130,11 @@ export function VanMapPublic({ height = '400px', vanId }: Props) {
     }
     fetchInitial()
 
-    // Real-time subscription
     const channel = supabase
       .channel('live-locations')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'live_locations',
-        ...(vanId ? { filter: `van_id=eq.${vanId}` } : {}),
-      }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_locations', ...(vanId ? { filter: `van_id=eq.${vanId}` } : {}) }, (payload) => {
         setVans(prev => {
-          const updated = prev.map(v =>
-            v.id === payload.new.van_id ? { ...v, location: payload.new as LiveLocation } : v
-          )
+          const updated = prev.map(v => v.id === payload.new.van_id ? { ...v, location: payload.new as LiveLocation } : v)
           updateMarkers(updated)
           return updated
         })
@@ -122,18 +144,25 @@ export function VanMapPublic({ height = '400px', vanId }: Props) {
     return () => { supabase.removeChannel(channel) }
   }, [vanId, updateMarkers])
 
+  // No Google Maps API key — show OpenStreetMap
+  if (mapsError) {
+    return <OSMFallback height={height} vans={vans} />
+  }
+
   if (!mapsLoaded) {
-    return <div style={{ height }} className="bg-gray-200 rounded-xl animate-pulse flex items-center justify-center text-gray-400">Loading map...</div>
+    return (
+      <div style={{ height, background: 'rgba(255,255,255,.03)', borderRadius: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,.4)', fontSize: 14 }}>
+        🗺️ Loading map…
+      </div>
+    )
   }
 
   return (
-    <div className="relative rounded-xl overflow-hidden" style={{ height }}>
-      <div ref={mapRef} className="w-full h-full" />
+    <div style={{ position: 'relative', borderRadius: 24, overflow: 'hidden', height }}>
+      <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
       {vans.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-white rounded-xl shadow px-4 py-2 text-sm text-gray-600">
-            No vans currently live in this area
-          </div>
+        <div style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', background: 'rgba(6,9,20,0.85)', backdropFilter: 'blur(10px)', borderRadius: 10, padding: '8px 16px', fontSize: 13, color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}>
+          No vans live right now — check back soon
         </div>
       )}
     </div>
