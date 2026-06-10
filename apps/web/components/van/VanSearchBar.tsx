@@ -5,9 +5,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { VAN_TYPES } from '@/lib/utils/constants'
 
-export function VanSearchBar() {
+export function VanSearchBar({ initialPostcode = '' }: { initialPostcode?: string }) {
   const router = useRouter()
-  const [postcode, setPostcode] = useState('')
+  const [postcode, setPostcode] = useState(initialPostcode)
   const [type, setType] = useState('')
   const [locating, setLocating] = useState(false)
 

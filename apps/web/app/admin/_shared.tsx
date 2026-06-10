@@ -10,6 +10,7 @@ export const ADMIN_NAV = [
   { label: 'Orders',     icon: '📦', href: '/admin/orders'    },
   { label: 'Settings',   icon: '⚙️', href: '/admin/settings'  },
   { label: 'Discovery',  icon: '🔍', href: '/admin/discovery' },
+  { label: 'Import',     icon: '📥', href: '/admin/import'    },
 ]
 
 export function AdminShell({ children, active }: { children: ReactNode; active: string }) {
