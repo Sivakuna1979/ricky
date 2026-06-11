@@ -19,13 +19,15 @@ async function getStats(supabase: any) {
 }
 
 const NAV = [
-  { label: 'Dashboard',  icon: '📊', href: '/admin/dashboard' },
-  { label: 'Homepage',   icon: '🏠', href: '/admin/homepage'  },
-  { label: 'Users',      icon: '👥', href: '/admin/users'     },
-  { label: 'Businesses', icon: '🚐', href: '/admin/businesses'},
-  { label: 'Orders',     icon: '📦', href: '/admin/orders'    },
-  { label: 'Settings',   icon: '⚙️', href: '/admin/settings'  },
-  { label: 'Discovery',  icon: '🔍', href: '/admin/discovery' },
+  { label: 'Dashboard',   icon: '📊', href: '/admin/dashboard'   },
+  { label: 'Homepage',    icon: '🏠', href: '/admin/homepage'    },
+  { label: 'Users',       icon: '👥', href: '/admin/users'       },
+  { label: 'Businesses',  icon: '🚐', href: '/admin/businesses'  },
+  { label: 'Orders',      icon: '📦', href: '/admin/orders'      },
+  { label: 'Events',      icon: '🎪', href: '/admin/events'      },
+  { label: 'Invitations', icon: '📨', href: '/admin/invitations' },
+  { label: 'Discovery',   icon: '🔍', href: '/admin/discovery'   },
+  { label: 'Settings',    icon: '⚙️', href: '/admin/settings'    },
 ]
 
 export default async function AdminDashboardPage() {
