@@ -1,36 +1,35 @@
 'use client'
 // @ts-nocheck
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 type Section = { key: string; title: string; position: number; visible: boolean }
 
 const ICONS: Record<string, string> = {
-  hero:         '🦸',
-  stats:        '📊',
-  categories:   '🍔',
-  vans_live:    '🚐',
-  map:          '🗺️',
-  how:          '📋',
-  popular:      '⭐',
-  events:       '🎪',
-  pricing:      '💰',
-  testimonials: '💬',
-  cta:          '🚀',
+  hero:              '🦸',
+  stats:             '📊',
+  food_categories:   '🍔',
+  google_businesses: '🏢',
+  featured_vans:     '🚐',
+  event_booking:     '🎪',
+  testimonials:      '💬',
+  footer:            '🔗',
+  categories:        '🍔',
+  vans_live:         '🚐',
+  map:               '🗺️',
+  how:               '📋',
+  popular:           '⭐',
+  events:            '🎪',
+  pricing:           '💰',
+  cta:               '🚀',
 }
 
-const STORAGE_KEY = 'foodtaxi_homepage_sections'
-
 export function HomepageEditor({ initial }: { initial: Section[] }) {
-  const [sections, setSections] = useState<Section[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) return JSON.parse(saved)
-      } catch {}
-    }
-    return [...initial].sort((a, b) => a.position - b.position)
-  })
-  const [status, setStatus] = useState<'idle' | 'saved'>('idle')
+  const [sections, setSections] = useState<Section[]>(
+    [...initial].sort((a, b) => a.position - b.position)
+  )
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
 
   function move(index: number, dir: -1 | 1) {
     const next = [...sections]
@@ -48,55 +47,133 @@ export function HomepageEditor({ initial }: { initial: Section[] }) {
     setStatus('idle')
   }
 
-  function save() {
+  async function save() {
+    setSaving(true)
+    setStatus('idle')
+    setErrorMsg('')
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sections))
-      setStatus('saved')
-      setTimeout(() => setStatus('idle'), 3000)
-    } catch {}
+      const payload = sections.map((s, i) => ({ ...s, position: i + 1 }))
+      const res = await fetch('/api/admin/homepage-sections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setStatus('saved')
+        setTimeout(() => setStatus('idle'), 4000)
+      } else {
+        setStatus('error')
+        setErrorMsg(body.error ?? `Server error ${res.status}`)
+      }
+    } catch (e: any) {
+      setStatus('error')
+      setErrorMsg(e.message ?? 'Network error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <div>
+      {/* Header */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20, gap:16, flexWrap:'wrap' }}>
         <div>
           <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Homepage Sections</h1>
-          <p style={{ fontSize:13, color:'rgba(255,255,255,.4)', margin:0 }}>Reorder with ↑↓ and toggle visibility. Press Save — homepage updates live.</p>
+          <p style={{ fontSize:13, color:'rgba(255,255,255,.4)', margin:0 }}>Reorder with ↑↓ and toggle visibility. Press Save to update live.</p>
         </div>
-        <button onClick={save}
-          style={{ background: status === 'saved' ? 'rgba(16,185,129,.8)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#0a0a14', border:'none', borderRadius:10, padding:'11px 24px', fontWeight:800, fontSize:14, cursor:'pointer', flexShrink:0 }}>
-          {status === 'saved' ? '✓ Saved!' : 'Save Changes'}
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{
+            background: saving ? 'rgba(251,191,36,.3)' : status === 'saved' ? '#10b981' : 'linear-gradient(135deg,#fbbf24,#f59e0b)',
+            color: status === 'saved' ? '#fff' : '#0a0a14',
+            border: 'none', borderRadius: 10, padding: '11px 24px',
+            fontWeight: 800, fontSize: 14,
+            cursor: saving ? 'wait' : 'pointer',
+            flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 8,
+            minWidth: 140, justifyContent: 'center',
+            transition: 'background .2s',
+          }}
+        >
+          {saving && (
+            <span style={{
+              width: 16, height: 16, border: '2px solid rgba(0,0,0,.3)',
+              borderTopColor: '#000', borderRadius: '50%',
+              display: 'inline-block', animation: 'spin 0.7s linear infinite',
+            }} />
+          )}
+          {saving ? 'Saving…' : status === 'saved' ? '✓ Saved!' : 'Save Changes'}
         </button>
       </div>
 
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Success banner */}
       {status === 'saved' && (
-        <div style={{ background:'rgba(16,185,129,.1)', border:'1px solid rgba(16,185,129,.3)', borderRadius:10, padding:'12px 16px', marginBottom:16, color:'#6ee7b7', fontSize:13 }}>
-          ✅ Saved! Homepage will reflect changes on next load.
+        <div style={{ background:'rgba(16,185,129,.12)', border:'1px solid rgba(16,185,129,.4)', borderRadius:10, padding:'13px 16px', marginBottom:16, color:'#6ee7b7', fontSize:14, fontWeight:600, display:'flex', alignItems:'center', gap:8 }}>
+          ✅ Homepage updated successfully
         </div>
       )}
 
+      {/* Error banner */}
+      {status === 'error' && (
+        <div style={{ background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:10, padding:'12px 16px', marginBottom:16, color:'#fca5a5', fontSize:13 }}>
+          ⚠️ Save failed: {errorMsg}
+        </div>
+      )}
+
+      {/* Section list */}
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {sections.map((s, i) => (
-          <div key={s.key} style={{ display:'flex', alignItems:'center', gap:10, background: s.visible ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.02)', border:`1px solid ${s.visible ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.04)'}`, borderRadius:14, padding:'12px 14px', opacity: s.visible ? 1 : 0.5, transition:'opacity .2s' }}>
-
-            <div style={{ width:26, height:26, borderRadius:8, background:'rgba(255,255,255,.07)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'rgba(255,255,255,.5)', flexShrink:0 }}>{i + 1}</div>
-
-            <span style={{ fontSize:18, flexShrink:0 }}>{ICONS[s.key] ?? '📄'}</span>
-            <span style={{ flex:1, fontSize:14, fontWeight:600, color: s.visible ? '#fff' : 'rgba(255,255,255,.35)', minWidth:0 }}>{s.title}</span>
-
-            <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-              <button onClick={() => move(i, -1)} disabled={i === 0}
-                style={{ width:34, height:34, borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:16, cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.25 : 1, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>↑</button>
-              <button onClick={() => move(i, 1)} disabled={i === sections.length - 1}
-                style={{ width:34, height:34, borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:16, cursor: i === sections.length - 1 ? 'not-allowed' : 'pointer', opacity: i === sections.length - 1 ? 0.25 : 1, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>↓</button>
+          <div
+            key={s.key}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              background: s.visible ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.02)',
+              border: `1px solid ${s.visible ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.04)'}`,
+              borderRadius: 14, padding: '12px 14px',
+              opacity: s.visible ? 1 : 0.5,
+              transition: 'opacity .2s',
+            }}
+          >
+            {/* Position badge */}
+            <div style={{ width:26, height:26, borderRadius:8, background:'rgba(255,255,255,.07)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'rgba(255,255,255,.5)', flexShrink:0 }}>
+              {i + 1}
             </div>
 
-            <button onClick={() => toggle(i)}
-              style={{ width:46, height:26, borderRadius:13, border:'none', cursor:'pointer', background: s.visible ? '#10b981' : 'rgba(255,255,255,.1)', position:'relative', transition:'background .2s', flexShrink:0 }}>
+            {/* Icon + title */}
+            <span style={{ fontSize:18, flexShrink:0 }}>{ICONS[s.key] ?? '📄'}</span>
+            <span style={{ flex:1, fontSize:14, fontWeight:600, color: s.visible ? '#fff' : 'rgba(255,255,255,.35)', minWidth:0 }}>
+              {s.title}
+            </span>
+
+            {/* Up/down */}
+            <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+              <button
+                onClick={() => move(i, -1)}
+                disabled={i === 0}
+                style={{ width:34, height:34, borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:16, cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.25 : 1, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}
+              >↑</button>
+              <button
+                onClick={() => move(i, 1)}
+                disabled={i === sections.length - 1}
+                style={{ width:34, height:34, borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:16, cursor: i === sections.length - 1 ? 'not-allowed' : 'pointer', opacity: i === sections.length - 1 ? 0.25 : 1, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}
+              >↓</button>
+            </div>
+
+            {/* Visibility toggle */}
+            <button
+              onClick={() => toggle(i)}
+              style={{ width:46, height:26, borderRadius:13, border:'none', cursor:'pointer', background: s.visible ? '#10b981' : 'rgba(255,255,255,.1)', position:'relative', transition:'background .2s', flexShrink:0 }}
+            >
               <span style={{ position:'absolute', top:3, left: s.visible ? 23 : 3, width:20, height:20, borderRadius:'50%', background:'#fff', transition:'left .18s', display:'block' }} />
             </button>
 
-            <span style={{ fontSize:11, fontWeight:700, color: s.visible ? '#10b981' : 'rgba(255,255,255,.3)', width:32, textAlign:'center', flexShrink:0 }}>{s.visible ? 'On' : 'Off'}</span>
+            <span style={{ fontSize:11, fontWeight:700, color: s.visible ? '#10b981' : 'rgba(255,255,255,.3)', width:32, textAlign:'center', flexShrink:0 }}>
+              {s.visible ? 'On' : 'Off'}
+            </span>
           </div>
         ))}
       </div>

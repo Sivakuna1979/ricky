@@ -4,21 +4,29 @@ import { HomepageEditor } from './HomepageEditor'
 export const dynamic = 'force-dynamic'
 
 const DEFAULT_SECTIONS = [
-  { key: 'hero',         title: 'Hero Banner',    position: 1,  visible: true },
-  { key: 'stats',        title: 'Stats Bar',       position: 2,  visible: true },
-  { key: 'categories',   title: 'Food Categories', position: 3,  visible: true },
-  { key: 'vans_live',    title: 'Vans Out Today',  position: 4,  visible: true },
-  { key: 'map',          title: 'Live Map',        position: 5,  visible: true },
-  { key: 'how',          title: 'How It Works',    position: 6,  visible: true },
-  { key: 'popular',      title: 'Popular Vans',    position: 7,  visible: true },
-  { key: 'events',       title: 'Event Catering',  position: 8,  visible: true },
-  { key: 'pricing',      title: 'Pricing Plans',   position: 9,  visible: true },
-  { key: 'testimonials', title: 'Testimonials',    position: 10, visible: true },
-  { key: 'cta',          title: 'Call to Action',  position: 11, visible: true },
+  { key: 'hero',              title: 'Hero Banner',      position: 1, visible: true },
+  { key: 'stats',             title: 'Stats Bar',        position: 2, visible: true },
+  { key: 'food_categories',   title: 'Food Categories',  position: 3, visible: true },
+  { key: 'google_businesses', title: 'Local Businesses', position: 4, visible: true },
+  { key: 'featured_vans',     title: 'Featured Vans',    position: 5, visible: true },
+  { key: 'event_booking',     title: 'Event Booking',    position: 6, visible: true },
+  { key: 'testimonials',      title: 'Testimonials',     position: 7, visible: true },
+  { key: 'footer',            title: 'Footer',           position: 8, visible: true },
 ]
 
 async function getSections() {
-  return DEFAULT_SECTIONS
+  try {
+    const { createClient } = await import('@supabase/supabase-js')
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? ''
+    if (!url || !key) return DEFAULT_SECTIONS
+    const supabase = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+    const { data, error } = await supabase.from('homepage_sections').select('*').order('position')
+    if (error || !data?.length) return DEFAULT_SECTIONS
+    return data
+  } catch {
+    return DEFAULT_SECTIONS
+  }
 }
 
 const NAV = [
@@ -46,11 +54,9 @@ export default async function AdminHomepagePage() {
           .adm-sidebar{display:none}
           .adm-bottom-nav{display:flex;justify-content:space-around;align-items:center}
           .adm-main{padding:16px 14px 90px}
-          .adm-topbar-email{display:none}
         }
       `}</style>
       <div className="adm-wrap">
-        {/* Top bar */}
         <div style={{ background:'rgba(255,255,255,.04)', borderBottom:'1px solid rgba(255,255,255,.08)', padding:'0 16px', height:56, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,#f97316,#dc2626)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:900, color:'#fff' }}>FT</div>
@@ -60,7 +66,6 @@ export default async function AdminHomepagePage() {
         </div>
 
         <div className="adm-body">
-          {/* Sidebar */}
           <div className="adm-sidebar">
             {NAV.map(({ label, icon, href }) => {
               const active = href === '/admin/homepage'
@@ -77,7 +82,6 @@ export default async function AdminHomepagePage() {
           </div>
         </div>
 
-        {/* Mobile bottom nav */}
         <nav className="adm-bottom-nav">
           {NAV.map(({ label, icon, href }) => {
             const active = href === '/admin/homepage'
