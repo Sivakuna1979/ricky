@@ -246,7 +246,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
   const [sortBy, setSortBy]             = useState<'distance'|'rating'>('distance')
   const [claimPlace, setClaimPlace]     = useState<GooglePlace|null>(null)
   const [invitePlace, setInvitePlace]   = useState<GooglePlace|null>(null)
-  const [mapDark, setMapDark]           = useState(true)
+  const [mapDark, setMapDark]           = useState(false)
   const [showFoodTaxi, setShowFoodTaxi] = useState(true)
   const [showGoogle, setShowGoogle]     = useState(true)
   const [typeFilters, setTypeFilters]   = useState<Set<string>>(new Set())
@@ -305,7 +305,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
         shadowUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       })
       const map = L.map(mapElRef.current!, { zoomControl:true, scrollWheelZoom:true })
-      tileRef.current = L.tileLayer(TILE_DARK, { attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19 }).addTo(map)
+      tileRef.current = L.tileLayer(TILE_LIGHT, { attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19 }).addTo(map)
       map.setView([centerLat??51.505, centerLng??-0.09], 13)
       mapRef.current = map
       if (centerLat!=null && centerLng!=null) { lastFetchRef.current=0; fetchGoogle(centerLat,centerLng); fetchFoodTaxi(centerLat,centerLng) }
@@ -439,8 +439,8 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
         <button onClick={()=>setShowGoogle(v=>!v)}   style={tog(showGoogle,'#f97316')}>🌍 Google Businesses</button>
         {/* Map style toggle */}
         <div style={{ marginLeft:'auto', display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:20, overflow:'hidden', border:'1px solid rgba(255,255,255,0.1)' }}>
-          <button onClick={()=>setMapDark(false)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:!mapDark?'#fff':'transparent', color:!mapDark?'#111':'rgba(255,255,255,0.45)' }}>☀ Light</button>
-          <button onClick={()=>setMapDark(true)}  style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:mapDark?'#334155':'transparent', color:mapDark?'#fff':'rgba(255,255,255,0.45)' }}>🌙 Dark</button>
+          <button onClick={()=>setMapDark(false)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:!mapDark?'#fff':'transparent', color:!mapDark?'#111':'rgba(255,255,255,0.5)', transition:'background .15s' }}>☀️ Light</button>
+          <button onClick={()=>setMapDark(true)}  style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:mapDark?'#334155':'transparent', color:mapDark?'#fff':'rgba(255,255,255,0.5)', transition:'background .15s' }}>🌙 Dark</button>
         </div>
       </div>
 
