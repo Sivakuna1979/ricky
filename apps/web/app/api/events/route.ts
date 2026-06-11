@@ -1,24 +1,7 @@
 // @ts-nocheck
 /**
- * GET  /api/events               — list upcoming bookings (public: just dates)
- * POST /api/events               — submit a booking request
- *
- * Required Supabase table:
- * create table if not exists event_bookings (
- *   id uuid primary key default gen_random_uuid(),
- *   name text not null,
- *   phone text,
- *   email text not null,
- *   event_date date not null,
- *   event_time text,
- *   event_location text,
- *   num_guests integer,
- *   notes text,
- *   preferred_van text,
- *   status text default 'pending',
- *   assigned_van_id uuid,
- *   created_at timestamptz default now()
- * );
+ * GET  /api/events  — public calendar (only admin-blocked dates; dates never blocked by other requests)
+ * POST /api/events  — submit an event request (multiple per day are allowed — marketplace model)
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
@@ -38,28 +21,37 @@ export async function GET(req: NextRequest) {
 
   if (admin) {
     const { data, error } = await db
-      .from('event_bookings')
+      .from('event_requests')
       .select('*')
       .order('event_date', { ascending: true })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ bookings: data ?? [] })
   }
 
-  // Public: return only booked dates (accepted + pending) and blocked dates
-  const [bookings, blocked] = await Promise.all([
-    db.from('event_bookings').select('event_date, status').in('status', ['pending','accepted']),
+  // Public: only blocked dates restrict the calendar — existing requests never block a date
+  const [blockedRes, countsRes] = await Promise.all([
     db.from('event_blocked_dates').select('blocked_date, reason'),
+    db.from('event_requests').select('event_date, admin_status').neq('admin_status', 'cancelled'),
   ])
 
-  const bookedDates  = (bookings.data ?? []).map((b: any) => b.event_date)
-  const blockedDates = (blocked.data ?? []).map((b: any) => ({ date: b.blocked_date, reason: b.reason }))
+  const dateCounts: Record<string, number> = {}
+  ;(countsRes.data ?? []).forEach((r: any) => {
+    dateCounts[r.event_date] = (dateCounts[r.event_date] ?? 0) + 1
+  })
 
-  return NextResponse.json({ booked_dates: bookedDates, blocked_dates: blockedDates })
+  return NextResponse.json({
+    booked_dates: [],
+    blocked_dates: (blockedRes.data ?? []).map((b: any) => ({ date: b.blocked_date, reason: b.reason })),
+    date_counts: dateCounts,
+  })
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const { name, phone, email, event_date, event_time, event_location, num_guests, notes, preferred_van, event_type, food_type } = body
+  const {
+    name, phone, email, event_date, event_time, event_location,
+    num_guests, notes, preferred_van, event_type, food_type, budget,
+  } = body
 
   if (!name || !email || !event_date) {
     return NextResponse.json({ error: 'name, email and event_date are required' }, { status: 400 })
@@ -67,28 +59,43 @@ export async function POST(req: NextRequest) {
 
   const db = getAdmin()
 
-  // Check if date is blocked or already booked
-  const [blocked, existing] = await Promise.all([
-    db.from('event_blocked_dates').select('id').eq('blocked_date', event_date).maybeSingle(),
-    db.from('event_bookings').select('id').eq('event_date', event_date).in('status', ['pending','accepted']).maybeSingle(),
-  ])
+  // Only reject if admin explicitly blocked this date
+  const { data: blocked } = await db
+    .from('event_blocked_dates')
+    .select('id')
+    .eq('blocked_date', event_date)
+    .maybeSingle()
 
-  if (blocked.data) return NextResponse.json({ error: 'That date is not available. Please choose another date.' }, { status: 409 })
-  if (existing.data) return NextResponse.json({ error: 'That date already has a booking. Please choose another date.' }, { status: 409 })
+  if (blocked) {
+    return NextResponse.json({ error: 'FoodTaxi is not taking bookings on that date. Please choose another date.' }, { status: 409 })
+  }
 
   const { data, error } = await db
-    .from('event_bookings')
-    .insert({ name, phone, email, event_date, event_time, event_location, num_guests: num_guests ? parseInt(num_guests) : null, notes, preferred_van, event_type: event_type || null, food_type: food_type || null, status: 'pending' })
+    .from('event_requests')
+    .insert({
+      name, phone, email, event_date, event_time, event_location,
+      num_guests: num_guests ? parseInt(num_guests) : null,
+      notes, preferred_van,
+      event_type: event_type || null,
+      food_type: food_type || null,
+      budget: budget || null,
+      admin_status: 'new',
+      customer_status: 'request_sent',
+      marketplace_visible: false,
+    })
     .select('id')
     .single()
 
   if (error) {
-    // Table missing — only match on "does not exist" messages
-    if (error.message.includes('does not exist') || error.code === '42P01') {
-      return NextResponse.json({ error: 'Run the SQL migration first — event_bookings table is missing.' }, { status: 500 })
+    if (error.code === '42P01') {
+      return NextResponse.json({ error: 'Run the SQL migration first — event_requests table is missing.' }, { status: 500 })
     }
     return NextResponse.json({ error: error.message, code: error.code }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, id: data.id, message: 'Booking request submitted! We will contact you within 24 hours to confirm.' })
+  return NextResponse.json({
+    ok: true,
+    id: data.id,
+    message: 'Your request has been received. FoodTaxi will find available vans and contact you.',
+  })
 }

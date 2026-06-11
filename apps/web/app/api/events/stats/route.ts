@@ -17,21 +17,25 @@ export async function GET() {
   const monthStart = today.slice(0, 7) + '-01'
 
   const { data: all } = await db
-    .from('event_bookings')
-    .select('id, status, event_date, total_amount, deposit_amount, deposit_paid, created_at')
+    .from('event_requests')
+    .select('id, admin_status, event_date, total_amount, deposit_amount, deposit_paid, created_at, marketplace_visible, foodtaxi_fee')
 
   const rows = all ?? []
-  const now = new Date()
 
   return NextResponse.json({
-    total:            rows.length,
-    today:            rows.filter(r => r.event_date === today).length,
-    this_month:       rows.filter(r => r.event_date >= monthStart).length,
-    pending:          rows.filter(r => ['new','contacted','quote_sent','awaiting_deposit'].includes(r.status)).length,
-    confirmed:        rows.filter(r => ['confirmed','assigned'].includes(r.status)).length,
-    completed:        rows.filter(r => r.status === 'completed').length,
-    cancelled:        rows.filter(r => r.status === 'cancelled').length,
-    revenue_month:    rows.filter(r => r.event_date >= monthStart && r.status !== 'cancelled').reduce((s,r) => s + (r.total_amount ?? 0), 0),
-    deposits_pending: rows.filter(r => r.status === 'awaiting_deposit' && !r.deposit_paid).length,
+    total:             rows.length,
+    today:             rows.filter(r => r.event_date === today).length,
+    this_month:        rows.filter(r => r.event_date >= monthStart).length,
+    new:               rows.filter(r => r.admin_status === 'new').length,
+    reviewing:         rows.filter(r => r.admin_status === 'reviewing').length,
+    published:         rows.filter(r => r.admin_status === 'published').length,
+    vans_interested:   rows.filter(r => r.admin_status === 'vans_interested').length,
+    confirmed:         rows.filter(r => r.admin_status === 'confirmed').length,
+    completed:         rows.filter(r => r.admin_status === 'completed').length,
+    cancelled:         rows.filter(r => r.admin_status === 'cancelled').length,
+    pending_review:    rows.filter(r => ['new','reviewing'].includes(r.admin_status)).length,
+    revenue_month:     rows.filter(r => r.event_date >= monthStart && r.admin_status !== 'cancelled').reduce((s, r) => s + (r.foodtaxi_fee ?? 0), 0),
+    deposits_pending:  rows.filter(r => r.admin_status === 'awaiting_deposit' && !r.deposit_paid).length,
+    marketplace_live:  rows.filter(r => r.marketplace_visible).length,
   })
 }

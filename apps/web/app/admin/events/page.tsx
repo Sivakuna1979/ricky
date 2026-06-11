@@ -2,66 +2,100 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 
-const STATUS_CONFIG = {
-  new:              { label: 'New',             color: '#6366f1', bg: '#eef2ff' },
-  contacted:        { label: 'Contacted',        color: '#f59e0b', bg: '#fffbeb' },
-  quote_sent:       { label: 'Quote Sent',       color: '#3b82f6', bg: '#eff6ff' },
-  awaiting_deposit: { label: 'Awaiting Deposit', color: '#f97316', bg: '#fff7ed' },
-  confirmed:        { label: 'Confirmed',        color: '#10b981', bg: '#ecfdf5' },
-  assigned:         { label: 'Assigned',         color: '#059669', bg: '#d1fae5' },
-  completed:        { label: 'Completed',        color: '#6b7280', bg: '#f3f4f6' },
-  cancelled:        { label: 'Cancelled',        color: '#ef4444', bg: '#fef2f2' },
+// ─── Admin-side status workflow ───────────────────────────────────────────────
+const ADMIN_STATUS = {
+  new:                  { label: 'New',                  color: '#6366f1', bg: '#eef2ff' },
+  reviewing:            { label: 'Reviewing',             color: '#f59e0b', bg: '#fffbeb' },
+  published:            { label: 'Published to Vans',    color: '#3b82f6', bg: '#eff6ff' },
+  vans_interested:      { label: 'Vans Interested',      color: '#8b5cf6', bg: '#f5f3ff' },
+  accepted_by_van:      { label: 'Accepted by Van',      color: '#f97316', bg: '#fff7ed' },
+  awaiting_van_fee:     { label: 'Awaiting Van Fee',     color: '#f97316', bg: '#fff7ed' },
+  awaiting_deposit:     { label: 'Awaiting Deposit',     color: '#eab308', bg: '#fefce8' },
+  confirmed:            { label: 'Confirmed',            color: '#10b981', bg: '#ecfdf5' },
+  completed:            { label: 'Completed',            color: '#6b7280', bg: '#f3f4f6' },
+  cancelled:            { label: 'Cancelled',            color: '#ef4444', bg: '#fef2f2' },
 }
 
-const STATUS_ORDER = ['new','contacted','quote_sent','awaiting_deposit','confirmed','assigned','completed','cancelled']
+const STATUS_ORDER = [
+  'new','reviewing','published','vans_interested',
+  'accepted_by_van','awaiting_van_fee','awaiting_deposit',
+  'confirmed','completed','cancelled',
+]
+
+const EVENT_TYPES = ['Corporate','Wedding','Birthday','Festival','Private','Graduation','Sports','Market','Other']
 
 function Badge({ status }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, color: '#6b7280', bg: '#f3f4f6' }
+  const cfg = ADMIN_STATUS[status] ?? { label: status, color: '#6b7280', bg: '#f3f4f6' }
   return (
     <span style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-      fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+      fontSize: 11, fontWeight: 700, letterSpacing: 0.4,
       color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}33`,
-      textTransform: 'uppercase',
+      textTransform: 'uppercase', whiteSpace: 'nowrap',
     }}>{cfg.label}</span>
   )
 }
 
-function StatCard({ label, value, color }) {
+function StatCard({ label, value, color, onClick }) {
   return (
-    <div style={{
-      background: '#fff', borderRadius: 12, padding: '18px 22px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flex: '1 1 140px', minWidth: 130,
+    <div onClick={onClick} style={{
+      background: '#fff', borderRadius: 12, padding: '18px 20px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flex: '1 1 130px', minWidth: 120,
+      cursor: onClick ? 'pointer' : 'default',
     }}>
       <div style={{ fontSize: 28, fontWeight: 800, color: color ?? '#111' }}>{value ?? '—'}</div>
-      <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{label}</div>
     </div>
   )
 }
 
-function DetailPanel({ b, onUpdate, onDelete, saving }) {
+function DetailPanel({ b, onUpdate, onDelete, saving, applications, loadApps }) {
   const [notes, setNotes] = useState(b.admin_notes ?? '')
-  const [van, setVan] = useState({ assigned_van: b.assigned_van ?? '', assigned_driver: b.assigned_driver ?? '', assigned_contact: b.assigned_contact ?? '' })
-  const [pay, setPay] = useState({ total_amount: b.total_amount ?? '', deposit_amount: b.deposit_amount ?? '', deposit_paid: !!b.deposit_paid })
+  const [fees, setFees] = useState({
+    foodtaxi_fee: b.foodtaxi_fee ?? '',
+    commission_pct: b.commission_pct ?? '',
+    deposit_required: b.deposit_required ?? '',
+    payment_required: !!b.payment_required,
+    urgent: !!b.urgent,
+  })
+
+  useEffect(() => { loadApps(b.id) }, [b.id])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Status buttons */}
+
+      {/* Status */}
       <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 6 }}>Status</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 6 }}>Admin Status</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
           {STATUS_ORDER.map(s => {
-            const cfg = STATUS_CONFIG[s]
-            const active = b.status === s
+            const cfg = ADMIN_STATUS[s]
+            const active = b.admin_status === s
             return (
-              <button key={s} onClick={() => onUpdate(b.id, { status: s })} style={{
-                padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              <button key={s} onClick={() => onUpdate(b.id, { admin_status: s })} style={{
+                padding: '3px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
                 border: `2px solid ${active ? cfg.color : '#e5e7eb'}`,
-                background: active ? cfg.bg : '#fff', color: active ? cfg.color : '#888',
+                background: active ? cfg.bg : '#fff', color: active ? cfg.color : '#999',
               }}>{cfg.label}</button>
             )
           })}
         </div>
+      </div>
+
+      {/* Marketplace toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, background: b.marketplace_visible ? '#ecfdf5' : '#f9fafb', border: `1px solid ${b.marketplace_visible ? '#6ee7b7' : '#e5e7eb'}` }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#111' }}>
+            {b.marketplace_visible ? '✅ Published to Van Board' : '🔒 Hidden from Vans'}
+          </div>
+          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+            {b.marketplace_visible ? 'Registered vans can see and apply for this event.' : 'Only FoodTaxi admin can see this event.'}
+          </div>
+        </div>
+        <button onClick={() => onUpdate(b.id, { marketplace_visible: !b.marketplace_visible, admin_status: !b.marketplace_visible ? 'published' : 'reviewing' })}
+          style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: b.marketplace_visible ? '#ef4444' : '#10b981', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          {b.marketplace_visible ? 'Unpublish' : 'Publish to Vans'}
+        </button>
       </div>
 
       {/* Customer */}
@@ -70,6 +104,9 @@ function DetailPanel({ b, onUpdate, onDelete, saving }) {
         <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>{b.name}</div>
         <a href={`mailto:${b.email}`} style={{ display: 'block', fontSize: 13, color: '#6366f1', marginTop: 3 }}>{b.email}</a>
         {b.phone && <a href={`tel:${b.phone}`} style={{ display: 'block', fontSize: 13, color: '#6366f1', marginTop: 2 }}>{b.phone}</a>}
+        <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 6, background: '#fff3cd', fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+          🔐 Customer contact only released to van after you approve it manually
+        </div>
       </div>
 
       {/* Event */}
@@ -82,65 +119,87 @@ function DetailPanel({ b, onUpdate, onDelete, saving }) {
           <div><b>Guests:</b> {b.num_guests || '—'}</div>
           <div style={{ gridColumn: '1/-1' }}><b>Location:</b> {b.event_location || '—'}</div>
           <div><b>Food:</b> {b.food_type || '—'}</div>
-          <div><b>Van pref:</b> {b.preferred_van || '—'}</div>
+          <div><b>Budget:</b> {b.budget || '—'}</div>
         </div>
         {b.notes && <div style={{ marginTop: 8, fontSize: 13, color: '#555', fontStyle: 'italic' }}>"{b.notes}"</div>}
       </div>
 
-      {/* Van */}
-      <div style={{ background: '#f0fdf4', borderRadius: 10, padding: 14 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', textTransform: 'uppercase', marginBottom: 8 }}>Van Assignment</div>
-        {[['assigned_van','Van / Unit','e.g. Van #1 – Blue Transit'],['assigned_driver','Driver Name','Driver full name'],['assigned_contact','Contact Number','07xxx xxxxxx']].map(([field, lbl, ph]) => (
-          <div key={field} style={{ marginBottom: 8 }}>
-            <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 2 }}>{lbl}</label>
-            <input value={van[field]} onChange={e => setVan(v => ({...v, [field]: e.target.value}))}
-              style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }}
-              placeholder={ph} />
-          </div>
-        ))}
-        <button onClick={() => onUpdate(b.id, van)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-          Save Assignment
-        </button>
-      </div>
-
-      {/* Payment */}
+      {/* FoodTaxi Fees */}
       <div style={{ background: '#fff7ed', borderRadius: 10, padding: 14 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#f97316', textTransform: 'uppercase', marginBottom: 8 }}>Payment</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#f97316', textTransform: 'uppercase', marginBottom: 8 }}>FoodTaxi Fee Settings</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
-            <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 2 }}>Total (£)</label>
-            <input type="number" value={pay.total_amount} onChange={e => setPay(p => ({...p, total_amount: e.target.value}))}
-              style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }} />
+            <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 2 }}>Lead Fee (£)</label>
+            <input type="number" value={fees.foodtaxi_fee} onChange={e => setFees(f => ({ ...f, foodtaxi_fee: e.target.value }))}
+              style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }}
+              placeholder="e.g. 20" />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 2 }}>Deposit (£)</label>
-            <input type="number" value={pay.deposit_amount} onChange={e => setPay(p => ({...p, deposit_amount: e.target.value}))}
-              style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }} />
+            <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 2 }}>Commission %</label>
+            <input type="number" value={fees.commission_pct} onChange={e => setFees(f => ({ ...f, commission_pct: e.target.value }))}
+              style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }}
+              placeholder="e.g. 10" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: '#555', display: 'block', marginBottom: 2 }}>Deposit Required (£)</label>
+            <input type="number" value={fees.deposit_required} onChange={e => setFees(f => ({ ...f, deposit_required: e.target.value }))}
+              style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' }}
+              placeholder="e.g. 50" />
           </div>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={pay.deposit_paid} onChange={e => setPay(p => ({...p, deposit_paid: e.target.checked}))} />
-          Deposit Paid
-        </label>
-        <button onClick={() => onUpdate(b.id, { total_amount: parseFloat(pay.total_amount)||null, deposit_amount: parseFloat(pay.deposit_amount)||null, deposit_paid: pay.deposit_paid })}
-          style={{ marginTop: 10, padding: '7px 16px', borderRadius: 8, border: 'none', background: '#f97316', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-          Save Payment
+        <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={fees.payment_required} onChange={e => setFees(f => ({ ...f, payment_required: e.target.checked }))} />
+            Payment required before accepting
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={fees.urgent} onChange={e => setFees(f => ({ ...f, urgent: e.target.checked }))} />
+            🔴 Urgent
+          </label>
+        </div>
+        <button onClick={() => onUpdate(b.id, {
+          foodtaxi_fee: parseFloat(fees.foodtaxi_fee) || null,
+          commission_pct: parseFloat(fees.commission_pct) || null,
+          deposit_required: parseFloat(fees.deposit_required) || null,
+          payment_required: fees.payment_required,
+          urgent: fees.urgent,
+        })} style={{ marginTop: 10, padding: '7px 16px', borderRadius: 8, border: 'none', background: '#f97316', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          Save Fees
         </button>
       </div>
 
-      {/* Notes */}
+      {/* Applications from vans */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 8 }}>Van Applications ({applications?.length ?? 0})</div>
+        {!applications?.length && <div style={{ fontSize: 13, color: '#aaa' }}>No van applications yet.</div>}
+        {applications?.map(app => (
+          <div key={app.id} style={{ padding: '10px 12px', borderRadius: 8, background: '#f9fafb', marginBottom: 6, border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#111' }}>{app.business_name || app.van_owner_name || 'Unknown'}</div>
+                <div style={{ fontSize: 11, color: '#888' }}>{app.van_owner_email}</div>
+                {app.notes && <div style={{ fontSize: 11, color: '#555', marginTop: 3, fontStyle: 'italic' }}>"{app.notes}"</div>}
+              </div>
+              <span style={{
+                padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                background: app.status === 'confirmed' ? '#d1fae5' : app.status === 'declined' ? '#fef2f2' : '#eff6ff',
+                color: app.status === 'confirmed' ? '#059669' : app.status === 'declined' ? '#ef4444' : '#3b82f6',
+              }}>{app.status?.replace(/_/g, ' ')}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>{new Date(app.created_at).toLocaleDateString('en-GB')}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Admin Notes */}
       <div>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 6 }}>Admin Notes</div>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={4}
           style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
-          placeholder="Internal notes (not visible to customer)…" />
+          placeholder="Internal notes — not visible to customer or vans…" />
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button onClick={() => onUpdate(b.id, { admin_notes: notes })} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            Save Notes
-          </button>
-          <button onClick={() => onDelete(b.id)} style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid #ef4444', background: '#fff', color: '#ef4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            Delete
-          </button>
+          <button onClick={() => onUpdate(b.id, { admin_notes: notes })} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save Notes</button>
+          <button onClick={() => onDelete(b.id)} style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid #ef4444', background: '#fff', color: '#ef4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Delete</button>
         </div>
       </div>
 
@@ -166,6 +225,7 @@ export default function AdminEventsPage() {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
   })
   const [exportMsg, setExportMsg] = useState('')
+  const [applications, setApplications] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -176,11 +236,21 @@ export default function AdminEventsPage() {
     ])
     setBookings(bRes.bookings ?? [])
     setStats(sRes)
-    setBlockedDates(bdRes.blocked_dates ?? bdRes ?? [])
+    setBlockedDates(bdRes.blocked_dates ?? [])
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const loadApps = async (eventId) => {
+    try {
+      const res = await fetch(`/api/events/applications?event_id=${eventId}`)
+      if (res.ok) {
+        const d = await res.json()
+        setApplications(d.applications ?? [])
+      }
+    } catch {}
+  }
 
   const updateBooking = async (id, patch) => {
     setSaving(true)
@@ -195,7 +265,7 @@ export default function AdminEventsPage() {
   }
 
   const deleteBooking = async (id) => {
-    if (!confirm('Delete this booking permanently?')) return
+    if (!confirm('Delete this event request permanently?')) return
     await fetch(`/api/events/${id}`, { method: 'DELETE' })
     setSelected(null)
     await load()
@@ -218,23 +288,23 @@ export default function AdminEventsPage() {
   }
 
   const exportCSV = () => {
-    const cols = ['id','name','email','phone','event_date','event_time','event_type','food_type','event_location','num_guests','status','preferred_van','assigned_van','assigned_driver','total_amount','deposit_amount','deposit_paid','admin_notes','created_at']
+    const cols = ['id','name','email','phone','event_date','event_time','event_type','food_type','event_location','num_guests','budget','admin_status','marketplace_visible','foodtaxi_fee','commission_pct','deposit_required','urgent','admin_notes','created_at']
     const csv = [cols.join(','), ...filtered.map(r => cols.map(c => JSON.stringify(r[c] ?? '')).join(','))].join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-    a.download = `event-bookings-${new Date().toISOString().slice(0,10)}.csv`
+    a.download = `event-requests-${new Date().toISOString().slice(0,10)}.csv`
     a.click()
-    setExportMsg('Downloaded!')
-    setTimeout(() => setExportMsg(''), 3000)
+    setExportMsg('Downloaded!'); setTimeout(() => setExportMsg(''), 3000)
   }
 
   const filtered = bookings.filter(b => {
-    if (filterStatus !== 'all' && b.status !== filterStatus) return false
+    if (filterStatus !== 'all' && b.admin_status !== filterStatus) return false
     if (filterSearch) {
       const q = filterSearch.toLowerCase()
       return (b.name ?? '').toLowerCase().includes(q) ||
              (b.email ?? '').toLowerCase().includes(q) ||
-             (b.event_date ?? '').includes(q)
+             (b.event_date ?? '').includes(q) ||
+             (b.event_location ?? '').toLowerCase().includes(q)
     }
     return true
   })
@@ -257,7 +327,7 @@ export default function AdminEventsPage() {
 
   const TABS = [
     { id: 'dashboard', label: '📊 Dashboard' },
-    { id: 'bookings',  label: '📋 Bookings' },
+    { id: 'bookings',  label: '📋 Requests' },
     { id: 'calendar',  label: '📅 Calendar' },
     { id: 'blocked',   label: '🚫 Block Dates' },
   ]
@@ -267,9 +337,10 @@ export default function AdminEventsPage() {
       {/* Header */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 12, height: 56, position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
         <a href="/admin/dashboard" style={{ color: '#6366f1', fontWeight: 900, textDecoration: 'none', fontSize: 22 }}>🍟</a>
-        <span style={{ fontWeight: 800, fontSize: 17, color: '#111' }}>Event Bookings</span>
+        <span style={{ fontWeight: 800, fontSize: 17, color: '#111' }}>Event Marketplace</span>
         <div style={{ flex: 1 }} />
-        <button onClick={load} title="Refresh" style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', color: '#555' }}>↻</button>
+        <a href="/van/events" target="_blank" style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}>Van Board ↗</a>
+        <button onClick={load} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', color: '#555' }}>↻</button>
       </div>
 
       {/* Tabs */}
@@ -292,32 +363,54 @@ export default function AdminEventsPage() {
           {/* ── DASHBOARD ── */}
           {tab === 'dashboard' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                <StatCard label="Total Bookings"   value={stats?.total}            color="#6366f1" />
-                <StatCard label="Today's Events"   value={stats?.today}            color="#f97316" />
-                <StatCard label="This Month"        value={stats?.this_month}       color="#3b82f6" />
-                <StatCard label="Pending"           value={stats?.pending}          color="#f59e0b" />
-                <StatCard label="Confirmed"         value={stats?.confirmed}        color="#10b981" />
-                <StatCard label="Completed"         value={stats?.completed}        color="#6b7280" />
-                <StatCard label="Cancelled"         value={stats?.cancelled}        color="#ef4444" />
-                <StatCard label="Month Revenue"    value={stats?.revenue_month != null ? `£${Number(stats.revenue_month).toLocaleString()}` : '—'} color="#059669" />
-                <StatCard label="Deposits Pending"  value={stats?.deposits_pending} color="#f97316" />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <StatCard label="Total Requests"    value={stats?.total}           color="#6366f1" />
+                <StatCard label="Today"             value={stats?.today}           color="#f97316" />
+                <StatCard label="This Month"        value={stats?.this_month}      color="#3b82f6" />
+                <StatCard label="New"               value={stats?.new}             color="#6366f1" onClick={() => { setTab('bookings'); setFilterStatus('new') }} />
+                <StatCard label="Reviewing"         value={stats?.reviewing}       color="#f59e0b" />
+                <StatCard label="On Van Board"      value={stats?.marketplace_live} color="#3b82f6" />
+                <StatCard label="Vans Interested"   value={stats?.vans_interested} color="#8b5cf6" />
+                <StatCard label="Confirmed"         value={stats?.confirmed}       color="#10b981" />
+                <StatCard label="Completed"         value={stats?.completed}       color="#6b7280" />
+                <StatCard label="FoodTaxi Revenue"  value={stats?.revenue_month != null ? `£${Number(stats.revenue_month).toLocaleString()}` : '—'} color="#059669" />
               </div>
 
+              {/* New requests needing action */}
+              {bookings.filter(b => b.admin_status === 'new').length > 0 && (
+                <div style={{ background: '#fff', borderRadius: 14, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', borderLeft: '4px solid #6366f1' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: '#6366f1' }}>⚡ New Requests Needing Review</div>
+                  {bookings.filter(b => b.admin_status === 'new').map(b => (
+                    <div key={b.id} onClick={() => { setTab('bookings'); setSelected(b) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: '#111' }}>{b.name}</div>
+                        <div style={{ fontSize: 12, color: '#888' }}>{b.event_date} · {b.event_type || 'Event'} · {b.event_location || 'Location TBC'}</div>
+                      </div>
+                      <Badge status="new" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div style={{ background: '#fff', borderRadius: 14, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, color: '#111' }}>Recent Bookings</div>
-                {bookings.length === 0 && <div style={{ color: '#aaa', fontSize: 14 }}>No bookings yet.</div>}
-                {bookings.slice(0,8).map(b => (
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, color: '#111' }}>All Recent Requests</div>
+                {bookings.length === 0 && <div style={{ color: '#aaa', fontSize: 14 }}>No event requests yet.</div>}
+                {bookings.slice(0,10).map(b => (
                   <div key={b.id} onClick={() => { setTab('bookings'); setSelected(b) }}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 14, color: '#111' }}>{b.name}</div>
                       <div style={{ fontSize: 12, color: '#888' }}>{b.event_date} · {b.event_type || 'Event'}</div>
                     </div>
-                    <Badge status={b.status ?? 'new'} />
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {b.urgent && <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444' }}>🔴 URGENT</span>}
+                      {b.marketplace_visible && <span style={{ fontSize: 10, color: '#3b82f6' }}>📢 LIVE</span>}
+                      <Badge status={b.admin_status ?? 'new'} />
+                    </div>
                   </div>
                 ))}
-                {bookings.length > 8 && (
+                {bookings.length > 10 && (
                   <button onClick={() => setTab('bookings')} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', color: '#6366f1', fontWeight: 600 }}>
                     View all {bookings.length} →
                   </button>
@@ -326,32 +419,31 @@ export default function AdminEventsPage() {
             </div>
           )}
 
-          {/* ── BOOKINGS ── */}
+          {/* ── REQUESTS ── */}
           {tab === 'bookings' && (
             <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                {/* Filters */}
                 <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                   <input value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
-                    placeholder="Search name, email, date…"
+                    placeholder="Search name, email, date, location…"
                     style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, flex: '1 1 180px', minWidth: 0 }} />
                   <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
                     style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}>
                     <option value="all">All Statuses</option>
-                    {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
+                    {STATUS_ORDER.map(s => <option key={s} value={s}>{ADMIN_STATUS[s].label}</option>)}
                   </select>
-                  <button onClick={exportCSV} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>↓ Export CSV</button>
+                  <button onClick={exportCSV} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>↓ CSV</button>
                   {exportMsg && <span style={{ fontSize: 12, color: '#10b981', fontWeight: 700 }}>{exportMsg}</span>}
                 </div>
 
-                <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</div>
+                <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>{filtered.length} request{filtered.length !== 1 ? 's' : ''}</div>
 
                 {filtered.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: 48, color: '#bbb', background: '#fff', borderRadius: 14 }}>No bookings found.</div>
+                  <div style={{ textAlign: 'center', padding: 48, color: '#bbb', background: '#fff', borderRadius: 14 }}>No requests found.</div>
                 )}
 
                 {filtered.map(b => {
-                  const cfg = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.new
+                  const cfg = ADMIN_STATUS[b.admin_status] ?? ADMIN_STATUS.new
                   const isSelected = selected?.id === b.id
                   return (
                     <div key={b.id} onClick={() => setSelected(isSelected ? null : b)} style={{
@@ -361,36 +453,42 @@ export default function AdminEventsPage() {
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 15, color: '#111' }}>{b.name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontWeight: 700, fontSize: 15, color: '#111' }}>{b.name}</span>
+                            {b.urgent && <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', background: '#fef2f2', padding: '1px 6px', borderRadius: 4 }}>URGENT</span>}
+                            {b.marketplace_visible && <span style={{ fontSize: 10, fontWeight: 700, color: '#3b82f6', background: '#eff6ff', padding: '1px 6px', borderRadius: 4 }}>📢 LIVE</span>}
+                          </div>
                           <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                             {b.event_date}{b.event_time ? ` · ${b.event_time}` : ''} · {b.event_type || 'Event'}
                             {b.event_location ? ` · ${b.event_location}` : ''}
                           </div>
-                          <div style={{ fontSize: 12, color: '#aaa', marginTop: 1 }}>{b.email}{b.phone ? ` · ${b.phone}` : ''}</div>
+                          <div style={{ fontSize: 12, color: '#aaa', marginTop: 1 }}>{b.email}{b.phone ? ` · ${b.phone}` : ''}{b.budget ? ` · Budget: ${b.budget}` : ''}</div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                          <Badge status={b.status ?? 'new'} />
-                          {b.total_amount && <span style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>£{b.total_amount}</span>}
+                          <Badge status={b.admin_status ?? 'new'} />
+                          {b.foodtaxi_fee && <span style={{ fontSize: 11, fontWeight: 700, color: '#059669' }}>Fee: £{b.foodtaxi_fee}</span>}
                         </div>
                       </div>
-                      {b.assigned_van && <div style={{ marginTop: 5, fontSize: 11, color: '#059669', fontWeight: 600 }}>🚐 {b.assigned_van}{b.assigned_driver ? ` · ${b.assigned_driver}` : ''}</div>}
                     </div>
                   )
                 })}
               </div>
 
-              {/* Detail side panel */}
               {selected && (
                 <div style={{
-                  width: 360, flexShrink: 0, background: '#fff', borderRadius: 14,
+                  width: 380, flexShrink: 0, background: '#fff', borderRadius: 14,
                   padding: 20, boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
                   position: 'sticky', top: 76, maxHeight: 'calc(100vh - 100px)', overflowY: 'auto',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <span style={{ fontWeight: 800, fontSize: 16, color: '#111' }}>Booking</span>
+                    <span style={{ fontWeight: 800, fontSize: 16, color: '#111' }}>Event Request</span>
                     <button onClick={() => setSelected(null)} style={{ border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: '#999', lineHeight: 1 }}>×</button>
                   </div>
-                  <DetailPanel key={selected.id} b={selected} onUpdate={updateBooking} onDelete={deleteBooking} saving={saving} />
+                  <DetailPanel
+                    key={selected.id} b={selected}
+                    onUpdate={updateBooking} onDelete={deleteBooking}
+                    saving={saving} applications={applications} loadApps={loadApps}
+                  />
                 </div>
               )}
             </div>
@@ -415,7 +513,7 @@ export default function AdminEventsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
                 {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-                  <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#aaa', padding: '6px 0', textTransform: 'uppercase' }}>{d}</div>
+                  <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#aaa', padding: '6px 0' }}>{d}</div>
                 ))}
                 {calCells.map((day, i) => {
                   if (!day) return <div key={`e${i}`} />
@@ -423,34 +521,39 @@ export default function AdminEventsPage() {
                   const dayBks = bookingsByDate[ds] ?? []
                   const blocked = blockedSet.has(ds)
                   const isToday = ds === today
+                  const confirmedCount = dayBks.filter(b => b.admin_status === 'confirmed').length
+                  const liveCount = dayBks.filter(b => b.marketplace_visible).length
                   return (
                     <div key={day} style={{
-                      minHeight: 72, borderRadius: 8, padding: '5px 6px',
-                      background: blocked ? '#fef2f2' : dayBks.length ? '#eff6ff' : '#fafafa',
+                      minHeight: 80, borderRadius: 8, padding: '5px 6px',
+                      background: blocked ? '#fef2f2' : dayBks.length > 0 ? '#eff6ff' : '#fafafa',
                       border: isToday ? '2px solid #6366f1' : '1px solid #e5e7eb',
                     }}>
-                      <div style={{ fontSize: 12, fontWeight: isToday ? 800 : 500, color: isToday ? '#6366f1' : '#555' }}>{day}</div>
+                      <div style={{ fontSize: 12, fontWeight: isToday ? 800 : 500, color: isToday ? '#6366f1' : '#555', marginBottom: 2 }}>{day}</div>
                       {blocked && <div style={{ fontSize: 9, color: '#ef4444', fontWeight: 700 }}>BLOCKED</div>}
+                      {dayBks.length > 0 && !blocked && (
+                        <div style={{ fontSize: 10, color: '#6366f1', fontWeight: 700 }}>{dayBks.length} request{dayBks.length > 1 ? 's' : ''}</div>
+                      )}
+                      {confirmedCount > 0 && <div style={{ fontSize: 9, color: '#10b981', fontWeight: 700 }}>✓ {confirmedCount} confirmed</div>}
+                      {liveCount > 0 && <div style={{ fontSize: 9, color: '#3b82f6', fontWeight: 700 }}>📢 {liveCount} live</div>}
                       {dayBks.slice(0,2).map(b => {
-                        const cfg = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.new
+                        const cfg = ADMIN_STATUS[b.admin_status] ?? ADMIN_STATUS.new
                         return (
                           <div key={b.id} title={`${b.name} — ${b.event_type || 'Event'}`}
                             onClick={() => { setTab('bookings'); setSelected(b) }}
-                            style={{ marginTop: 2, padding: '1px 5px', borderRadius: 3, fontSize: 9, fontWeight: 600,
-                              background: cfg.bg, color: cfg.color, cursor: 'pointer',
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            style={{ marginTop: 2, padding: '1px 4px', borderRadius: 3, fontSize: 9, fontWeight: 600, background: cfg.bg, color: cfg.color, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {b.name}
                           </div>
                         )
                       })}
-                      {dayBks.length > 2 && <div style={{ fontSize: 9, color: '#aaa', marginTop: 1 }}>+{dayBks.length-2}</div>}
+                      {dayBks.length > 2 && <div style={{ fontSize: 9, color: '#aaa' }}>+{dayBks.length-2}</div>}
                     </div>
                   )
                 })}
               </div>
 
               <div style={{ marginTop: 14, display: 'flex', gap: 16, fontSize: 12, color: '#777', flexWrap: 'wrap' }}>
-                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 2, marginRight: 4 }} />Has booking</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 2, marginRight: 4 }} />Has requests</span>
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 2, marginRight: 4 }} />Blocked</span>
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fff', border: '2px solid #6366f1', borderRadius: 2, marginRight: 4 }} />Today</span>
               </div>
@@ -461,11 +564,12 @@ export default function AdminEventsPage() {
           {tab === 'blocked' && (
             <div style={{ maxWidth: 600 }}>
               <div style={{ background: '#fff', borderRadius: 14, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#111', marginBottom: 14 }}>Block a Date</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#111', marginBottom: 6 }}>Block a Date</div>
+                <p style={{ fontSize: 13, color: '#888', margin: '0 0 14px' }}>Blocked dates prevent new customer requests. Existing requests are not affected.</p>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <input type="date" value={newBlock.date} onChange={e => setNewBlock(b => ({...b, date: e.target.value}))}
+                  <input type="date" value={newBlock.date} onChange={e => setNewBlock(b => ({ ...b, date: e.target.value }))}
                     style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }} />
-                  <input value={newBlock.reason} onChange={e => setNewBlock(b => ({...b, reason: e.target.value}))}
+                  <input value={newBlock.reason} onChange={e => setNewBlock(b => ({ ...b, reason: e.target.value }))}
                     placeholder="Reason (Holiday, Maintenance…)"
                     style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, flex: 1, minWidth: 0 }} />
                   <button onClick={addBlock} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
@@ -483,9 +587,7 @@ export default function AdminEventsPage() {
                       <div style={{ fontWeight: 700, fontSize: 14, color: '#ef4444' }}>{bd.blocked_date ?? bd.date}</div>
                       {bd.reason && <div style={{ fontSize: 12, color: '#888' }}>{bd.reason}</div>}
                     </div>
-                    <button onClick={() => removeBlock(bd.id)} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ef4444', background: '#fff', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                      Remove
-                    </button>
+                    <button onClick={() => removeBlock(bd.id)} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ef4444', background: '#fff', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Remove</button>
                   </div>
                 ))}
               </div>
