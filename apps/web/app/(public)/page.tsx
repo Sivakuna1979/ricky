@@ -1,11 +1,16 @@
 // @ts-nocheck
 import { Suspense } from 'react'
 import Link from 'next/link'
+import dynamicImport from 'next/dynamic'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { VanSearchBar } from '@/components/van/VanSearchBar'
-import { VanMapPublic } from '@/components/map/VanMapPublic'
 import { FeaturedVans } from '@/components/van/FeaturedVans'
+
+const VanMapPublic = dynamicImport(
+  () => import('@/components/map/VanMapPublic').then(m => m.VanMapPublic),
+  { ssr: false, loading: () => <div style={{ height: 480, background: 'rgba(255,255,255,.03)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', color: 'rgba(255,255,255,.5)' }}>🗺️ Loading map…</div> }
+)
 
 export const dynamic = 'force-dynamic'
 
