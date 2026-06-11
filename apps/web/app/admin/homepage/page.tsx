@@ -18,17 +18,7 @@ const DEFAULT_SECTIONS = [
 ]
 
 async function getSections() {
-  try {
-    const { createAdminClient } = await import('@/lib/supabase/server')
-    const supabase = await createAdminClient()
-    const { data } = await supabase.from('homepage_sections').select('*').order('position')
-    if (data?.length) return data
-    // seed defaults
-    await supabase.from('homepage_sections').upsert(DEFAULT_SECTIONS, { onConflict: 'key' })
-    return DEFAULT_SECTIONS
-  } catch {
-    return DEFAULT_SECTIONS
-  }
+  return DEFAULT_SECTIONS
 }
 
 const NAV = [
