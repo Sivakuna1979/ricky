@@ -1,15 +1,11 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
-async function getSupabase() {
+function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  // Service role bypasses RLS; fall back to anon key if not configured
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  return createServerClient(url, key, {
-    cookies: { getAll: () => [], setAll: () => {} },
-    auth: { persistSession: false },
-  })
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
 const DEFAULT_SECTIONS = [
@@ -28,17 +24,14 @@ const DEFAULT_SECTIONS = [
 
 export async function GET() {
   try {
-    const supabase = await getSupabase()
+    const supabase = getSupabase()
     const { data, error } = await supabase
       .from('homepage_sections')
       .select('*')
       .order('position')
 
     if (error || !data?.length) {
-      // Auto-seed defaults if table empty or missing
-      if (supabase) {
-        await supabase.from('homepage_sections').upsert(DEFAULT_SECTIONS, { onConflict: 'key' })
-      }
+      await supabase.from('homepage_sections').upsert(DEFAULT_SECTIONS, { onConflict: 'key' })
       return NextResponse.json(DEFAULT_SECTIONS)
     }
     return NextResponse.json(data)
@@ -53,7 +46,7 @@ export async function PATCH(req: NextRequest) {
     if (!Array.isArray(sections) || !sections.length) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
     }
-    const supabase = await getSupabase()
+    const supabase = getSupabase()
     const { error } = await supabase
       .from('homepage_sections')
       .upsert(sections, { onConflict: 'key' })
