@@ -1,76 +1,140 @@
 'use client'
 // @ts-nocheck
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 
-/* ─── Mini Calendar ──────────────────────────────────────────────── */
+/* ─── Constants ──────────────────────────────────────────────────── */
+const EVENT_TYPES = [
+  { value: 'corporate',    label: 'Corporate Event', emoji: '🏢' },
+  { value: 'wedding',      label: 'Wedding',         emoji: '💒' },
+  { value: 'birthday',     label: 'Birthday Party',  emoji: '🎂' },
+  { value: 'festival',     label: 'Festival',        emoji: '🎪' },
+  { value: 'private',      label: 'Private Party',   emoji: '🎉' },
+  { value: 'graduation',   label: 'Graduation',      emoji: '🎓' },
+  { value: 'sports',       label: 'Sporting Event',  emoji: '🏟' },
+  { value: 'market',       label: 'Street Market',   emoji: '🛒' },
+  { value: 'other',        label: 'Other',           emoji: '✨' },
+]
+
+const FOOD_TYPES = [
+  { value: 'fish_and_chips', label: '🐟 Fish & Chips' },
+  { value: 'burger',         label: '🍔 Burgers'       },
+  { value: 'pizza',          label: '🍕 Pizza'          },
+  { value: 'coffee',         label: '☕ Coffee Van'     },
+  { value: 'ice_cream',      label: '🍦 Ice Cream'      },
+  { value: 'street_food',    label: '🌮 Street Food'    },
+  { value: 'bbq',            label: '🔥 BBQ'            },
+  { value: 'dessert',        label: '🍰 Desserts'       },
+  { value: 'any',            label: '🍽️ Any / Surprise me' },
+]
+
+const STEPS = [
+  { n: 1, label: 'Event Type'   },
+  { n: 2, label: 'Pick a Date'  },
+  { n: 3, label: 'Your Details' },
+  { n: 4, label: 'Review'       },
+]
+
+/* ─── Stepper ────────────────────────────────────────────────────── */
+function Stepper({ step }: { step: number }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', marginBottom:40 }}>
+      {STEPS.map((s, i) => (
+        <div key={s.n} style={{ display:'flex', alignItems:'center' }}>
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+            <div style={{
+              width:40, height:40, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:15, fontWeight:800,
+              background: step > s.n ? '#10b981' : step === s.n ? 'linear-gradient(135deg,#f97316,#ea580c)' : 'rgba(255,255,255,0.07)',
+              color: step >= s.n ? '#fff' : 'rgba(255,255,255,0.3)',
+              border: step < s.n ? '1px solid rgba(255,255,255,0.1)' : 'none',
+              boxShadow: step === s.n ? '0 4px 18px rgba(249,115,22,0.4)' : 'none',
+              flexShrink: 0,
+            }}>
+              {step > s.n ? '✓' : s.n}
+            </div>
+            <span style={{ fontSize:11, fontWeight:600, color: step === s.n ? '#f97316' : 'rgba(255,255,255,0.3)', whiteSpace:'nowrap' }}>{s.label}</span>
+          </div>
+          {i < STEPS.length - 1 && (
+            <div style={{ width:48, height:2, background: step > s.n + 1 ? '#10b981' : step > s.n ? 'rgba(249,115,22,0.5)' : 'rgba(255,255,255,0.07)', margin:'0 8px', marginBottom:22, flexShrink:0 }} />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ─── Calendar ───────────────────────────────────────────────────── */
 function Calendar({ selected, onSelect, bookedDates, blockedDates }: {
-  selected: string
-  onSelect: (d: string) => void
-  bookedDates: string[]
-  blockedDates: string[]
+  selected: string; onSelect: (d:string)=>void; bookedDates: string[]; blockedDates: string[]
 }) {
   const today = new Date()
+  today.setHours(0,0,0,0)
   const [year,  setYear]  = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
 
-  const daysInMonth  = new Date(year, month + 1, 0).getDate()
-  const firstWeekday = new Date(year, month, 1).getDay() // 0=Sun
-  const pad = firstWeekday === 0 ? 6 : firstWeekday - 1 // Mon-first
+  const daysInMonth  = new Date(year, month+1, 0).getDate()
+  const firstWeekday = new Date(year, month, 1).getDay()
+  const pad = firstWeekday === 0 ? 6 : firstWeekday - 1
 
-  const monthName = new Date(year, month).toLocaleString('en-GB', { month: 'long', year: 'numeric' })
+  const monthLabel = new Date(year, month).toLocaleString('en-GB', { month:'long', year:'numeric' })
+  const fmt = (d:number) => `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
 
-  const prev = () => { if (month === 0) { setMonth(11); setYear(y=>y-1) } else setMonth(m=>m-1) }
-  const next = () => { if (month===11) { setMonth(0);  setYear(y=>y+1) } else setMonth(m=>m+1) }
-
-  const fmt = (d: number) => `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-
-  const cell = (d: number) => {
-    const dateStr = fmt(d)
-    const past    = new Date(dateStr) < today
-    const booked  = bookedDates.includes(dateStr)
-    const blocked = blockedDates.includes(dateStr)
-    const isSelected = dateStr === selected
-    const unavail = past || booked || blocked
-
-    let bg = 'transparent', color = '#fff', border = '1px solid transparent', cursor = 'pointer'
-    if (isSelected)   { bg='#f97316'; color='#fff'; border='1px solid #f97316' }
-    else if (unavail) { bg='rgba(239,68,68,0.12)'; color='rgba(255,255,255,0.25)'; border='1px solid rgba(239,68,68,0.2)'; cursor='default' }
-    else              { border='1px solid rgba(255,255,255,0.07)' }
-
-    return (
-      <button key={d} onClick={() => !unavail && onSelect(dateStr)}
-        title={booked?'Already booked':blocked?'Unavailable':past?'Past date':'Available'}
-        style={{ width:'100%', aspectRatio:'1', borderRadius:8, background:bg, color, border, cursor, fontSize:13, fontWeight:isSelected?800:400, position:'relative', transition:'all .15s' }}>
-        {d}
-        {(booked||blocked) && !isSelected && <span style={{ position:'absolute', bottom:3, left:'50%', transform:'translateX(-50%)', width:4, height:4, borderRadius:'50%', background:'#ef4444', display:'block' }} />}
-      </button>
-    )
-  }
+  const prev = () => { if (month===0){setMonth(11);setYear(y=>y-1)} else setMonth(m=>m-1) }
+  const next = () => { if (month===11){setMonth(0);setYear(y=>y+1)} else setMonth(m=>m+1) }
 
   return (
-    <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:20 }}>
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <button onClick={prev} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.6)', cursor:'pointer', fontSize:20, padding:'4px 8px' }}>‹</button>
-        <span style={{ fontWeight:700, fontSize:16, color:'#fff' }}>{monthName}</span>
-        <button onClick={next} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.6)', cursor:'pointer', fontSize:20, padding:'4px 8px' }}>›</button>
+    <div>
+      {/* Month nav */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <button onClick={prev} style={{ width:40, height:40, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', cursor:'pointer', fontSize:20, display:'flex', alignItems:'center', justifyContent:'center' }}>‹</button>
+        <span style={{ fontWeight:700, fontSize:17, color:'#fff' }}>{monthLabel}</span>
+        <button onClick={next} style={{ width:40, height:40, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', cursor:'pointer', fontSize:20, display:'flex', alignItems:'center', justifyContent:'center' }}>›</button>
       </div>
-      {/* Day names */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4, marginBottom:6 }}>
-        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => <div key={d} style={{ textAlign:'center', fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.35)', padding:'4px 0' }}>{d}</div>)}
+
+      {/* Day headers */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6, marginBottom:8 }}>
+        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => (
+          <div key={d} style={{ textAlign:'center', fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.35)', padding:'6px 0' }}>{d}</div>
+        ))}
       </div>
+
       {/* Days */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4 }}>
-        {Array(pad).fill(null).map((_,i)=><div key={`pad-${i}`}/>)}
-        {Array.from({length:daysInMonth},(_,i)=>i+1).map(d=>cell(d))}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6 }}>
+        {Array(pad).fill(null).map((_,i) => <div key={`e${i}`} />)}
+        {Array.from({length:daysInMonth},(_,i)=>i+1).map(d => {
+          const dateStr = fmt(d)
+          const dt      = new Date(dateStr+'T12:00:00')
+          const past    = dt < today
+          const booked  = bookedDates.includes(dateStr)
+          const blocked = blockedDates.includes(dateStr)
+          const isSel   = dateStr === selected
+          const unavail = past || booked || blocked
+
+          let bg='transparent', color='rgba(255,255,255,0.85)', border='1px solid rgba(255,255,255,0.08)', cursor='pointer', fw=400
+          if (isSel)         { bg='#f97316'; color='#fff'; border='none'; fw=800 }
+          else if (unavail)  { bg='rgba(239,68,68,0.08)'; color='rgba(255,255,255,0.2)'; border='1px solid rgba(239,68,68,0.15)'; cursor='not-allowed' }
+          else               { cursor='pointer' }
+
+          return (
+            <button key={d} onClick={()=>!unavail&&onSelect(dateStr)} title={booked||blocked?'Unavailable':past?'Past date':'Available'}
+              style={{ aspectRatio:'1', minHeight:44, borderRadius:10, background:bg, color, border, cursor, fontSize:14, fontWeight:fw, position:'relative', transition:'all .15s', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {d}
+              {(booked||blocked) && !isSel && (
+                <span style={{ position:'absolute', bottom:4, left:'50%', transform:'translateX(-50%)', width:4, height:4, borderRadius:'50%', background:'#ef4444', display:'block' }} />
+              )}
+            </button>
+          )
+        })}
       </div>
+
       {/* Legend */}
-      <div style={{ display:'flex', gap:16, marginTop:14, flexWrap:'wrap' }}>
-        {[['#f97316','Selected'],['rgba(239,68,68,0.5)','Unavailable'],['rgba(255,255,255,0.15)','Available']].map(([c,l])=>(
-          <div key={l} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'rgba(255,255,255,0.45)' }}>
-            <span style={{ width:10,height:10,borderRadius:3,background:c,display:'inline-block' }}/>{l}
+      <div style={{ display:'flex', gap:16, marginTop:16, flexWrap:'wrap' }}>
+        {[['#f97316','Selected'],['rgba(239,68,68,0.6)','Unavailable'],['rgba(255,255,255,0.15)','Available']].map(([c,l])=>(
+          <div key={l} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'rgba(255,255,255,0.4)' }}>
+            <span style={{ width:10, height:10, borderRadius:3, background:c, display:'inline-block', flexShrink:0 }} />{l}
           </div>
         ))}
       </div>
@@ -78,181 +142,288 @@ function Calendar({ selected, onSelect, bookedDates, blockedDates }: {
   )
 }
 
-/* ─── Booking Form ───────────────────────────────────────────────── */
-function BookingForm({ selectedDate, onDateChange, bookedDates, blockedDates }: {
-  selectedDate: string
-  onDateChange: (d:string) => void
-  bookedDates: string[]
-  blockedDates: string[]
-}) {
-  const [form, setForm] = useState({ name:'', phone:'', email:'', event_time:'', event_location:'', num_guests:'', notes:'', preferred_van:'' })
-  const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState('')
-  const [error,   setError]   = useState('')
-
-  const set = (k:string) => (e:any) => setForm(f=>({...f,[k]:e.target.value}))
-
-  const submit = async (e:any) => {
-    e.preventDefault()
-    if (!selectedDate) { setError('Please select a date from the calendar'); return }
-    if (!form.name||!form.email) { setError('Name and email are required'); return }
-    setLoading(true); setError(''); setSuccess('')
-    try {
-      const res = await fetch('/api/events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ...form, event_date:selectedDate }) })
-      const d = await res.json()
-      if (!res.ok) setError(d.error ?? 'Submission failed')
-      else { setSuccess(d.message ?? 'Booking submitted!'); setForm({ name:'',phone:'',email:'',event_time:'',event_location:'',num_guests:'',notes:'',preferred_van:'' }) }
-    } catch { setError('Network error — please try again') }
-    finally { setLoading(false) }
-  }
-
-  const inp: React.CSSProperties = { width:'100%', padding:'12px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.06)', color:'#fff', fontSize:14, outline:'none', boxSizing:'border-box' }
-  const lbl: React.CSSProperties = { display:'block', fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.5)', marginBottom:6 }
-  const grp = (label:string, children:React.ReactNode, required=false) => (
-    <div style={{ marginBottom:16 }}>
-      <label style={lbl}>{label}{required&&<span style={{color:'#f97316'}}> *</span>}</label>
+/* ─── Field component ────────────────────────────────────────────── */
+const INP: React.CSSProperties = {
+  width:'100%', padding:'14px 16px', borderRadius:12,
+  border:'1px solid rgba(255,255,255,0.1)',
+  background:'rgba(255,255,255,0.06)',
+  color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box',
+}
+const LBL: React.CSSProperties = {
+  display:'block', fontSize:13, fontWeight:700,
+  color:'rgba(255,255,255,0.55)', marginBottom:7,
+}
+function Field({ label, required, children }: { label:string; required?:boolean; children:React.ReactNode }) {
+  return (
+    <div style={{ marginBottom:18 }}>
+      <label style={LBL}>{label}{required&&<span style={{color:'#f97316'}}> *</span>}</label>
       {children}
     </div>
-  )
-
-  return (
-    <form onSubmit={submit}>
-      {success && (
-        <div style={{ background:'rgba(16,185,129,0.12)', border:'1px solid rgba(16,185,129,0.3)', borderRadius:12, padding:'16px 18px', marginBottom:20, color:'#6ee7b7', fontSize:14, lineHeight:1.6 }}>
-          ✅ {success}
-        </div>
-      )}
-      {error && (
-        <div style={{ background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:12, padding:'12px 16px', marginBottom:20, color:'#f87171', fontSize:13 }}>
-          ⚠ {error}
-        </div>
-      )}
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        {grp('Your Name', <input style={inp} value={form.name} onChange={set('name')} placeholder="John Smith" />, true)}
-        {grp('Phone Number', <input style={inp} type="tel" value={form.phone} onChange={set('phone')} placeholder="07700 900000" />)}
-      </div>
-      {grp('Email Address', <input style={inp} type="email" value={form.email} onChange={set('email')} placeholder="john@example.com" />, true)}
-
-      <div style={{ marginBottom:20, padding:'14px 16px', background:'rgba(249,115,22,0.08)', border:'1px solid rgba(249,115,22,0.2)', borderRadius:12 }}>
-        <div style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.5)', marginBottom:6 }}>SELECTED DATE *</div>
-        <div style={{ fontSize:18, fontWeight:800, color: selectedDate?'#f97316':'rgba(255,255,255,0.3)' }}>
-          {selectedDate ? new Date(selectedDate+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : 'No date selected — pick one from the calendar'}
-        </div>
-        {selectedDate && <button type="button" onClick={()=>onDateChange('')} style={{ marginTop:6, background:'none', border:'none', color:'rgba(255,255,255,0.35)', fontSize:12, cursor:'pointer', padding:0 }}>✕ Clear date</button>}
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        {grp('Event Time', <input style={inp} type="time" value={form.event_time} onChange={set('event_time')} />)}
-        {grp('Number of Guests', <input style={inp} type="number" min="1" value={form.num_guests} onChange={set('num_guests')} placeholder="50" />)}
-      </div>
-      {grp('Event Location / Venue', <input style={inp} value={form.event_location} onChange={set('event_location')} placeholder="123 High Street, London SW1A 1AA" />)}
-      {grp('Preferred Food Van (optional)', (
-        <input style={inp} value={form.preferred_van} onChange={set('preferred_van')} placeholder="e.g. Smith's Fish & Chips, any burger van…" />
-      ))}
-      {grp('Additional Notes', (
-        <textarea style={{...inp, minHeight:90, resize:'vertical'}} value={form.notes} onChange={set('notes')} placeholder="Tell us about your event, dietary requirements, theme…" />
-      ))}
-
-      <button type="submit" disabled={loading||!selectedDate} style={{ width:'100%', padding:'15px', borderRadius:14, border:'none', background:(loading||!selectedDate)?'rgba(249,115,22,0.35)':'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontWeight:800, fontSize:16, cursor:(loading||!selectedDate)?'not-allowed':'pointer', boxShadow:(loading||!selectedDate)?'none':'0 4px 20px rgba(249,115,22,0.4)', marginTop:8 }}>
-        {loading ? 'Submitting…' : '🚐 Request Event Booking'}
-      </button>
-      <p style={{ fontSize:11, color:'rgba(255,255,255,0.25)', textAlign:'center', marginTop:12 }}>
-        We'll contact you within 24 hours to confirm your booking and discuss details.
-      </p>
-    </form>
   )
 }
 
 /* ─── Page ───────────────────────────────────────────────────────── */
 export default function EventsPage() {
+  const [step,         setStep]         = useState(1)
+  const [eventType,    setEventType]    = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [bookedDates,  setBooked]       = useState<string[]>([])
   const [blockedDates, setBlocked]      = useState<string[]>([])
+  const [loading,      setLoading]      = useState(false)
+  const [success,      setSuccess]      = useState(false)
+  const [error,        setError]        = useState('')
+  const [form, setForm] = useState({
+    name:'', phone:'', email:'', event_time:'', event_location:'',
+    num_guests:'', food_type:'', preferred_van:'', notes:'',
+  })
 
   useEffect(() => {
-    fetch('/api/events')
-      .then(r=>r.json())
-      .then(d => {
-        setBooked(d.booked_dates ?? [])
-        setBlocked((d.blocked_dates ?? []).map((b:any)=>b.date))
-      })
-      .catch(()=>{})
+    fetch('/api/events').then(r=>r.json()).then(d=>{
+      setBooked(d.booked_dates??[])
+      setBlocked((d.blocked_dates??[]).map((b:any)=>b.date??b))
+    }).catch(()=>{})
   }, [])
 
-  return (
+  const set = (k:string) => (e:any) => setForm(f=>({...f,[k]:e.target.value}))
+
+  const submit = async () => {
+    if (!form.name||!form.email) { setError('Name and email are required'); return }
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/events', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ ...form, event_date:selectedDate, event_type:eventType }),
+      })
+      const d = await res.json()
+      if (!res.ok) setError(d.error??'Submission failed')
+      else setSuccess(true)
+    } catch { setError('Network error — please try again') }
+    finally { setLoading(false) }
+  }
+
+  const dateLabel = selectedDate
+    ? new Date(selectedDate+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})
+    : 'Not selected'
+
+  /* ── Success screen ── */
+  if (success) return (
     <>
       <Navbar />
-      <main style={{ background:'#080c18', minHeight:'100vh' }}>
-        {/* Hero */}
-        <section style={{ background:'linear-gradient(160deg,#0a0f1e 0%,#080c18 100%)', borderBottom:'1px solid rgba(255,255,255,0.06)', padding:'56px 16px 44px' }}>
-          <div style={{ maxWidth:700, margin:'0 auto', textAlign:'center' }}>
-            <div style={{ fontSize:48, marginBottom:12 }}>🎪</div>
-            <h1 style={{ fontSize:34, fontWeight:900, color:'#fff', margin:'0 0 12px', letterSpacing:'-0.03em' }}>
-              Book a Food Van for Your Event
-            </h1>
-            <p style={{ fontSize:15, color:'rgba(255,255,255,0.45)', margin:'0 0 8px', lineHeight:1.7 }}>
-              Corporate events · Weddings · Festivals · Private parties · Street markets
-            </p>
-            <p style={{ fontSize:13, color:'rgba(255,255,255,0.3)', margin:0 }}>
-              Pick your date, fill in the form and we'll match you with the perfect food van.
-            </p>
-          </div>
-        </section>
-
-        {/* Types */}
-        <section style={{ padding:'32px 16px 0', maxWidth:900, margin:'0 auto' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
-            {[['🎪','Festivals'],['💒','Weddings'],['🏢','Corporate'],['🎉','Private Parties'],['🎓','Graduation'],['🏟','Sporting Events'],['🛒','Street Markets'],['🎂','Birthdays']].map(([e,l])=>(
-              <div key={l} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:14, padding:'16px 12px', textAlign:'center' }}>
-                <div style={{ fontSize:26, marginBottom:6 }}>{e}</div>
-                <div style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.55)' }}>{l}</div>
+      <main style={{ background:'#080c18', minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:'20px 16px' }}>
+        <div style={{ maxWidth:520, width:'100%', textAlign:'center' }}>
+          <div style={{ width:80, height:80, borderRadius:'50%', background:'rgba(16,185,129,0.15)', border:'2px solid rgba(16,185,129,0.35)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, margin:'0 auto 24px' }}>✅</div>
+          <h1 style={{ fontSize:28, fontWeight:900, color:'#fff', margin:'0 0 12px', letterSpacing:'-0.02em' }}>Booking Request Sent!</h1>
+          <p style={{ fontSize:16, color:'rgba(255,255,255,0.5)', lineHeight:1.7, margin:'0 0 8px' }}>We received your event booking request.</p>
+          <p style={{ fontSize:15, color:'rgba(255,255,255,0.4)', lineHeight:1.7, margin:'0 0 32px' }}>FoodTaxi will contact you within 24 hours to confirm your booking and discuss all the details.</p>
+          <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:'20px 24px', marginBottom:32, textAlign:'left' }}>
+            {[['📅 Date', dateLabel],['🎪 Event',EVENT_TYPES.find(e=>e.value===eventType)?.label??eventType],['👤 Name',form.name],['✉️ Email',form.email]].filter(([,v])=>v).map(([k,v])=>(
+              <div key={k as string} style={{ display:'flex', gap:12, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:14 }}>
+                <span style={{ color:'rgba(255,255,255,0.4)', minWidth:90 }}>{k}</span>
+                <span style={{ color:'#fff', fontWeight:600 }}>{v}</span>
               </div>
             ))}
           </div>
-        </section>
+          <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
+            <Link href="/" style={{ padding:'13px 28px', borderRadius:12, background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontWeight:800, fontSize:15, textDecoration:'none' }}>Back to Home</Link>
+            <Link href="/search" style={{ padding:'13px 28px', borderRadius:12, border:'1px solid rgba(255,255,255,0.15)', background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.7)', fontWeight:700, fontSize:15, textDecoration:'none' }}>Find Food Vans</Link>
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </>
+  )
 
-        {/* Calendar + Form */}
-        <section style={{ padding:'32px 16px 60px', maxWidth:1000, margin:'0 auto' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(0,1.4fr)', gap:24, alignItems:'start' }}>
-            {/* Calendar */}
-            <div>
-              <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 14px' }}>1. Pick Your Date</h2>
-              <Calendar
-                selected={selectedDate}
-                onSelect={setSelectedDate}
-                bookedDates={bookedDates}
-                blockedDates={blockedDates}
-              />
-              <div style={{ marginTop:16, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:12, padding:'14px 16px' }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.4)', marginBottom:8 }}>WHY FOODTAXI EVENTS?</div>
-                {['Vetted & insured food vans','Flexible menus for any dietary need','Live GPS tracking on the day','Easy online payment','Dedicated event manager'].map(f=>(
-                  <div key={f} style={{ display:'flex', gap:8, alignItems:'center', fontSize:13, color:'rgba(255,255,255,0.55)', marginBottom:5 }}>
-                    <span style={{ color:'#10b981', fontSize:14 }}>✓</span>{f}
-                  </div>
-                ))}
-              </div>
-            </div>
+  return (
+    <>
+      <style>{`
+        *,*::before,*::after{box-sizing:border-box}
+        body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+        .ev-type-card{transition:all .18s;cursor:pointer}
+        .ev-type-card:hover{transform:translateY(-3px)}
+        @media(max-width:600px){
+          .ev-two-col{grid-template-columns:1fr!important}
+          .ev-type-grid{grid-template-columns:repeat(3,1fr)!important}
+        }
+      `}</style>
+      <Navbar />
+      <main style={{ background:'#080c18', minHeight:'100vh' }}>
 
-            {/* Form */}
-            <div>
-              <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 14px' }}>2. Your Event Details</h2>
-              <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:'24px 22px' }}>
-                <BookingForm selectedDate={selectedDate} onDateChange={setSelectedDate} bookedDates={bookedDates} blockedDates={blockedDates} />
-              </div>
+        {/* Hero */}
+        <section style={{ background:'linear-gradient(160deg,#0a0f1e 0%,#080c18 100%)', borderBottom:'1px solid rgba(255,255,255,0.06)', padding:'56px 16px 48px' }}>
+          <div style={{ maxWidth:680, margin:'0 auto', textAlign:'center' }}>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:20, background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.25)', fontSize:12, fontWeight:700, color:'#f97316', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:20 }}>🎪 Event Catering</div>
+            <h1 style={{ fontSize:'clamp(1.8rem,5vw,2.8rem)', fontWeight:900, color:'#fff', margin:'0 0 14px', letterSpacing:'-0.03em', lineHeight:1.1 }}>
+              Book a Food Van<br />for Your Event
+            </h1>
+            <p style={{ fontSize:15, color:'rgba(255,255,255,0.45)', margin:'0 0 8px', lineHeight:1.7 }}>
+              Weddings · Festivals · Corporate Events · Private Parties
+            </p>
+            <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', gap:20, marginTop:24 }}>
+              {[['✅','Free to enquire'],['🔒','No payment upfront'],['24h','Fast response']].map(([icon,label])=>(
+                <div key={label} style={{ display:'flex', alignItems:'center', gap:7, fontSize:13, fontWeight:600, color:'rgba(255,255,255,0.5)' }}>
+                  <span style={{ fontSize:14 }}>{icon}</span>{label}
+                </div>
+              ))}
             </div>
           </div>
         </section>
-      </main>
 
-      {/* Responsive calendar-on-top for mobile */}
-      <style>{`
-        @media(max-width:700px){
-          section div[style*="grid-template-columns:minmax(0,1fr) minmax(0,1.4fr)"] {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
+        {/* Booking wizard */}
+        <section style={{ padding:'40px 16px 80px', maxWidth:780, margin:'0 auto' }}>
+          <Stepper step={step} />
+
+          {/* ── Step 1: Event type ── */}
+          {step===1 && (
+            <div>
+              <h2 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:'0 0 6px' }}>What type of event is it?</h2>
+              <p style={{ fontSize:14, color:'rgba(255,255,255,0.4)', margin:'0 0 28px' }}>Select the option that best describes your event</p>
+              <div className="ev-type-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+                {EVENT_TYPES.map(t => (
+                  <button key={t.value} className="ev-type-card" onClick={()=>setEventType(t.value)}
+                    style={{ padding:'22px 12px', borderRadius:16, border:`2px solid ${eventType===t.value?'#f97316':'rgba(255,255,255,0.08)'}`, background:eventType===t.value?'rgba(249,115,22,0.12)':'rgba(255,255,255,0.03)', cursor:'pointer', textAlign:'center' }}>
+                    <div style={{ fontSize:28, marginBottom:8 }}>{t.emoji}</div>
+                    <div style={{ fontSize:13, fontWeight:700, color:eventType===t.value?'#f97316':'rgba(255,255,255,0.75)', lineHeight:1.3 }}>{t.label}</div>
+                  </button>
+                ))}
+              </div>
+              <div style={{ marginTop:32 }}>
+                <button onClick={()=>eventType&&setStep(2)} disabled={!eventType}
+                  style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background:eventType?'linear-gradient(135deg,#f97316,#ea580c)':'rgba(255,255,255,0.07)', color:eventType?'#fff':'rgba(255,255,255,0.3)', fontWeight:800, fontSize:16, cursor:eventType?'pointer':'not-allowed', boxShadow:eventType?'0 4px 24px rgba(249,115,22,0.35)':'none' }}>
+                  Next — Pick a Date →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Date ── */}
+          {step===2 && (
+            <div>
+              <h2 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:'0 0 6px' }}>When is your event?</h2>
+              <p style={{ fontSize:14, color:'rgba(255,255,255,0.4)', margin:'0 0 28px' }}>Red dates are already booked or unavailable</p>
+              <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:20, padding:'24px 20px' }}>
+                <Calendar selected={selectedDate} onSelect={setSelectedDate} bookedDates={bookedDates} blockedDates={blockedDates} />
+              </div>
+              {selectedDate && (
+                <div style={{ marginTop:16, padding:'14px 18px', background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.25)', borderRadius:12 }}>
+                  <span style={{ fontSize:14, fontWeight:700, color:'#f97316' }}>✓ Selected: </span>
+                  <span style={{ fontSize:14, color:'#fff', fontWeight:600 }}>{dateLabel}</span>
+                </div>
+              )}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:24 }}>
+                <button onClick={()=>setStep(1)} style={{ padding:'15px', borderRadius:13, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', fontWeight:700, fontSize:15, cursor:'pointer' }}>← Back</button>
+                <button onClick={()=>selectedDate&&setStep(3)} disabled={!selectedDate}
+                  style={{ padding:'15px', borderRadius:13, border:'none', background:selectedDate?'linear-gradient(135deg,#f97316,#ea580c)':'rgba(255,255,255,0.07)', color:selectedDate?'#fff':'rgba(255,255,255,0.3)', fontWeight:800, fontSize:15, cursor:selectedDate?'pointer':'not-allowed', boxShadow:selectedDate?'0 4px 20px rgba(249,115,22,0.35)':'none' }}>
+                  Next — Your Details →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Details ── */}
+          {step===3 && (
+            <div>
+              <h2 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:'0 0 6px' }}>Tell us about your event</h2>
+              <p style={{ fontSize:14, color:'rgba(255,255,255,0.4)', margin:'0 0 28px' }}>We'll use these details to match you with the perfect food van</p>
+
+              <div className="ev-two-col" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                <Field label="Full Name" required>
+                  <input style={INP} value={form.name} onChange={set('name')} placeholder="Your full name" />
+                </Field>
+                <Field label="Phone Number">
+                  <input style={INP} type="tel" value={form.phone} onChange={set('phone')} placeholder="Your phone number" />
+                </Field>
+              </div>
+
+              <Field label="Email Address" required>
+                <input style={INP} type="email" value={form.email} onChange={set('email')} placeholder="Your email address" />
+              </Field>
+
+              <div className="ev-two-col" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                <Field label="Event Start Time">
+                  <input style={INP} type="time" value={form.event_time} onChange={set('event_time')} />
+                </Field>
+                <Field label="Number of Guests">
+                  <input style={INP} type="number" min="1" value={form.num_guests} onChange={set('num_guests')} placeholder="Approx. number of guests" />
+                </Field>
+              </div>
+
+              <Field label="Event Location / Venue Address">
+                <input style={INP} value={form.event_location} onChange={set('event_location')} placeholder="Venue name, address or postcode" />
+              </Field>
+
+              <Field label="Preferred Food Type">
+                <select style={{...INP, cursor:'pointer'}} value={form.food_type} onChange={set('food_type')}>
+                  <option value="" style={{background:'#0a0f1e'}}>Select preferred food type…</option>
+                  {FOOD_TYPES.map(f=><option key={f.value} value={f.value} style={{background:'#0a0f1e'}}>{f.label}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Preferred Van (optional)">
+                <input style={INP} value={form.preferred_van} onChange={set('preferred_van')} placeholder="Name of a specific van, or leave blank" />
+              </Field>
+
+              <Field label="Notes / Special Requirements">
+                <textarea style={{...INP, minHeight:110, resize:'vertical'}} value={form.notes} onChange={set('notes')} placeholder="Dietary requirements, theme, access details, timings, anything else we should know…" />
+              </Field>
+
+              {error && <div style={{ padding:'12px 16px', borderRadius:12, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.25)', color:'#f87171', fontSize:13, marginBottom:16 }}>⚠ {error}</div>}
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:8 }}>
+                <button onClick={()=>setStep(2)} style={{ padding:'15px', borderRadius:13, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', fontWeight:700, fontSize:15, cursor:'pointer' }}>← Back</button>
+                <button onClick={()=>{if(!form.name||!form.email){setError('Name and email are required');return}setError('');setStep(4)}}
+                  style={{ padding:'15px', borderRadius:13, border:'none', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontWeight:800, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(249,115,22,0.35)' }}>
+                  Review Booking →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 4: Review & Submit ── */}
+          {step===4 && (
+            <div>
+              <h2 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:'0 0 6px' }}>Review your booking</h2>
+              <p style={{ fontSize:14, color:'rgba(255,255,255,0.4)', margin:'0 0 28px' }}>Check everything looks correct before submitting</p>
+
+              <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.09)', borderRadius:20, padding:'24px', marginBottom:24 }}>
+                {[
+                  ['🎪 Event Type',    EVENT_TYPES.find(e=>e.value===eventType)?.label ?? eventType],
+                  ['📅 Date',          dateLabel],
+                  ['🕐 Time',          form.event_time || 'Not specified'],
+                  ['👤 Name',          form.name],
+                  ['📧 Email',         form.email],
+                  ['📱 Phone',         form.phone || 'Not provided'],
+                  ['📍 Location',      form.event_location || 'Not specified'],
+                  ['👥 Guests',        form.num_guests || 'Not specified'],
+                  ['🍽 Food Type',     FOOD_TYPES.find(f=>f.value===form.food_type)?.label || 'Any'],
+                  ['🚐 Preferred Van', form.preferred_van || 'No preference'],
+                  ['💬 Notes',         form.notes || 'None'],
+                ].map(([k,v])=>(
+                  <div key={k as string} style={{ display:'flex', gap:16, padding:'11px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', alignItems:'flex-start' }}>
+                    <span style={{ fontSize:13, color:'rgba(255,255,255,0.4)', minWidth:130, flexShrink:0, lineHeight:1.5 }}>{k}</span>
+                    <span style={{ fontSize:14, color:'#fff', fontWeight:600, lineHeight:1.5 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background:'rgba(249,115,22,0.07)', border:'1px solid rgba(249,115,22,0.18)', borderRadius:14, padding:'14px 18px', marginBottom:24 }}>
+                <p style={{ fontSize:13, color:'rgba(255,255,255,0.5)', margin:0, lineHeight:1.7 }}>
+                  By submitting this request you agree to be contacted by FoodTaxi. No payment is taken at this stage — we'll confirm availability and discuss details with you first.
+                </p>
+              </div>
+
+              {error && <div style={{ padding:'12px 16px', borderRadius:12, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.25)', color:'#f87171', fontSize:13, marginBottom:16 }}>⚠ {error}</div>}
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
+                <button onClick={()=>setStep(3)} style={{ padding:'16px', borderRadius:13, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', fontWeight:700, fontSize:15, cursor:'pointer' }}>← Edit</button>
+                <button onClick={submit} disabled={loading}
+                  style={{ padding:'16px', borderRadius:13, border:'none', background:loading?'rgba(249,115,22,0.4)':'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontWeight:800, fontSize:16, cursor:loading?'wait':'pointer', boxShadow:loading?'none':'0 4px 24px rgba(249,115,22,0.4)' }}>
+                  {loading ? '⏳ Submitting…' : '🚐 Submit Booking Request'}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
       <Footer />
     </>
   )

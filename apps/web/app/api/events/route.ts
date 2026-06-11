@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const { name, phone, email, event_date, event_time, event_location, num_guests, notes, preferred_van } = body
+  const { name, phone, email, event_date, event_time, event_location, num_guests, notes, preferred_van, event_type, food_type } = body
 
   if (!name || !email || !event_date) {
     return NextResponse.json({ error: 'name, email and event_date are required' }, { status: 400 })
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await db
     .from('event_bookings')
-    .insert({ name, phone, email, event_date, event_time, event_location, num_guests: num_guests ? parseInt(num_guests) : null, notes, preferred_van, status: 'pending' })
+    .insert({ name, phone, email, event_date, event_time, event_location, num_guests: num_guests ? parseInt(num_guests) : null, notes, preferred_van, event_type: event_type || null, food_type: food_type || null, status: 'pending' })
     .select('id')
     .single()
 
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     if (error.message.includes('event_bookings') || error.message.includes('relation')) {
       return NextResponse.json({
         error: 'Run the SQL migration first.',
-        sql: `create table if not exists event_bookings (id uuid primary key default gen_random_uuid(), name text not null, phone text, email text not null, event_date date not null, event_time text, event_location text, num_guests integer, notes text, preferred_van text, status text default 'pending', assigned_van_id uuid, created_at timestamptz default now());\ncreate table if not exists event_blocked_dates (id uuid primary key default gen_random_uuid(), blocked_date date not null unique, reason text, created_at timestamptz default now());`,
+        sql: `create table if not exists event_bookings (id uuid primary key default gen_random_uuid(), name text not null, phone text, email text not null, event_type text, event_date date not null, event_time text, event_location text, num_guests integer, food_type text, notes text, preferred_van text, status text default 'pending', admin_notes text, assigned_van_id uuid, created_at timestamptz default now());\ncreate table if not exists event_blocked_dates (id uuid primary key default gen_random_uuid(), blocked_date date not null unique, reason text, created_at timestamptz default now());\n-- If tables already exist, add missing columns:\nalter table event_bookings add column if not exists event_type text;\nalter table event_bookings add column if not exists food_type text;\nalter table event_bookings add column if not exists admin_notes text;`,
       }, { status: 500 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })

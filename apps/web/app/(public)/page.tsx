@@ -301,6 +301,79 @@ function SectionTestimonials() {
   )
 }
 
+function SectionEvents() {
+  const types = [
+    { emoji:'🏢', label:'Corporate Events' }, { emoji:'💒', label:'Weddings'        },
+    { emoji:'🎂', label:'Birthdays'         }, { emoji:'🎪', label:'Festivals'       },
+    { emoji:'🎉', label:'Private Parties'   }, { emoji:'🏟', label:'Sporting Events' },
+    { emoji:'🛒', label:'Street Markets'    }, { emoji:'🎓', label:'Graduation'       },
+  ]
+  return (
+    <section id="book-event" style={{ padding:'88px 20px', background:'linear-gradient(160deg,rgba(10,15,30,0.8) 0%,rgba(8,12,24,0.95) 100%)', borderTop:'1px solid rgba(255,255,255,0.06)', position:'relative', overflow:'hidden' }}>
+      <div style={{ position:'absolute', top:'-10%', right:'-5%', width:500, height:500, borderRadius:'50%', background:'radial-gradient(circle,rgba(249,115,22,0.1) 0%,transparent 65%)', pointerEvents:'none' }} />
+      <div style={{ maxWidth:1100, margin:'0 auto', position:'relative' }}>
+        <div style={{ textAlign:'center', marginBottom:52 }}>
+          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:10 }}>Event catering</p>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:900, color:'#fff', letterSpacing:'-0.03em', margin:'0 0 16px' }}>
+            Book a Food Van for Your Event
+          </h2>
+          <p style={{ fontSize:16, color:'rgba(255,255,255,0.45)', maxWidth:560, margin:'0 auto 0', lineHeight:1.7 }}>
+            From intimate birthday parties to large corporate events and festivals — FoodTaxi matches you with the perfect food van.
+          </p>
+        </div>
+
+        {/* Event types grid */}
+        <div className="ft-cat-grid" style={{ marginBottom:48 }}>
+          {types.map(t=>(
+            <Link key={t.label} href="/events" className="ft-card" style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 12px 20px', borderRadius:18, textDecoration:'none', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', boxShadow:'0 0 20px rgba(249,115,22,0.04)' }}>
+              <span style={{ fontSize:'2.2rem', marginBottom:10, filter:'drop-shadow(0 4px 8px rgba(0,0,0,0.4))' }}>{t.emoji}</span>
+              <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.75)', textAlign:'center', lineHeight:1.3 }}>{t.label}</span>
+            </Link>
+          ))}
+        </div>
+
+        {/* Features + CTA */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:32, alignItems:'center' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            {[
+              ['✅', 'Free to enquire — no payment upfront'],
+              ['🚐', 'Access to 2,400+ vetted food vans across the UK'],
+              ['📋', 'Custom menus for any dietary requirement'],
+              ['📍', 'Live GPS tracking on your event day'],
+              ['24h', 'Response within 24 hours of your request'],
+              ['⭐', '200+ events successfully catered'],
+            ].map(([icon,text])=>(
+              <div key={text} style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:'rgba(249,115,22,0.12)', border:'1px solid rgba(249,115,22,0.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>{icon}</div>
+                <span style={{ fontSize:14, color:'rgba(255,255,255,0.65)', fontWeight:500 }}>{text}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(249,115,22,0.2)', borderRadius:24, padding:'40px 32px', boxShadow:'0 0 60px rgba(249,115,22,0.1)' }}>
+              <div style={{ fontSize:48, marginBottom:16 }}>🎪</div>
+              <h3 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>Ready to Book?</h3>
+              <p style={{ fontSize:14, color:'rgba(255,255,255,0.45)', margin:'0 0 28px', lineHeight:1.6 }}>
+                Tell us your event details and we'll find the perfect food van for your special occasion.
+              </p>
+              <Link href="/events" style={{ display:'block', padding:'16px 24px', borderRadius:14, background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontWeight:800, fontSize:16, textDecoration:'none', boxShadow:'0 4px 24px rgba(249,115,22,0.4)', marginBottom:12 }}>
+                🚐 Book Your Event Van
+              </Link>
+              <p style={{ fontSize:12, color:'rgba(255,255,255,0.3)', margin:0 }}>Free to enquire · No card required</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @media(max-width:700px){
+          #book-event div[style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
+        }
+      `}</style>
+    </section>
+  )
+}
+
 function SectionCTA() {
   return (
     <section style={{ padding:'100px 20px', position:'relative', overflow:'hidden', background:'linear-gradient(135deg,#080e1e 0%,#152040 50%,#080e1e 100%)' }}>
@@ -332,12 +405,13 @@ const SECTION_MAP: Record<string, () => any> = {
   map:          SectionMap,
   how:          SectionHow,
   popular:      SectionPopular,
+  events:       SectionEvents,
   pricing:      SectionPricing,
   testimonials: SectionTestimonials,
   cta:          SectionCTA,
 }
 
-const DEFAULT_ORDER = ['hero','stats','categories','vans_live','map','how','popular','pricing','testimonials','cta']
+const DEFAULT_ORDER = ['hero','stats','categories','vans_live','map','how','popular','events','pricing','testimonials','cta']
 
 // ─── page ──────────────────────────────────────────────────────────────────
 
