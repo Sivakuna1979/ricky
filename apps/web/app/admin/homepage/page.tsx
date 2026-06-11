@@ -11,9 +11,10 @@ const DEFAULT_SECTIONS = [
   { key: 'map',          title: 'Live Map',        position: 5,  visible: true },
   { key: 'how',          title: 'How It Works',    position: 6,  visible: true },
   { key: 'popular',      title: 'Popular Vans',    position: 7,  visible: true },
-  { key: 'pricing',      title: 'Pricing Plans',   position: 8,  visible: true },
-  { key: 'testimonials', title: 'Testimonials',    position: 9,  visible: true },
-  { key: 'cta',          title: 'Call to Action',  position: 10, visible: true },
+  { key: 'events',       title: 'Event Catering',  position: 8,  visible: true },
+  { key: 'pricing',      title: 'Pricing Plans',   position: 9,  visible: true },
+  { key: 'testimonials', title: 'Testimonials',    position: 10, visible: true },
+  { key: 'cta',          title: 'Call to Action',  position: 11, visible: true },
 ]
 
 async function getSections() {

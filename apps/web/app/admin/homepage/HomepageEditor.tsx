@@ -12,6 +12,7 @@ const ICONS: Record<string, string> = {
   map:          '🗺️',
   how:          '📋',
   popular:      '⭐',
+  events:       '🎪',
   pricing:      '💰',
   testimonials: '💬',
   cta:          '🚀',
