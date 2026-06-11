@@ -1,6 +1,6 @@
 'use client'
 // @ts-nocheck
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 type Section = { key: string; title: string; position: number; visible: boolean }
 
@@ -18,13 +18,19 @@ const ICONS: Record<string, string> = {
   cta:          '🚀',
 }
 
+const STORAGE_KEY = 'foodtaxi_homepage_sections'
+
 export function HomepageEditor({ initial }: { initial: Section[] }) {
-  const [sections, setSections] = useState<Section[]>(
-    [...initial].sort((a, b) => a.position - b.position)
-  )
-  const [saving, setSaving] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'saved' | 'error'>('idle')
-  const [errorMsg, setErrorMsg] = useState('')
+  const [sections, setSections] = useState<Section[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) return JSON.parse(saved)
+      } catch {}
+    }
+    return [...initial].sort((a, b) => a.position - b.position)
+  })
+  const [status, setStatus] = useState<'idle' | 'saved'>('idle')
 
   function move(index: number, dir: -1 | 1) {
     const next = [...sections]
@@ -42,30 +48,12 @@ export function HomepageEditor({ initial }: { initial: Section[] }) {
     setStatus('idle')
   }
 
-  async function save() {
-    setSaving(true)
-    setStatus('idle')
-    setErrorMsg('')
+  function save() {
     try {
-      const res = await fetch('/api/admin/homepage-sections', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sections),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setStatus('saved')
-        setTimeout(() => setStatus('idle'), 3000)
-      } else {
-        setStatus('error')
-        setErrorMsg(body.error ?? `Server error ${res.status}`)
-      }
-    } catch (e: any) {
-      setStatus('error')
-      setErrorMsg(e.message ?? 'Network error')
-    } finally {
-      setSaving(false)
-    }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sections))
+      setStatus('saved')
+      setTimeout(() => setStatus('idle'), 3000)
+    } catch {}
   }
 
   return (
@@ -75,32 +63,12 @@ export function HomepageEditor({ initial }: { initial: Section[] }) {
           <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Homepage Sections</h1>
           <p style={{ fontSize:13, color:'rgba(255,255,255,.4)', margin:0 }}>Reorder with ↑↓ and toggle visibility. Press Save — homepage updates live.</p>
         </div>
-        <button onClick={save} disabled={saving}
-          style={{ background: saving ? 'rgba(251,191,36,.4)' : status === 'saved' ? 'rgba(16,185,129,.8)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#0a0a14', border:'none', borderRadius:10, padding:'11px 24px', fontWeight:800, fontSize:14, cursor: saving ? 'wait' : 'pointer', flexShrink:0 }}>
-          {saving ? 'Saving…' : status === 'saved' ? '✓ Saved!' : 'Save Changes'}
+        <button onClick={save}
+          style={{ background: status === 'saved' ? 'rgba(16,185,129,.8)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#0a0a14', border:'none', borderRadius:10, padding:'11px 24px', fontWeight:800, fontSize:14, cursor:'pointer', flexShrink:0 }}>
+          {status === 'saved' ? '✓ Saved!' : 'Save Changes'}
         </button>
       </div>
 
-      {/* Error banner */}
-      {status === 'error' && (
-        <div style={{ background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:10, padding:'12px 16px', marginBottom:16, color:'#fca5a5', fontSize:13 }}>
-          ⚠️ Save failed: {errorMsg}
-          <div style={{ marginTop:6, fontSize:12, color:'rgba(255,255,255,.4)' }}>
-            Make sure you've created the <code style={{ background:'rgba(255,255,255,.08)', padding:'1px 5px', borderRadius:4 }}>homepage_sections</code> table in Supabase. Run this SQL:
-          </div>
-          <pre style={{ marginTop:8, fontSize:11, color:'rgba(255,255,255,.5)', background:'rgba(255,255,255,.04)', padding:10, borderRadius:8, overflow:'auto', whiteSpace:'pre-wrap' }}>{`create table if not exists homepage_sections (
-  key text primary key,
-  title text not null,
-  position integer not null,
-  visible boolean not null default true
-);
-alter table homepage_sections enable row level security;
-create policy "Allow all" on homepage_sections
-  for all using (true) with check (true);`}</pre>
-        </div>
-      )}
-
-      {/* Success banner */}
       {status === 'saved' && (
         <div style={{ background:'rgba(16,185,129,.1)', border:'1px solid rgba(16,185,129,.3)', borderRadius:10, padding:'12px 16px', marginBottom:16, color:'#6ee7b7', fontSize:13 }}>
           ✅ Saved! Homepage will reflect changes on next load.
@@ -111,14 +79,11 @@ create policy "Allow all" on homepage_sections
         {sections.map((s, i) => (
           <div key={s.key} style={{ display:'flex', alignItems:'center', gap:10, background: s.visible ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.02)', border:`1px solid ${s.visible ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.04)'}`, borderRadius:14, padding:'12px 14px', opacity: s.visible ? 1 : 0.5, transition:'opacity .2s' }}>
 
-            {/* position number */}
             <div style={{ width:26, height:26, borderRadius:8, background:'rgba(255,255,255,.07)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'rgba(255,255,255,.5)', flexShrink:0 }}>{i + 1}</div>
 
-            {/* icon + title */}
             <span style={{ fontSize:18, flexShrink:0 }}>{ICONS[s.key] ?? '📄'}</span>
             <span style={{ flex:1, fontSize:14, fontWeight:600, color: s.visible ? '#fff' : 'rgba(255,255,255,.35)', minWidth:0 }}>{s.title}</span>
 
-            {/* up/down arrows */}
             <div style={{ display:'flex', gap:4, flexShrink:0 }}>
               <button onClick={() => move(i, -1)} disabled={i === 0}
                 style={{ width:34, height:34, borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:16, cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.25 : 1, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>↑</button>
@@ -126,7 +91,6 @@ create policy "Allow all" on homepage_sections
                 style={{ width:34, height:34, borderRadius:8, border:'1px solid rgba(255,255,255,.15)', background:'rgba(255,255,255,.06)', color:'#fff', fontSize:16, cursor: i === sections.length - 1 ? 'not-allowed' : 'pointer', opacity: i === sections.length - 1 ? 0.25 : 1, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>↓</button>
             </div>
 
-            {/* visibility toggle */}
             <button onClick={() => toggle(i)}
               style={{ width:46, height:26, borderRadius:13, border:'none', cursor:'pointer', background: s.visible ? '#10b981' : 'rgba(255,255,255,.1)', position:'relative', transition:'background .2s', flexShrink:0 }}>
               <span style={{ position:'absolute', top:3, left: s.visible ? 23 : 3, width:20, height:20, borderRadius:'50%', background:'#fff', transition:'left .18s', display:'block' }} />
