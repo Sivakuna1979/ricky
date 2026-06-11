@@ -49,7 +49,7 @@ export default async function SearchPage({ searchParams }: { searchParams: any }
               Find Food Vans Near You
             </h1>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,.45)', margin: '0 0 24px' }}>
-              Search by postcode or town — see live vans, registered businesses and local food spots on the map.
+              Discover ALL food vans and mobile businesses from Google Maps — live results, no registration needed.
             </p>
             <VanSearchBar initialPostcode={postcode} />
           </div>
@@ -57,45 +57,38 @@ export default async function SearchPage({ searchParams }: { searchParams: any }
 
         {/* Results */}
         {hasSearch ? (
-          <section style={{ padding: '24px 16px', maxWidth: 960, margin: '0 auto' }}>
-            {/* Map */}
+          <section style={{ padding: '24px 16px', maxWidth: 1100, margin: '0 auto' }}>
             <VanMapPublic
               height="520px"
               centerLat={geoLat}
               centerLng={geoLng}
               searchLabel={label}
+              showCards={true}
             />
 
-            {/* Legend explainer */}
-            <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
-              {[
-                { color: '#4ade80', label: 'Live FoodTaxi Van' },
-                { color: '#f97316', label: 'Registered Business' },
-                { color: '#6b7280', label: 'Local Food Place' },
-                { color: '#60a5fa', label: 'You Are Here' },
-              ].map(({ color, label: l }) => (
-                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 20, padding: '5px 12px' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', fontWeight: 600 }}>{l}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* No results nudge */}
-            <div style={{ marginTop: 24, textAlign: 'center', padding: '20px 16px', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 16 }}>
-              <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: '0 0 12px' }}>
-                Don't see your local van on FoodTaxi yet?
+            {/* Register nudge */}
+            <div style={{ marginTop: 32, textAlign: 'center', padding: '24px 16px', background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.15)', borderRadius: 16 }}>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,.5)', margin: '0 0 6px' }}>
+                Is your van listed but not claimed? Or want to go live with GPS tracking?
               </p>
-              <a href="/register/business" style={{ display: 'inline-block', padding: '11px 24px', borderRadius: 12, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', boxShadow: '0 4px 14px rgba(249,115,22,.35)' }}>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', margin: '0 0 16px' }}>
+                Register free to add your menu, accept orders, and appear as a live FoodTaxi van.
+              </p>
+              <a href="/register/business" style={{ display: 'inline-block', padding: '11px 28px', borderRadius: 12, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', boxShadow: '0 4px 14px rgba(249,115,22,.35)' }}>
                 🚐 Register Your Van Free
               </a>
             </div>
           </section>
         ) : (
-          <section style={{ padding: '64px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📍</div>
-            <p style={{ fontSize: 16, color: 'rgba(255,255,255,.4)', marginBottom: 8 }}>Enter a postcode or town above</p>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,.25)' }}>e.g. KT9 2AN, Chessington, Manchester, London</p>
+          <section style={{ padding: '32px 16px', maxWidth: 1100, margin: '0 auto' }}>
+            {/* GPS-only map — loads automatically via watchPosition */}
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', textAlign: 'center', marginBottom: 20 }}>
+              📍 Detecting your location — food businesses near you will appear automatically.
+            </p>
+            <VanMapPublic height="560px" showCards={true} />
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,.25)' }}>Or search by postcode or town above — e.g. KT9 2AN, Chessington, Manchester</p>
+            </div>
           </section>
         )}
       </main>
