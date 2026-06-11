@@ -5,30 +5,12 @@ import { useEffect, useState } from 'react'
 const DEFAULT_PLANS = [
   {
     id: 'starter',
-    name: 'Starter',
+    name: 'FoodTaxi Plan',
     price: 29,
     period: 'month',
-    description: 'Perfect for a single van operator',
+    description: 'Everything you need to run your food van on FoodTaxi',
     features: ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews', 'Email Support'],
-    highlight: false,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: 59,
-    period: 'month',
-    description: 'Growing businesses with multiple vans',
-    features: ['Up to 3 Vans', 'Everything in Starter', 'Priority Support', 'Advanced Analytics', 'Custom Menu Design', 'SMS Notifications'],
     highlight: true,
-  },
-  {
-    id: 'premium',
-    name: 'Premium',
-    price: 99,
-    period: 'month',
-    description: 'Large fleets and enterprise businesses',
-    features: ['Unlimited Vans', 'Everything in Pro', 'Dedicated Account Manager', 'API Access', 'White Label Option', 'Custom Reporting'],
-    highlight: false,
   },
 ]
 

@@ -6,9 +6,8 @@ export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Business Dashboard — FoodTaxi' }
 
 const PLAN_FEATURES: Record<string, string[]> = {
-  starter: ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews'],
-  pro:     ['Up to 3 Vans', 'Everything in Starter', 'Priority Support', 'Analytics', 'Custom Menu'],
-  premium: ['Unlimited Vans', 'Everything in Pro', 'Dedicated Manager', 'API Access', 'White Label'],
+  starter:    ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews', 'Email Support'],
+  foodtaxi:   ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews', 'Email Support'],
 }
 
 export default async function BusinessDashboardPage() {
