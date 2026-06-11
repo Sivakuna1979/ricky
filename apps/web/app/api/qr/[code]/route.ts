@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: { code: string
     .single()
 
   if (!qr) {
-    return NextResponse.redirect(new URL('/', process.env.NEXT_PUBLIC_APP_URL!))
+    return NextResponse.redirect(new URL('/', process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'))
   }
 
   // Increment scan count asynchronously (don't await to keep redirect fast)
