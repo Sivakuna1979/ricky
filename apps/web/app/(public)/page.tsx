@@ -93,14 +93,14 @@ function SectionHero() {
 
 function SectionStats() {
   return (
-    <div style={{ background:'#ffffff', borderTop:'1px solid #e2e8f0', borderBottom:'1px solid #e2e8f0', boxShadow:'0 4px 24px rgba(0,0,0,0.06)' }}>
+    <div style={{ background:'#0d1117', borderTop:'1px solid rgba(255,255,255,0.06)', borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
       <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 20px' }}>
         <div className="ft-stats-grid">
           {STATS.map((s, i) => (
             <div key={s.label} className={`ft-stats-item${i<3?' ft-stats-divider':''}`} style={{ padding:'36px 24px', textAlign:'center' }}>
               <div style={{ fontSize:'2rem', marginBottom:8 }}>{s.icon}</div>
               <div style={{ fontSize:'clamp(1.6rem,3vw,2.2rem)', fontWeight:900, color:s.color, letterSpacing:'-0.025em', marginBottom:4 }}>{s.value}</div>
-              <div style={{ fontSize:13, color:'#64748b', fontWeight:500 }}>{s.label}</div>
+              <div style={{ fontSize:13, color:'rgba(255,255,255,0.38)', fontWeight:500 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -111,19 +111,19 @@ function SectionStats() {
 
 function SectionCategories() {
   return (
-    <section style={{ padding:'88px 20px', background:'#f8fafc' }}>
+    <section style={{ padding:'88px 20px', background:'#0d1117' }}>
       <div style={{ maxWidth:1280, margin:'0 auto' }}>
         <div style={{ textAlign:'center', marginBottom:52 }}>
           <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:10 }}>Browse by type</p>
-          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:'0 0 12px' }}>What Are You Craving?</h2>
-          <p style={{ fontSize:15, color:'#64748b', margin:0 }}>Tap any category to see vans near you</p>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.025em', margin:'0 0 12px' }}>What Are You Craving?</h2>
+          <p style={{ fontSize:15, color:'rgba(255,255,255,0.38)', margin:0 }}>Tap any category to see vans near you</p>
         </div>
         <div className="ft-cat-grid">
           {CATEGORIES.map(c => (
-            <Link key={c.type} href={`/search?type=${c.type}`} className="ft-card" style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'28px 12px 22px', borderRadius:18, textDecoration:'none', background:c.bg, border:`2px solid ${c.border}`, boxShadow:`0 4px 20px ${c.glow}22` }}>
+            <Link key={c.type} href={`/search?type=${c.type}`} className="ft-card" style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'28px 12px 22px', borderRadius:18, textDecoration:'none', background:`${c.glow}14`, border:`1px solid ${c.glow}40`, boxShadow:`0 4px 20px ${c.glow}18` }}>
               {c.tag && <div style={{ position:'absolute', top:9, right:9, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:20, background:c.tag==='Most Popular'?'#f97316':c.tag==='Trending'?'#ef4444':'#10b981', color:'#fff' }}>{c.tag}</div>}
-              <span style={{ fontSize:'2.6rem', marginBottom:12, filter:'drop-shadow(0 4px 8px rgba(0,0,0,.15))' }}>{c.emoji}</span>
-              <span style={{ fontSize:13, fontWeight:800, color:c.textColor, textAlign:'center', lineHeight:1.3 }}>{c.label}</span>
+              <span style={{ fontSize:'2.6rem', marginBottom:12, filter:'drop-shadow(0 4px 8px rgba(0,0,0,.4))' }}>{c.emoji}</span>
+              <span style={{ fontSize:13, fontWeight:800, color:'#e2e8f0', textAlign:'center', lineHeight:1.3 }}>{c.label}</span>
               <span style={{ fontSize:11, color:c.glow, marginTop:5, fontWeight:600 }}>Find vans →</span>
             </Link>
           ))}
@@ -135,41 +135,41 @@ function SectionCategories() {
 
 function SectionVansLive() {
   return (
-    <section style={{ padding:'88px 20px', background:'#fffbf7' }}>
+    <section style={{ padding:'88px 20px', background:'#161b22' }}>
       <div style={{ maxWidth:1280, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:40, flexWrap:'wrap', gap:16 }}>
           <div>
             <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:8 }}>Real-time</p>
-            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:0 }}>Vans Out Today</h2>
+            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.025em', margin:0 }}>Vans Out Today</h2>
           </div>
-          <Link href="/search" style={{ padding:'11px 24px', borderRadius:12, fontSize:14, background:'#fff', color:'#f97316', border:'2px solid #f97316', fontWeight:700, textDecoration:'none', display:'inline-block' }}>See all vans →</Link>
+          <Link href="/search" style={{ padding:'11px 24px', borderRadius:12, fontSize:14, background:'transparent', color:'#f97316', border:'2px solid #f97316', fontWeight:700, textDecoration:'none', display:'inline-block' }}>See all vans →</Link>
         </div>
         <div className="ft-van-grid">
           {VANS.map(v => (
-            <div key={v.name} className="ft-card" style={{ borderRadius:22, overflow:'hidden', background:'#ffffff', border:`2px solid ${v.glow}44`, boxShadow:`0 8px 40px ${v.glow}20` }}>
-              <div style={{ height:158, position:'relative', display:'flex', alignItems:'center', justifyContent:'center', background:`linear-gradient(135deg,${v.glow}22 0%,${v.glow}44 100%)` }}>
-                <span style={{ fontSize:'4.2rem', filter:'drop-shadow(0 8px 16px rgba(0,0,0,.2))' }}>{v.emoji}</span>
+            <div key={v.name} className="ft-card" style={{ borderRadius:22, overflow:'hidden', background:'#0d1117', border:`1px solid ${v.glow}30`, boxShadow:`0 8px 40px ${v.glow}18` }}>
+              <div style={{ height:158, position:'relative', display:'flex', alignItems:'center', justifyContent:'center', background:`linear-gradient(135deg,${v.glow}18 0%,${v.glow}30 100%)` }}>
+                <span style={{ fontSize:'4.2rem', filter:'drop-shadow(0 8px 16px rgba(0,0,0,.5))' }}>{v.emoji}</span>
                 <div style={{ position:'absolute', top:14, left:14 }}>
-                  <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'5px 13px', borderRadius:20, fontSize:12, fontWeight:700, background:'#fff', color:v.dot==='#4ade80'?'#16a34a':'#d97706', border:`2px solid ${v.dot}66` }}>
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'5px 13px', borderRadius:20, fontSize:12, fontWeight:700, background:'rgba(13,17,23,0.85)', color:v.dot==='#4ade80'?'#4ade80':'#fbbf24', border:`1px solid ${v.dot}55` }}>
                     <span style={{ width:7, height:7, borderRadius:'50%', background:v.dot, display:'inline-block' }} />{v.status}
                   </span>
                 </div>
-                <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,0.9)', backdropFilter:'blur(8px)', borderRadius:9, padding:'4px 10px', fontSize:12, fontWeight:700, color:'#92400e' }}>⭐ {v.rating} ({v.reviews})</div>
+                <div style={{ position:'absolute', top:14, right:14, background:'rgba(13,17,23,0.85)', backdropFilter:'blur(8px)', borderRadius:9, padding:'4px 10px', fontSize:12, fontWeight:700, color:'#fbbf24' }}>⭐ {v.rating} ({v.reviews})</div>
               </div>
               <div style={{ padding:'20px 20px 22px' }}>
                 <p style={{ fontSize:11, fontWeight:700, color:v.glow, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4 }}>{v.type}</p>
-                <h3 style={{ fontSize:'1.1rem', fontWeight:700, color:'#1e293b', margin:'0 0 8px' }}>{v.name}</h3>
-                <p style={{ fontSize:13, color:'#64748b', margin:'0 0 18px', display:'flex', alignItems:'center', gap:5 }}><span>📍</span>{v.area}</p>
+                <h3 style={{ fontSize:'1.1rem', fontWeight:700, color:'#e2e8f0', margin:'0 0 8px' }}>{v.name}</h3>
+                <p style={{ fontSize:13, color:'rgba(255,255,255,0.38)', margin:'0 0 18px', display:'flex', alignItems:'center', gap:5 }}><span>📍</span>{v.area}</p>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:18 }}>
                   {[['📏','Distance',v.distance],['⏱️','Arrival',v.arrival]].map(([icon,label,val]) => (
-                    <div key={label as string} style={{ background:'#f8fafc', borderRadius:10, padding:'10px 12px', border:'1px solid #e2e8f0' }}>
-                      <div style={{ fontSize:11, color:'#94a3b8', marginBottom:3 }}>{icon} {label}</div>
-                      <div style={{ fontSize:14, fontWeight:700, color:'#1e293b' }}>{val}</div>
+                    <div key={label as string} style={{ background:'#161b22', borderRadius:10, padding:'10px 12px', border:'1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', marginBottom:3 }}>{icon} {label}</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0' }}>{val}</div>
                     </div>
                   ))}
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                  <Link href="/search" style={{ padding:'12px', borderRadius:11, fontSize:13, background:'#f8fafc', color:'#475569', border:'1px solid #e2e8f0', fontWeight:600, textDecoration:'none', textAlign:'center', display:'block' }}>🗺️ Track</Link>
+                  <Link href="/search" style={{ padding:'12px', borderRadius:11, fontSize:13, background:'#161b22', color:'rgba(255,255,255,0.6)', border:'1px solid rgba(255,255,255,0.1)', fontWeight:600, textDecoration:'none', textAlign:'center', display:'block' }}>🗺️ Track</Link>
                   <Link href="/search" style={{ padding:'12px', borderRadius:11, fontSize:13, background:`linear-gradient(135deg,${v.glow},${v.glow}cc)`, color:'#fff', fontWeight:700, textDecoration:'none', textAlign:'center', display:'block' }}>🛒 Order</Link>
                 </div>
               </div>
@@ -224,16 +224,16 @@ function SectionHow() {
 
 function SectionPopular() {
   return (
-    <section style={{ padding:'88px 20px', background:'#ffffff', borderTop:'1px solid #e2e8f0' }}>
+    <section style={{ padding:'88px 20px', background:'#0d1117', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
       <div style={{ maxWidth:1280, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:40, flexWrap:'wrap', gap:16 }}>
           <div>
             <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:8 }}>Top rated</p>
-            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:0 }}>Popular Vans</h2>
+            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.025em', margin:0 }}>Popular Vans</h2>
           </div>
-          <Link href="/search" style={{ padding:'11px 24px', borderRadius:12, fontSize:14, fontWeight:600, textDecoration:'none', background:'#f8fafc', color:'#f97316', border:'2px solid #f97316', display:'inline-block' }}>See all →</Link>
+          <Link href="/search" style={{ padding:'11px 24px', borderRadius:12, fontSize:14, fontWeight:600, textDecoration:'none', background:'transparent', color:'#f97316', border:'2px solid #f97316', display:'inline-block' }}>See all →</Link>
         </div>
-        <Suspense fallback={<div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:20 }}>{[0,1,2].map(i=><div key={i} style={{ height:280, borderRadius:20, background:'#f8fafc', border:'1px solid #e2e8f0' }} />)}</div>}>
+        <Suspense fallback={<div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:20 }}>{[0,1,2].map(i=><div key={i} style={{ height:280, borderRadius:20, background:'#161b22', border:'1px solid rgba(255,255,255,0.08)' }} />)}</div>}>
           <FeaturedVans />
         </Suspense>
       </div>
@@ -243,26 +243,26 @@ function SectionPopular() {
 
 function SectionPricing() {
   return (
-    <section id="pricing" style={{ padding:'88px 20px', background:'#ffffff', borderTop:'1px solid #e2e8f0' }}>
+    <section id="pricing" style={{ padding:'88px 20px', background:'#161b22', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
       <div style={{ maxWidth:1100, margin:'0 auto' }}>
         <div style={{ textAlign:'center', marginBottom:64 }}>
-          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#7c3aed', marginBottom:10 }}>Simple pricing</p>
-          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:'0 0 12px' }}>Plans for Every Business</h2>
-          <p style={{ fontSize:15, color:'#64748b', margin:0 }}>14-day free trial on all plans. No credit card required.</p>
+          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#a78bfa', marginBottom:10 }}>Simple pricing</p>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.025em', margin:'0 0 12px' }}>Plans for Every Business</h2>
+          <p style={{ fontSize:15, color:'rgba(255,255,255,0.38)', margin:0 }}>14-day free trial on all plans. No credit card required.</p>
         </div>
         <div className="ft-price-grid">
           {PRICING.map(plan => (
-            <div key={plan.name} className="ft-card" style={{ position:'relative', borderRadius:24, padding:'36px 30px 34px', background:plan.highlight?'linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)':'#f8fafc', border:plan.highlight?'none':'1px solid #e2e8f0', boxShadow:plan.highlight?'0 20px 60px rgba(99,102,241,0.4)':'0 4px 20px rgba(0,0,0,0.06)' }}>
+            <div key={plan.name} className="ft-card" style={{ position:'relative', borderRadius:24, padding:'36px 30px 34px', background:plan.highlight?'linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)':'#0d1117', border:plan.highlight?'none':'1px solid rgba(255,255,255,0.08)', boxShadow:plan.highlight?'0 20px 60px rgba(99,102,241,0.4)':'0 4px 20px rgba(0,0,0,0.2)' }}>
               {plan.badge && <div style={{ position:'absolute', top:-14, left:'50%', transform:'translateX(-50%)', background:'linear-gradient(135deg,#f97316,#dc2626)', color:'#fff', fontSize:11, fontWeight:800, padding:'5px 18px', borderRadius:20, whiteSpace:'nowrap', letterSpacing:'0.05em' }}>{plan.badge}</div>}
-              <h3 style={{ fontSize:'1.25rem', fontWeight:700, color:plan.highlight?'#fff':'#1e293b', margin:'0 0 8px' }}>{plan.name}</h3>
+              <h3 style={{ fontSize:'1.25rem', fontWeight:700, color:'#e2e8f0', margin:'0 0 8px' }}>{plan.name}</h3>
               <div style={{ marginBottom:28 }}>
-                <span style={{ fontSize:'2.8rem', fontWeight:900, color:plan.highlight?'#fff':'#1e293b', letterSpacing:'-0.04em' }}>{plan.price}</span>
-                <span style={{ fontSize:15, color:plan.highlight?'rgba(255,255,255,.7)':'#64748b', fontWeight:500 }}>{plan.period}</span>
+                <span style={{ fontSize:'2.8rem', fontWeight:900, color:'#e2e8f0', letterSpacing:'-0.04em' }}>{plan.price}</span>
+                <span style={{ fontSize:15, color:'rgba(255,255,255,.5)', fontWeight:500 }}>{plan.period}</span>
               </div>
               <ul style={{ listStyle:'none', padding:0, margin:'0 0 32px', display:'flex', flexDirection:'column', gap:13 }}>
                 {plan.features.map(f => (
-                  <li key={f} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, color:plan.highlight?'rgba(255,255,255,.9)':'#475569' }}>
-                    <span style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, background:plan.highlight?'rgba(255,255,255,0.2)':'#ede9fe', border:plan.highlight?'1px solid rgba(255,255,255,0.4)':'1px solid #c4b5fd', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, color:plan.highlight?'#fff':'#7c3aed' }}>✓</span>
+                  <li key={f} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, color:'rgba(255,255,255,.75)' }}>
+                    <span style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, background:'rgba(167,139,250,0.15)', border:'1px solid rgba(167,139,250,0.4)', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#a78bfa' }}>✓</span>
                     {f}
                   </li>
                 ))}
@@ -280,22 +280,22 @@ function SectionPricing() {
 
 function SectionTestimonials() {
   return (
-    <section style={{ padding:'88px 20px', background:'#f1f5f9', borderTop:'1px solid #e2e8f0' }}>
+    <section style={{ padding:'88px 20px', background:'#0d1117', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
       <div style={{ maxWidth:1100, margin:'0 auto' }}>
         <div style={{ textAlign:'center', marginBottom:56 }}>
           <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:10 }}>What they say</p>
-          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:0 }}>Loved by Van Owners</h2>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.025em', margin:0 }}>Loved by Van Owners</h2>
         </div>
         <div className="ft-test-grid">
           {TESTIMONIALS.map(t => (
-            <div key={t.name} className="ft-card" style={{ borderRadius:24, padding:'32px', background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 4px 20px rgba(0,0,0,0.06)' }}>
+            <div key={t.name} className="ft-card" style={{ borderRadius:24, padding:'32px', background:'#161b22', border:'1px solid rgba(255,255,255,0.08)', boxShadow:'0 4px 20px rgba(0,0,0,0.2)' }}>
               <div style={{ display:'flex', gap:3, marginBottom:20 }}>{[0,1,2,3,4].map(i=><span key={i} style={{ color:'#f59e0b', fontSize:16 }}>★</span>)}</div>
-              <p style={{ fontSize:15, color:'#475569', lineHeight:1.75, marginBottom:24, fontStyle:'italic' }}>"{t.text}"</p>
+              <p style={{ fontSize:15, color:'rgba(255,255,255,0.55)', lineHeight:1.75, marginBottom:24, fontStyle:'italic' }}>"{t.text}"</p>
               <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-                <div style={{ width:46, height:46, borderRadius:'50%', background:'#fef3c7', border:'2px solid #fcd34d', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', flexShrink:0 }}>{t.emoji}</div>
+                <div style={{ width:46, height:46, borderRadius:'50%', background:'rgba(251,191,36,0.12)', border:'2px solid rgba(251,191,36,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', flexShrink:0 }}>{t.emoji}</div>
                 <div>
-                  <div style={{ fontSize:14, fontWeight:700, color:'#1e293b' }}>{t.name}</div>
-                  <div style={{ fontSize:12, color:'#94a3b8', marginTop:3 }}>{t.biz}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0' }}>{t.name}</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.32)', marginTop:3 }}>{t.biz}</div>
                 </div>
               </div>
             </div>
@@ -456,7 +456,7 @@ export default async function HomePage() {
         .ft-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#4ade80;position:relative}
         .ft-dot::before{content:'';position:absolute;inset:0;border-radius:50%;background:#4ade80;animation:ft-pulse 1.8s ease-out infinite}
         .ft-stats-grid{display:grid;grid-template-columns:repeat(4,1fr)}
-        .ft-stats-divider{border-right:1px solid #e2e8f0}
+        .ft-stats-divider{border-right:1px solid rgba(255,255,255,0.06)}
         .ft-cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
         .ft-van-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
         .ft-how-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px}
@@ -465,7 +465,7 @@ export default async function HomePage() {
         @media(max-width:700px){
           .ft-stats-grid{grid-template-columns:repeat(2,1fr)}
           .ft-stats-divider:nth-child(2){border-right:none}
-          .ft-stats-item{border-bottom:1px solid #e2e8f0}
+          .ft-stats-item{border-bottom:1px solid rgba(255,255,255,0.06)}
           .ft-cat-grid{grid-template-columns:repeat(2,1fr)}
         }
         @media(max-width:480px){
@@ -476,7 +476,7 @@ export default async function HomePage() {
         }
       `}</style>
       <Navbar />
-      <main style={{ background:'#ffffff', minHeight:'100vh', overflowX:'hidden', color:'#1e293b' }}>
+      <main style={{ background:'#0d1117', minHeight:'100vh', overflowX:'hidden', color:'#e2e8f0' }}>
         {orderedSections.map(({ key }) => {
           const Component = SECTION_MAP[key]
           return Component ? <Component key={key} /> : null
