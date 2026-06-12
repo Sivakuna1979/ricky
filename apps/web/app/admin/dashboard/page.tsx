@@ -33,6 +33,13 @@ const NAV = [
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
+
+  // Guard: only super_admin or admin can access
+  if (!user) { redirect('/login') }
+  const { data: userData } = await supabase.from('users').select('role').eq('auth_id', user.id).single().catch(() => ({ data: null }))
+  const isSuperAdmin = userData?.role === 'super_admin' || userData?.role === 'admin' || user.email === 'sivakuna@icloud.com'
+  if (!isSuperAdmin) { redirect('/dashboard') }
+
   const stats = await getStats(supabase).catch(() => ({ totalUsers: 0, totalBusinesses: 0, totalOrders: 0, recentUsers: [], recentBusinesses: [] }))
 
   return (
