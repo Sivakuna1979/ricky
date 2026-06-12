@@ -23,14 +23,22 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
   const path = request.nextUrl.pathname
 
-  // Protect /admin/* — redirect non-admins to /dashboard
+  // Protect /admin/* — only sivakuna@icloud.com or super_admin role
   if (path.startsWith('/admin')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
-    const { data: userData } = await supabase
-      .from('users').select('role').eq('auth_id', user.id).single().catch(() => ({ data: null }))
-    const isAdmin = userData?.role === 'super_admin' || userData?.role === 'admin' || user.email === 'sivakuna@icloud.com'
+    // Always allow the super admin email directly
+    if (user.email === 'sivakuna@icloud.com') {
+      return supabaseResponse
+    }
+    // Check role in DB — deny by default if query fails
+    let isAdmin = false
+    try {
+      const { data: userData } = await supabase
+        .from('users').select('role').eq('auth_id', user.id).single()
+      isAdmin = userData?.role === 'super_admin' || userData?.role === 'admin'
+    } catch {}
     if (!isAdmin) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
