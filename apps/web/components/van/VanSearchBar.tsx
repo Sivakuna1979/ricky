@@ -173,12 +173,24 @@ export function VanSearchBar({ initialPostcode = '' }: { initialPostcode?: strin
         </button>
       </div>
 
-      {/* Use my location link */}
-      <div style={{ marginTop: 10, textAlign: 'center' }}>
+      {/* Use my location button — prominent */}
+      <div style={{ marginTop: 12, textAlign: 'center' }}>
         <button
           onClick={useMyLocation}
           disabled={locating}
-          style={{ background: 'none', border: 'none', cursor: locating ? 'wait' : 'pointer', color: locating ? 'rgba(251,191,36,.5)' : '#fbbf24', fontSize: 13, fontWeight: 700, padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          style={{
+            background: locating ? 'rgba(251,191,36,.15)' : 'rgba(251,191,36,.18)',
+            border: '1.5px solid rgba(251,191,36,.5)',
+            borderRadius: 12,
+            cursor: locating ? 'wait' : 'pointer',
+            color: '#fbbf24',
+            fontSize: 14,
+            fontWeight: 700,
+            padding: '10px 22px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 7,
+          }}
         >
           {locating ? '⏳ Finding your location…' : '📍 Use my current location'}
         </button>
