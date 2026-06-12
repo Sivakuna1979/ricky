@@ -10,10 +10,15 @@ export function VanSearchBar({ initialPostcode = '' }: { initialPostcode?: strin
   const [postcode, setPostcode] = useState(initialPostcode)
   const [type, setType] = useState('')
   const [locating, setLocating] = useState(false)
+  const [locError, setLocError] = useState('')
 
   const useMyLocation = () => {
-    if (!navigator.geolocation) return
+    if (!navigator.geolocation) {
+      setLocError('Location not supported on this browser.')
+      return
+    }
     setLocating(true)
+    setLocError('')
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
@@ -51,7 +56,12 @@ export function VanSearchBar({ initialPostcode = '' }: { initialPostcode?: strin
           setLocating(false)
         }
       },
-      () => setLocating(false),
+      (err) => {
+        setLocating(false)
+        if (err.code === 1) setLocError('Location access denied. Go to Settings → Safari → Location → Allow.')
+        else if (err.code === 3) setLocError('Location timed out. Please try again or enter your postcode.')
+        else setLocError('Could not get your location. Please enter your postcode instead.')
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     )
   }
@@ -172,6 +182,11 @@ export function VanSearchBar({ initialPostcode = '' }: { initialPostcode?: strin
         >
           {locating ? '⏳ Finding your location…' : '📍 Use my current location'}
         </button>
+        {locError && (
+          <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', fontWeight: 500 }}>
+            ⚠️ {locError}
+          </div>
+        )}
       </div>
 
       {/* Quick-filter tags */}
