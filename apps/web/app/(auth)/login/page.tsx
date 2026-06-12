@@ -3,6 +3,7 @@
 
 import { useState, Suspense } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
   const [loading, setLoading] = useState(false)
@@ -17,22 +18,17 @@ function LoginForm() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-        redirect: 'follow',
-      })
+      const supabase = createClient()
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setErrorMsg(data.error ?? 'Sign in failed. Please check your email and password.')
+      if (error) {
+        setErrorMsg(error.message)
         setLoading(false)
         return
       }
 
-      // Follow the server redirect
-      window.location.href = res.url || (email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard')
+      const dest = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
+      window.location.replace(dest)
     } catch {
       setErrorMsg('Network error. Please try again.')
       setLoading(false)
