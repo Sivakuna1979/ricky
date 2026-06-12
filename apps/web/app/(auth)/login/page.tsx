@@ -2,14 +2,11 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '../../../lib/supabase/client'
 
 function LoginForm() {
-  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
-  const [email, setEmail] = useState('')
+  const [email, setEmail]     = useState('')
   const [password, setPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -19,23 +16,23 @@ function LoginForm() {
     if (!email || !password) { setErrorMsg('Please enter your email and password.'); return }
 
     setLoading(true)
-    const supabase = createClient()
-
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (error) {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setErrorMsg(data.error ?? 'Sign in failed. Please check your email and password.')
+        setLoading(false)
+        return
+      }
+      window.location.href = data.redirectTo
+    } catch {
+      setErrorMsg('Network error. Please try again.')
       setLoading(false)
-      setErrorMsg(error.message)
-      return
     }
-
-    // Redirect super admin to admin dashboard, everyone else to business dashboard
-    const dest = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
-
-    // Small delay to ensure cookies are written before navigation
-    setTimeout(() => {
-      window.location.href = dest
-    }, 300)
   }
 
   return (
