@@ -1,47 +1,47 @@
 // @ts-nocheck
-'use client'
-
-import { useState, Suspense } from 'react'
+import { redirect } from 'next/navigation'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { Suspense } from 'react'
 
-function LoginForm() {
-  const [loading, setLoading] = useState(false)
-  const [email, setEmail]     = useState('')
-  const [password, setPassword] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
+async function loginAction(formData: FormData) {
+  'use server'
+  const email    = formData.get('email') as string
+  const password = formData.get('password') as string
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setErrorMsg('')
-    if (!email || !password) { setErrorMsg('Please enter your email and password.'); return }
-    setLoading(true)
-
-    try {
-      const supabase = createClient()
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-
-      if (error) {
-        // Show the raw Supabase error — never hide it
-        setErrorMsg(`${error.message} (code: ${error.status ?? 'unknown'})`)
-        setLoading(false)
-        return
-      }
-
-      if (!data.user) {
-        setErrorMsg('Login succeeded but no user returned — please try again.')
-        setLoading(false)
-        return
-      }
-
-      const dest = data.user.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
-      window.location.replace(dest)
-    } catch (e: any) {
-      setErrorMsg(`Network error: ${e?.message ?? 'unknown'}`)
-      setLoading(false)
-    }
+  if (!email || !password) {
+    redirect('/login?error=' + encodeURIComponent('Please enter your email and password.'))
   }
 
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(list) {
+          list.forEach(({ name, value, options }) => {
+            try { cookieStore.set(name, value, options) } catch {}
+          })
+        },
+      },
+    }
+  )
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+  if (error || !data.user) {
+    const msg = error?.message ?? 'Login failed — please try again.'
+    redirect('/login?error=' + encodeURIComponent(msg))
+  }
+
+  const dest = data.user.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
+  redirect(dest)
+}
+
+function LoginPageInner({ error }: { error?: string }) {
   return (
     <div style={{ minHeight:'100vh', background:'#0a0a14', display:'flex', alignItems:'center', justifyContent:'center', padding:'24px', fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif' }}>
       <div style={{ width:'100%', maxWidth:420 }}>
@@ -61,36 +61,36 @@ function LoginForm() {
           </p>
         </div>
 
-        {errorMsg && (
+        {error && (
           <div style={{ background:'rgba(239,68,68,.2)', border:'2px solid rgba(239,68,68,.5)', borderRadius:12, padding:'14px 16px', marginBottom:20, color:'#fca5a5', fontSize:14, lineHeight:1.5, fontWeight:500 }}>
-            ⚠️ {errorMsg}
-            {(errorMsg.toLowerCase().includes('invalid') || errorMsg.toLowerCase().includes('credentials') || errorMsg.toLowerCase().includes('password')) && (
+            ⚠️ {error}
+            {(error.toLowerCase().includes('invalid') || error.toLowerCase().includes('credentials') || error.toLowerCase().includes('confirm') || error.toLowerCase().includes('password')) && (
               <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(239,68,68,.3)' }}>
                 <Link href="/forgot-password" style={{ color:'#fbbf24', textDecoration:'none', fontWeight:700, fontSize:13 }}>
-                  → Reset your password
+                  → Forgot your password? Reset it here
                 </Link>
               </div>
             )}
           </div>
         )}
 
-        <form onSubmit={onSubmit} style={{ background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.1)', borderRadius:16, padding:28 }}>
+        <form action={loginAction} style={{ background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.1)', borderRadius:16, padding:28 }}>
           <div style={{ marginBottom:18 }}>
             <label style={{ display:'block', fontSize:13, fontWeight:600, color:'rgba(255,255,255,.6)', marginBottom:6 }}>Email address</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com"
+            <input name="email" type="email" required autoComplete="email" placeholder="you@example.com"
               style={{ width:'100%', padding:'12px 14px', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:10, color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
           </div>
           <div style={{ marginBottom:8 }}>
             <label style={{ display:'block', fontSize:13, fontWeight:600, color:'rgba(255,255,255,.6)', marginBottom:6 }}>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="••••••••"
+            <input name="password" type="password" required autoComplete="current-password" placeholder="••••••••"
               style={{ width:'100%', padding:'12px 14px', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:10, color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
           </div>
           <div style={{ textAlign:'right', marginBottom:22 }}>
             <Link href="/forgot-password" style={{ fontSize:13, color:'rgba(255,255,255,.35)', textDecoration:'none' }}>Forgot password?</Link>
           </div>
-          <button type="submit" disabled={loading}
-            style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#fbbf24,#f59e0b)', border:'none', borderRadius:50, color:'#0a0a14', fontWeight:800, fontSize:15, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1, fontFamily:'inherit' }}>
-            {loading ? 'Signing in…' : 'Sign In'}
+          <button type="submit"
+            style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#fbbf24,#f59e0b)', border:'none', borderRadius:50, color:'#0a0a14', fontWeight:800, fontSize:15, cursor:'pointer', fontFamily:'inherit' }}>
+            Sign In
           </button>
         </form>
 
@@ -103,10 +103,7 @@ function LoginForm() {
   )
 }
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div style={{ minHeight:'100vh', background:'#0a0a14' }} />}>
-      <LoginForm />
-    </Suspense>
-  )
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const params = await searchParams
+  return <LoginPageInner error={params?.error} />
 }
