@@ -41,6 +41,23 @@ export default function AdminUsersPage() {
     setBusy(null)
   }
 
+  const fixAccount = async (u: AuthUser) => {
+    const pwd = prompt(`Set temporary password for ${u.email}:`, 'FoodTaxi2025!')
+    if (!pwd) return
+    setBusy(`fix-${u.id}`)
+    setMsg(null)
+    const res = await fetch('/api/admin/fix-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: u.email, password: pwd, role: 'business_owner' }),
+    })
+    const data = await res.json()
+    const detail = data.log ? '\n' + data.log.join('\n') : ''
+    setMsg({ text: (data.message ?? data.error ?? 'Done') + detail, ok: res.ok })
+    if (res.ok) setUsers(prev => prev.map(x => x.id === u.id ? { ...x, confirmed: true } : x))
+    setBusy(null)
+  }
+
   const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'2-digit' }) : '—'
 
   return (
@@ -88,6 +105,12 @@ export default function AdminUsersPage() {
                     <td style={{ padding:'13px 16px', color:'rgba(255,255,255,.4)' }}>{fmt(u.last_sign_in)}</td>
                     <td style={{ padding:'13px 16px' }}>
                       <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                        <button
+                          onClick={() => fixAccount(u)}
+                          disabled={!!busy}
+                          style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(99,102,241,.5)', background:'rgba(99,102,241,.15)', color:'#a5b4fc', fontSize:12, fontWeight:700, cursor:'pointer', opacity: busy ? 0.5 : 1 }}>
+                          {busy === `fix-${u.id}` ? '…' : '🔧 Fix Account'}
+                        </button>
                         <button
                           onClick={() => action('reset', u)}
                           disabled={!!busy}

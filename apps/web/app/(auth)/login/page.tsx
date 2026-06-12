@@ -15,9 +15,16 @@ async function loginAction(formData: FormData) {
   }
 
   const cookieStore = await cookies()
+  const sbUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const sbAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+
+  if (!sbUrl || sbUrl.includes('placeholder')) {
+    redirect('/login?error=' + encodeURIComponent('Server configuration error: Supabase URL not set. Contact support.'))
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    sbUrl,
+    sbAnon,
     {
       cookies: {
         getAll() { return cookieStore.getAll() },
