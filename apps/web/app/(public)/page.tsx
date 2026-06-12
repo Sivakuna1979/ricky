@@ -60,11 +60,11 @@ const TESTIMONIALS = [
 
 function SectionHero() {
   return (
-    <section style={{ position:'relative', minHeight:'94vh', display:'flex', alignItems:'center', justifyContent:'center', padding:'100px 20px 80px', overflow:'hidden', background:'linear-gradient(160deg,#070918 0%,#0d1535 45%,#070918 100%)' }}>
+    <section style={{ position:'relative', minHeight:'94vh', display:'flex', alignItems:'center', justifyContent:'center', padding:'100px 20px 80px', overflow:'hidden', background:'linear-gradient(160deg,#07091a 0%,#0f1640 45%,#07091a 100%)' }}>
       <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)', backgroundSize:'52px 52px', pointerEvents:'none' }} />
-      <div style={{ position:'absolute', top:'-8%', left:'-4%', width:700, height:700, borderRadius:'50%', background:'radial-gradient(circle,rgba(249,115,22,.13) 0%,transparent 65%)', pointerEvents:'none' }} />
-      <div style={{ position:'absolute', bottom:'-10%', right:'-4%', width:600, height:600, borderRadius:'50%', background:'radial-gradient(circle,rgba(99,102,241,.11) 0%,transparent 65%)', pointerEvents:'none' }} />
-      <div style={{ position:'absolute', top:'45%', left:'60%', width:400, height:400, borderRadius:'50%', background:'radial-gradient(circle,rgba(59,130,246,.09) 0%,transparent 65%)', pointerEvents:'none' }} />
+      <div style={{ position:'absolute', top:'-8%', left:'-4%', width:700, height:700, borderRadius:'50%', background:'radial-gradient(circle,rgba(249,115,22,.25) 0%,transparent 65%)', pointerEvents:'none' }} />
+      <div style={{ position:'absolute', bottom:'-10%', right:'-4%', width:600, height:600, borderRadius:'50%', background:'radial-gradient(circle,rgba(99,102,241,.22) 0%,transparent 65%)', pointerEvents:'none' }} />
+      <div style={{ position:'absolute', top:'45%', left:'60%', width:400, height:400, borderRadius:'50%', background:'radial-gradient(circle,rgba(59,130,246,.18) 0%,transparent 65%)', pointerEvents:'none' }} />
       {(['🐟','🍔','☕','🍕','🍦','🥙'] as const).map((e, i) => {
         const pos = [{ top:'10%',left:'4%' },{ top:'18%',right:'5%' },{ bottom:'28%',left:'7%' },{ bottom:'22%',right:'4%' },{ top:'58%',left:'2%' },{ top:'55%',right:'3%' }][i]
         return <div key={e} className="ft-float" style={{ position:'absolute', fontSize:'2rem', opacity:.3, pointerEvents:'none', animationDelay:`${i*1.1}s`, ...pos }}>{e}</div>
@@ -224,16 +224,16 @@ function SectionHow() {
 
 function SectionPopular() {
   return (
-    <section style={{ padding:'88px 20px' }}>
+    <section style={{ padding:'88px 20px', background:'#ffffff', borderTop:'1px solid #e2e8f0' }}>
       <div style={{ maxWidth:1280, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:40, flexWrap:'wrap', gap:16 }}>
           <div>
             <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:8 }}>Top rated</p>
-            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#fff', letterSpacing:'-0.025em', margin:0 }}>Popular Vans</h2>
+            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:0 }}>Popular Vans</h2>
           </div>
-          <Link href="/search" className="ft-btn-ghost" style={{ padding:'11px 24px', borderRadius:12, fontSize:14 }}>See all →</Link>
+          <Link href="/search" style={{ padding:'11px 24px', borderRadius:12, fontSize:14, fontWeight:600, textDecoration:'none', background:'#f8fafc', color:'#f97316', border:'2px solid #f97316', display:'inline-block' }}>See all →</Link>
         </div>
-        <Suspense fallback={<div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:20 }}>{[0,1,2].map(i=><div key={i} style={{ height:280, borderRadius:20, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.06)' }} />)}</div>}>
+        <Suspense fallback={<div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:20 }}>{[0,1,2].map(i=><div key={i} style={{ height:280, borderRadius:20, background:'#f8fafc', border:'1px solid #e2e8f0' }} />)}</div>}>
           <FeaturedVans />
         </Suspense>
       </div>
@@ -456,7 +456,7 @@ export default async function HomePage() {
         .ft-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#4ade80;position:relative}
         .ft-dot::before{content:'';position:absolute;inset:0;border-radius:50%;background:#4ade80;animation:ft-pulse 1.8s ease-out infinite}
         .ft-stats-grid{display:grid;grid-template-columns:repeat(4,1fr)}
-        .ft-stats-divider{border-right:1px solid rgba(255,255,255,.07)}
+        .ft-stats-divider{border-right:1px solid #e2e8f0}
         .ft-cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
         .ft-van-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
         .ft-how-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px}
@@ -465,7 +465,7 @@ export default async function HomePage() {
         @media(max-width:700px){
           .ft-stats-grid{grid-template-columns:repeat(2,1fr)}
           .ft-stats-divider:nth-child(2){border-right:none}
-          .ft-stats-item{border-bottom:1px solid rgba(255,255,255,.07)}
+          .ft-stats-item{border-bottom:1px solid #e2e8f0}
           .ft-cat-grid{grid-template-columns:repeat(2,1fr)}
         }
         @media(max-width:480px){
@@ -476,7 +476,7 @@ export default async function HomePage() {
         }
       `}</style>
       <Navbar />
-      <main style={{ background:'#060914', minHeight:'100vh', overflowX:'hidden', color:'#fff' }}>
+      <main style={{ background:'#ffffff', minHeight:'100vh', overflowX:'hidden', color:'#1e293b' }}>
         {orderedSections.map(({ key }) => {
           const Component = SECTION_MAP[key]
           return Component ? <Component key={key} /> : null
