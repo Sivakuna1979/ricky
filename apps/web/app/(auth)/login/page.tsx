@@ -29,9 +29,8 @@ function LoginForm() {
       return
     }
 
-    // Session is now stored in cookies by @supabase/ssr
-    // Use hard navigation so server-side middleware sees the new cookies
-    const dest = '/admin/dashboard'
+    // Redirect super admin to admin dashboard, everyone else to business dashboard
+    const dest = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
 
     // Small delay to ensure cookies are written before navigation
     setTimeout(() => {
