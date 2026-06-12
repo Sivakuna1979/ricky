@@ -102,6 +102,21 @@ export default function BusinessRegisterPage() {
       return
     }
 
+    // Auto-confirm email + create user profile so login works immediately
+    await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: authData.user.id,
+        email: data.email,
+        full_name: data.full_name,
+        role: 'business_owner',
+      }),
+    })
+
+    // Sign in immediately after signup (email is now confirmed)
+    await supabase.auth.signInWithPassword({ email: data.email, password: data.password })
+
     const slug = data.business_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
     const res = await fetch('/api/businesses', {
       method: 'POST',

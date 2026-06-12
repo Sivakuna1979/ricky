@@ -22,15 +22,22 @@ function LoginForm() {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
       if (error) {
-        setErrorMsg(error.message)
+        // Show the raw Supabase error — never hide it
+        setErrorMsg(`${error.message} (code: ${error.status ?? 'unknown'})`)
         setLoading(false)
         return
       }
 
-      const dest = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
+      if (!data.user) {
+        setErrorMsg('Login succeeded but no user returned — please try again.')
+        setLoading(false)
+        return
+      }
+
+      const dest = data.user.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
       window.location.replace(dest)
-    } catch {
-      setErrorMsg('Network error. Please try again.')
+    } catch (e: any) {
+      setErrorMsg(`Network error: ${e?.message ?? 'unknown'}`)
       setLoading(false)
     }
   }

@@ -33,14 +33,24 @@ export default function RegisterPage() {
     setLoading(true)
 
     const supabase = createClient()
-    const { error: authError } = await supabase.auth.signUp({
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: fullName, role: 'customer' } },
     })
 
+    if (authError) { setLoading(false); setError(authError.message); return }
+
+    if (authData.user) {
+      // Auto-confirm email + create profile so login works immediately
+      await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: authData.user.id, email, full_name: fullName, role: 'customer' }),
+      })
+    }
+
     setLoading(false)
-    if (authError) { setError(authError.message); return }
     setDone(true)
   }
 
