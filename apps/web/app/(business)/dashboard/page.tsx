@@ -15,8 +15,21 @@ export default async function BusinessDashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: userData } = await supabase
+  // Auto-create user profile if missing (handles users who registered before the trigger existed)
+  let { data: userData } = await supabase
     .from('users').select('id, role').eq('auth_id', user.id).single()
+
+  if (!userData) {
+    const { createAdminClient } = await import('@/lib/supabase/server')
+    const admin = await createAdminClient()
+    const { data: created } = await admin.from('users').insert({
+      auth_id: user.id,
+      email: user.email,
+      full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
+      role: 'business_owner',
+    }).select('id, role').single()
+    userData = created
+  }
 
   const { data: business } = await supabase
     .from('businesses')

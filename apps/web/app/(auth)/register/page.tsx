@@ -2,151 +2,111 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { createClient } from '../../../lib/supabase/client'
-import { toast } from 'sonner'
-
-const schema = z.object({
-  full_name: z.string().min(2, 'Enter your full name'),
-  email: z.string().email('Enter a valid email'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirm_password: z.string(),
-  gdpr_consent: z.boolean().refine(val => val, 'You must agree to the privacy policy'),
-}).refine(data => data.password === data.confirm_password, {
-  message: 'Passwords do not match',
-  path: ['confirm_password'],
-})
-
-type FormData = z.infer<typeof schema>
+import { createClient } from '@/lib/supabase/client'
 
 export default function RegisterPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const [fullName, setFullName]     = useState('')
+  const [email, setEmail]           = useState('')
+  const [password, setPassword]     = useState('')
+  const [confirm, setConfirm]       = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState('')
+  const [done, setDone]             = useState(false)
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  })
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '12px 14px', background: 'rgba(255,255,255,.08)',
+    border: '1px solid rgba(255,255,255,.15)', borderRadius: 10, color: '#fff',
+    fontSize: 15, outline: 'none', boxSizing: 'border-box',
+  }
+  const lbl: React.CSSProperties = {
+    display: 'block', fontSize: 13, fontWeight: 600,
+    color: 'rgba(255,255,255,.6)', marginBottom: 6,
+  }
 
-  const onSubmit = async (data: FormData) => {
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!fullName || !email || !password) { setError('Please fill in all fields.'); return }
+    if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
+    if (password !== confirm) { setError('Passwords do not match.'); return }
     setLoading(true)
-    const supabase = createClient()
 
-    const { error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: {
-        data: {
-          full_name: data.full_name,
-          role: 'customer',
-        },
-      },
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName, role: 'customer' } },
     })
 
-    if (error) {
-      toast.error(error.message)
-      setLoading(false)
-      return
-    }
-
-    toast.success('Account created! Please check your email to confirm.')
-    router.push('/login')
+    setLoading(false)
+    if (authError) { setError(authError.message); return }
+    setDone(true)
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">Create your account</h1>
-          <p className="mt-2 text-gray-600">
+    <div style={{ minHeight:'100vh', background:'#0a0a14', display:'flex', alignItems:'center', justifyContent:'center', padding:'24px', fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif' }}>
+      <div style={{ width:'100%', maxWidth:420 }}>
+        <div style={{ textAlign:'center', marginBottom:32 }}>
+          <Link href="/" style={{ display:'inline-flex', alignItems:'center', gap:10, marginBottom:16, textDecoration:'none' }}>
+            <div style={{ width:42, height:42, borderRadius:12, background:'linear-gradient(135deg,#f97316,#dc2626)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <span style={{ color:'#fff', fontSize:15, fontWeight:900 }}>FT</span>
+            </div>
+            <span style={{ fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.04em' }}>Food<span style={{ color:'#f97316' }}>Taxi</span></span>
+          </Link>
+          <h1 style={{ fontSize:24, fontWeight:800, color:'#fff', margin:0 }}>Create your account</h1>
+          <p style={{ color:'rgba(255,255,255,.4)', marginTop:6, fontSize:14 }}>
             Already have an account?{' '}
-            <Link href="/login" className="text-brand-500 hover:underline font-medium">
-              Sign in
-            </Link>
+            <Link href="/login" style={{ color:'#fbbf24', textDecoration:'none', fontWeight:600 }}>Sign in</Link>
           </p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="bg-white p-8 rounded-2xl shadow space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-            <input
-              {...register('full_name')}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-              placeholder="John Smith"
-            />
-            {errors.full_name && <p className="mt-1 text-sm text-red-500">{errors.full_name.message}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              {...register('email')}
-              type="email"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-              placeholder="you@example.com"
-            />
-            {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email.message}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              {...register('password')}
-              type="password"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-              placeholder="••••••••"
-            />
-            {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password.message}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-            <input
-              {...register('confirm_password')}
-              type="password"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-              placeholder="••••••••"
-            />
-            {errors.confirm_password && <p className="mt-1 text-sm text-red-500">{errors.confirm_password.message}</p>}
-          </div>
-
-          <div className="flex items-start gap-3">
-            <input
-              {...register('gdpr_consent')}
-              type="checkbox"
-              id="gdpr"
-              className="mt-1 h-4 w-4 text-brand-500"
-            />
-            <label htmlFor="gdpr" className="text-sm text-gray-600">
-              I agree to the{' '}
-              <Link href="/privacy" className="text-brand-500 hover:underline">Privacy Policy</Link>
-              {' '}and{' '}
-              <Link href="/terms" className="text-brand-500 hover:underline">Terms of Service</Link>
-            </label>
-          </div>
-          {errors.gdpr_consent && <p className="text-sm text-red-500">{errors.gdpr_consent.message}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-brand-500 text-white py-3 rounded-lg font-semibold hover:bg-brand-600 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Creating account...' : 'Create Account'}
-          </button>
-
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Are you a food business?</p>
-            <Link
-              href="/register/business"
-              className="text-brand-500 font-medium hover:underline text-sm"
-            >
-              Register your business instead →
+        {done ? (
+          <div style={{ background:'rgba(16,185,129,.15)', border:'1px solid rgba(16,185,129,.4)', borderRadius:14, padding:'28px 24px', textAlign:'center' }}>
+            <div style={{ fontSize:44, marginBottom:12 }}>📧</div>
+            <div style={{ color:'#6ee7b7', fontWeight:700, fontSize:17, marginBottom:8 }}>Check your email!</div>
+            <div style={{ color:'rgba(255,255,255,.5)', fontSize:14, lineHeight:1.6, marginBottom:20 }}>
+              We sent a confirmation link to <strong style={{ color:'#fff' }}>{email}</strong>.<br />
+              Click the link to activate your account, then sign in.
+            </div>
+            <Link href="/login" style={{ display:'inline-block', padding:'11px 28px', borderRadius:50, background:'linear-gradient(135deg,#fbbf24,#f59e0b)', color:'#0a0a14', fontWeight:800, fontSize:14, textDecoration:'none' }}>
+              Go to Sign In
             </Link>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={submit} style={{ background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.1)', borderRadius:16, padding:28 }}>
+            {error && (
+              <div style={{ background:'rgba(239,68,68,.2)', border:'1px solid rgba(239,68,68,.4)', borderRadius:10, padding:'12px 14px', marginBottom:16, color:'#fca5a5', fontSize:14 }}>
+                ⚠️ {error}
+              </div>
+            )}
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Full Name</label>
+              <input value={fullName} onChange={e => setFullName(e.target.value)} style={inp} placeholder="John Smith" autoComplete="name" />
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Email address</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inp} placeholder="you@example.com" autoComplete="email" />
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={lbl}>Password</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} style={inp} placeholder="At least 8 characters" autoComplete="new-password" />
+            </div>
+            <div style={{ marginBottom:24 }}>
+              <label style={lbl}>Confirm Password</label>
+              <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} style={inp} placeholder="••••••••" autoComplete="new-password" />
+            </div>
+            <button type="submit" disabled={loading}
+              style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#fbbf24,#f59e0b)', border:'none', borderRadius:50, color:'#0a0a14', fontWeight:800, fontSize:15, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1, fontFamily:'inherit' }}>
+              {loading ? 'Creating account…' : 'Create Account'}
+            </button>
+          </form>
+        )}
+
+        <p style={{ textAlign:'center', marginTop:20, fontSize:13, color:'rgba(255,255,255,.25)' }}>
+          Food business?{' '}
+          <Link href="/register/business" style={{ color:'#fbbf24', textDecoration:'none', fontWeight:600 }}>Register your business →</Link>
+        </p>
       </div>
     </div>
   )

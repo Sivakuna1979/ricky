@@ -24,14 +24,23 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Get internal user
-  const { data: userData } = await admin
+  // Get or auto-create internal user profile
+  let { data: userData } = await admin
     .from('users')
     .select('id, role')
     .eq('auth_id', user.id)
     .single() as { data: { id: string; role: string } | null }
 
-  if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  if (!userData) {
+    const { data: created } = await admin.from('users').insert({
+      auth_id: user.id,
+      email: user.email,
+      full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
+      role: 'business_owner',
+    }).select('id, role').single()
+    if (!created) return NextResponse.json({ error: 'Failed to create user profile' }, { status: 500 })
+    userData = created
+  }
 
   // Update user role to business_owner if needed
   if (userData.role === 'customer') {

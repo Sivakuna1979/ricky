@@ -57,6 +57,13 @@ function LoginForm() {
         {errorMsg && (
           <div style={{ background:'rgba(239,68,68,.2)', border:'2px solid rgba(239,68,68,.5)', borderRadius:12, padding:'14px 16px', marginBottom:20, color:'#fca5a5', fontSize:14, lineHeight:1.5, fontWeight:500 }}>
             ⚠️ {errorMsg}
+            {(errorMsg.toLowerCase().includes('invalid') || errorMsg.toLowerCase().includes('credentials') || errorMsg.toLowerCase().includes('password')) && (
+              <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(239,68,68,.3)' }}>
+                <Link href="/forgot-password" style={{ color:'#fbbf24', textDecoration:'none', fontWeight:700, fontSize:13 }}>
+                  → Reset your password
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
