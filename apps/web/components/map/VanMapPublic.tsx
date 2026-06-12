@@ -248,6 +248,8 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
   const [invitePlace, setInvitePlace]   = useState<GooglePlace|null>(null)
   const [mapDark, setMapDark]           = useState(false)
   const mapDarkRef                      = useRef(false)
+  const [locating, setLocating]         = useState(false)
+  const [locError, setLocError]         = useState('')
   const [showFoodTaxi, setShowFoodTaxi] = useState(true)
   const [showGoogle, setShowGoogle]     = useState(true)
   const [typeFilters, setTypeFilters]   = useState<Set<string>>(new Set())
@@ -422,18 +424,44 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
 
   const tog = (on:boolean, c='#f97316'): React.CSSProperties => ({ padding:'6px 13px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:on?c:'rgba(255,255,255,0.08)', color:on?'#fff':'rgba(255,255,255,0.4)' })
 
+  function useMyLocation() {
+    if (!navigator.geolocation) { setLocError('Location not supported'); return }
+    setLocating(true); setLocError('')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        setUserPos({ lat, lng })
+        if (mapRef.current) mapRef.current.setView([lat, lng], 14)
+        fetchGoogle(lat, lng)
+        fetchFoodTaxi(lat, lng)
+        setLocating(false)
+      },
+      (err) => {
+        setLocating(false)
+        if (err.code === 1) setLocError('Permission denied — enable location in Settings')
+        else setLocError('Could not get location, try again')
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
   return (
     <div>
       {/* ── Controls ── */}
-      <div style={{ marginBottom:12, display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+      <div style={{ marginBottom:8, display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
         <button onClick={()=>setShowFoodTaxi(v=>!v)} style={tog(showFoodTaxi,'#22c55e')}>🚐 FoodTaxi Vans</button>
         <button onClick={()=>setShowGoogle(v=>!v)}   style={tog(showGoogle,'#f97316')}>🌍 Google Businesses</button>
+        <button onClick={useMyLocation} disabled={locating} style={{ padding:'6px 13px', borderRadius:20, border:'1.5px solid rgba(96,165,250,0.5)', background:'rgba(96,165,250,0.12)', color:'#93c5fd', fontSize:12, fontWeight:700, cursor:locating?'wait':'pointer', display:'flex', alignItems:'center', gap:5 }}>
+          {locating ? '⏳ Locating…' : '📍 My Location'}
+        </button>
         {/* Map style toggle */}
         <div style={{ marginLeft:'auto', display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:20, overflow:'hidden', border:'1px solid rgba(255,255,255,0.1)' }}>
           <button onClick={()=>{ mapDarkRef.current=false; setMapDark(false); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_LIGHT,{attribution:'© OpenStreetMap contributors © CARTO',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:!mapDark?'#fff':'transparent', color:!mapDark?'#111':'rgba(255,255,255,0.5)', transition:'background .15s' }}>☀️ Light</button>
           <button onClick={()=>{ mapDarkRef.current=true; setMapDark(true); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_DARK,{attribution:'© OpenStreetMap contributors © CARTO',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:mapDark?'#334155':'transparent', color:mapDark?'#fff':'rgba(255,255,255,0.5)', transition:'background .15s' }}>🌙 Dark</button>
         </div>
       </div>
+
+      {locError && <div style={{ fontSize:12, color:'#f87171', marginBottom:6 }}>⚠️ {locError}</div>}
 
       {/* ── Type chips ── */}
       <div style={{ marginBottom:12, display:'flex', flexWrap:'wrap', gap:6 }}>
