@@ -17,14 +17,14 @@ export const dynamic = 'force-dynamic'
 // ─── static data ───────────────────────────────────────────────────────────
 
 const CATEGORIES = [
-  { label: 'Fish & Chips', emoji: '🐟', type: 'fish_and_chips', bg: '#0d1f35', border: '#1e4a7f', glow: '#3b82f6', tag: 'Most Popular' },
-  { label: 'Burger Vans',  emoji: '🍔', type: 'burger',         bg: '#1f0f05', border: '#7c3912', glow: '#f97316', tag: 'Trending'     },
-  { label: 'Pizza Vans',   emoji: '🍕', type: 'pizza',          bg: '#1e0707', border: '#7f1d1d', glow: '#ef4444', tag: ''             },
-  { label: 'Coffee Vans',  emoji: '☕', type: 'coffee',         bg: '#150d05', border: '#78350f', glow: '#d97706', tag: ''             },
-  { label: 'Ice Cream',    emoji: '🍦', type: 'ice_cream',      bg: '#0d0820', border: '#4c1d95', glow: '#8b5cf6', tag: ''             },
-  { label: 'Dessert Vans', emoji: '🍰', type: 'dessert',        bg: '#1e0810', border: '#831843', glow: '#ec4899', tag: ''             },
-  { label: 'Street Food',  emoji: '🥙', type: 'street_food',   bg: '#061f14', border: '#065f46', glow: '#10b981', tag: 'New'          },
-  { label: 'Catering',     emoji: '🚚', type: 'catering_trailer', bg: '#0d0d1a', border: '#312e81', glow: '#6366f1', tag: ''          },
+  { label: 'Fish & Chips', emoji: '🐟', type: 'fish_and_chips', bg: '#dbeafe', border: '#93c5fd', glow: '#3b82f6', textColor: '#1d4ed8', tag: 'Most Popular' },
+  { label: 'Burger Vans',  emoji: '🍔', type: 'burger',         bg: '#ffedd5', border: '#fdba74', glow: '#f97316', textColor: '#c2410c', tag: 'Trending'     },
+  { label: 'Pizza Vans',   emoji: '🍕', type: 'pizza',          bg: '#fee2e2', border: '#fca5a5', glow: '#ef4444', textColor: '#dc2626', tag: ''             },
+  { label: 'Coffee Vans',  emoji: '☕', type: 'coffee',         bg: '#fef3c7', border: '#fcd34d', glow: '#d97706', textColor: '#b45309', tag: ''             },
+  { label: 'Ice Cream',    emoji: '🍦', type: 'ice_cream',      bg: '#ede9fe', border: '#c4b5fd', glow: '#8b5cf6', textColor: '#6d28d9', tag: ''             },
+  { label: 'Dessert Vans', emoji: '🍰', type: 'dessert',        bg: '#fce7f3', border: '#f9a8d4', glow: '#ec4899', textColor: '#be185d', tag: ''             },
+  { label: 'Street Food',  emoji: '🥙', type: 'street_food',   bg: '#d1fae5', border: '#6ee7b7', glow: '#10b981', textColor: '#065f46', tag: 'New'          },
+  { label: 'Catering',     emoji: '🚚', type: 'catering_trailer', bg: '#e0e7ff', border: '#a5b4fc', glow: '#6366f1', textColor: '#4338ca', tag: ''          },
 ]
 
 const VANS = [
@@ -93,14 +93,14 @@ function SectionHero() {
 
 function SectionStats() {
   return (
-    <div style={{ background:'rgba(255,255,255,.025)', borderTop:'1px solid rgba(255,255,255,.07)', borderBottom:'1px solid rgba(255,255,255,.07)' }}>
+    <div style={{ background:'#ffffff', borderTop:'1px solid #e2e8f0', borderBottom:'1px solid #e2e8f0', boxShadow:'0 4px 24px rgba(0,0,0,0.06)' }}>
       <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 20px' }}>
         <div className="ft-stats-grid">
           {STATS.map((s, i) => (
             <div key={s.label} className={`ft-stats-item${i<3?' ft-stats-divider':''}`} style={{ padding:'36px 24px', textAlign:'center' }}>
               <div style={{ fontSize:'2rem', marginBottom:8 }}>{s.icon}</div>
               <div style={{ fontSize:'clamp(1.6rem,3vw,2.2rem)', fontWeight:900, color:s.color, letterSpacing:'-0.025em', marginBottom:4 }}>{s.value}</div>
-              <div style={{ fontSize:13, color:'rgba(255,255,255,.4)', fontWeight:500 }}>{s.label}</div>
+              <div style={{ fontSize:13, color:'#64748b', fontWeight:500 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -111,20 +111,20 @@ function SectionStats() {
 
 function SectionCategories() {
   return (
-    <section style={{ padding:'88px 20px' }}>
+    <section style={{ padding:'88px 20px', background:'#f8fafc' }}>
       <div style={{ maxWidth:1280, margin:'0 auto' }}>
         <div style={{ textAlign:'center', marginBottom:52 }}>
           <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:10 }}>Browse by type</p>
-          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#fff', letterSpacing:'-0.025em', margin:'0 0 12px' }}>What Are You Craving?</h2>
-          <p style={{ fontSize:15, color:'rgba(255,255,255,.4)', margin:0 }}>Tap any category to see vans near you</p>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:'0 0 12px' }}>What Are You Craving?</h2>
+          <p style={{ fontSize:15, color:'#64748b', margin:0 }}>Tap any category to see vans near you</p>
         </div>
         <div className="ft-cat-grid">
           {CATEGORIES.map(c => (
-            <Link key={c.type} href={`/search?type=${c.type}`} className="ft-card" style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'28px 12px 22px', borderRadius:18, textDecoration:'none', background:c.bg, border:`1px solid ${c.border}`, boxShadow:`0 0 28px ${c.glow}14` }}>
+            <Link key={c.type} href={`/search?type=${c.type}`} className="ft-card" style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'28px 12px 22px', borderRadius:18, textDecoration:'none', background:c.bg, border:`2px solid ${c.border}`, boxShadow:`0 4px 20px ${c.glow}22` }}>
               {c.tag && <div style={{ position:'absolute', top:9, right:9, fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:20, background:c.tag==='Most Popular'?'#f97316':c.tag==='Trending'?'#ef4444':'#10b981', color:'#fff' }}>{c.tag}</div>}
-              <span style={{ fontSize:'2.6rem', marginBottom:12, filter:'drop-shadow(0 4px 8px rgba(0,0,0,.4))' }}>{c.emoji}</span>
-              <span style={{ fontSize:13, fontWeight:700, color:'#fff', textAlign:'center', lineHeight:1.3 }}>{c.label}</span>
-              <span style={{ fontSize:11, color:c.glow, marginTop:5, fontWeight:500 }}>Find vans →</span>
+              <span style={{ fontSize:'2.6rem', marginBottom:12, filter:'drop-shadow(0 4px 8px rgba(0,0,0,.15))' }}>{c.emoji}</span>
+              <span style={{ fontSize:13, fontWeight:800, color:c.textColor, textAlign:'center', lineHeight:1.3 }}>{c.label}</span>
+              <span style={{ fontSize:11, color:c.glow, marginTop:5, fontWeight:600 }}>Find vans →</span>
             </Link>
           ))}
         </div>
@@ -135,42 +135,42 @@ function SectionCategories() {
 
 function SectionVansLive() {
   return (
-    <section style={{ padding:'0 20px 88px' }}>
+    <section style={{ padding:'88px 20px', background:'#fffbf7' }}>
       <div style={{ maxWidth:1280, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:40, flexWrap:'wrap', gap:16 }}>
           <div>
             <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:8 }}>Real-time</p>
-            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#fff', letterSpacing:'-0.025em', margin:0 }}>Vans Out Today</h2>
+            <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:0 }}>Vans Out Today</h2>
           </div>
-          <Link href="/search" className="ft-btn-ghost" style={{ padding:'11px 24px', borderRadius:12, fontSize:14 }}>See all vans →</Link>
+          <Link href="/search" style={{ padding:'11px 24px', borderRadius:12, fontSize:14, background:'#fff', color:'#f97316', border:'2px solid #f97316', fontWeight:700, textDecoration:'none', display:'inline-block' }}>See all vans →</Link>
         </div>
         <div className="ft-van-grid">
           {VANS.map(v => (
-            <div key={v.name} className="ft-card" style={{ borderRadius:22, overflow:'hidden', background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.08)', boxShadow:`0 0 40px ${v.glow}12` }}>
-              <div style={{ height:158, position:'relative', display:'flex', alignItems:'center', justifyContent:'center', background:`radial-gradient(ellipse at 30% 30%,${v.glow}30 0%,${v.bg} 70%)` }}>
-                <span style={{ fontSize:'4.2rem', filter:'drop-shadow(0 8px 16px rgba(0,0,0,.5))' }}>{v.emoji}</span>
+            <div key={v.name} className="ft-card" style={{ borderRadius:22, overflow:'hidden', background:'#ffffff', border:`2px solid ${v.glow}44`, boxShadow:`0 8px 40px ${v.glow}20` }}>
+              <div style={{ height:158, position:'relative', display:'flex', alignItems:'center', justifyContent:'center', background:`linear-gradient(135deg,${v.glow}22 0%,${v.glow}44 100%)` }}>
+                <span style={{ fontSize:'4.2rem', filter:'drop-shadow(0 8px 16px rgba(0,0,0,.2))' }}>{v.emoji}</span>
                 <div style={{ position:'absolute', top:14, left:14 }}>
-                  <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'5px 13px', borderRadius:20, fontSize:12, fontWeight:700, background:v.dotBg, color:v.dot, border:`1px solid ${v.dotBorder}` }}>
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'5px 13px', borderRadius:20, fontSize:12, fontWeight:700, background:'#fff', color:v.dot==='#4ade80'?'#16a34a':'#d97706', border:`2px solid ${v.dot}66` }}>
                     <span style={{ width:7, height:7, borderRadius:'50%', background:v.dot, display:'inline-block' }} />{v.status}
                   </span>
                 </div>
-                <div style={{ position:'absolute', top:14, right:14, background:'rgba(0,0,0,.55)', backdropFilter:'blur(8px)', borderRadius:9, padding:'4px 10px', fontSize:12, fontWeight:700, color:'#fbbf24' }}>⭐ {v.rating} ({v.reviews})</div>
+                <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,0.9)', backdropFilter:'blur(8px)', borderRadius:9, padding:'4px 10px', fontSize:12, fontWeight:700, color:'#92400e' }}>⭐ {v.rating} ({v.reviews})</div>
               </div>
               <div style={{ padding:'20px 20px 22px' }}>
                 <p style={{ fontSize:11, fontWeight:700, color:v.glow, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4 }}>{v.type}</p>
-                <h3 style={{ fontSize:'1.1rem', fontWeight:700, color:'#fff', margin:'0 0 8px' }}>{v.name}</h3>
-                <p style={{ fontSize:13, color:'rgba(255,255,255,.4)', margin:'0 0 18px', display:'flex', alignItems:'center', gap:5 }}><span>📍</span>{v.area}</p>
+                <h3 style={{ fontSize:'1.1rem', fontWeight:700, color:'#1e293b', margin:'0 0 8px' }}>{v.name}</h3>
+                <p style={{ fontSize:13, color:'#64748b', margin:'0 0 18px', display:'flex', alignItems:'center', gap:5 }}><span>📍</span>{v.area}</p>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:18 }}>
                   {[['📏','Distance',v.distance],['⏱️','Arrival',v.arrival]].map(([icon,label,val]) => (
-                    <div key={label as string} style={{ background:'rgba(255,255,255,.05)', borderRadius:10, padding:'10px 12px' }}>
-                      <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', marginBottom:3 }}>{icon} {label}</div>
-                      <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{val}</div>
+                    <div key={label as string} style={{ background:'#f8fafc', borderRadius:10, padding:'10px 12px', border:'1px solid #e2e8f0' }}>
+                      <div style={{ fontSize:11, color:'#94a3b8', marginBottom:3 }}>{icon} {label}</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:'#1e293b' }}>{val}</div>
                     </div>
                   ))}
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                  <Link href="/search" className="ft-btn-ghost" style={{ padding:'12px', borderRadius:11, fontSize:13 }}>🗺️ Track</Link>
-                  <Link href="/search" className="ft-btn-primary" style={{ padding:'12px', borderRadius:11, fontSize:13 }}>🛒 Order</Link>
+                  <Link href="/search" style={{ padding:'12px', borderRadius:11, fontSize:13, background:'#f8fafc', color:'#475569', border:'1px solid #e2e8f0', fontWeight:600, textDecoration:'none', textAlign:'center', display:'block' }}>🗺️ Track</Link>
+                  <Link href="/search" style={{ padding:'12px', borderRadius:11, fontSize:13, background:`linear-gradient(135deg,${v.glow},${v.glow}cc)`, color:'#fff', fontWeight:700, textDecoration:'none', textAlign:'center', display:'block' }}>🛒 Order</Link>
                 </div>
               </div>
             </div>
@@ -183,12 +183,12 @@ function SectionVansLive() {
 
 function SectionMap() {
   return (
-    <section style={{ padding:'0 20px 88px' }}>
+    <section style={{ padding:'88px 20px', background:'#ffffff' }}>
       <div style={{ maxWidth:1280, margin:'0 auto' }}>
         <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:8 }}>Live GPS</p>
-        <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#fff', margin:'0 0 28px', letterSpacing:'-0.025em' }}>Van Map</h2>
-        <div style={{ borderRadius:24, overflow:'hidden', border:'1px solid rgba(255,255,255,.08)', boxShadow:'0 0 60px rgba(59,130,246,.1)' }}>
-          <Suspense fallback={<div style={{ height:480, background:'rgba(255,255,255,.03)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', color:'rgba(255,255,255,.5)' }}>🗺️ Loading map…</div>}>
+        <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#1e293b', margin:'0 0 28px', letterSpacing:'-0.025em' }}>Van Map</h2>
+        <div style={{ borderRadius:24, overflow:'hidden', border:'4px solid transparent', backgroundClip:'padding-box', boxShadow:'0 0 0 4px #f97316, 0 8px 40px rgba(249,115,22,0.25)' }}>
+          <Suspense fallback={<div style={{ height:480, background:'#f8fafc', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', color:'#94a3b8' }}>🗺️ Loading map…</div>}>
             <VanMapPublic height="480px" />
           </Suspense>
         </div>
@@ -199,21 +199,21 @@ function SectionMap() {
 
 function SectionHow() {
   return (
-    <section id="how-it-works" style={{ padding:'88px 20px', background:'rgba(255,255,255,.015)', borderTop:'1px solid rgba(255,255,255,.06)' }}>
+    <section id="how-it-works" style={{ padding:'88px 20px', background:'linear-gradient(135deg,#f97316 0%,#dc2626 50%,#7c3aed 100%)' }}>
       <div style={{ maxWidth:1100, margin:'0 auto' }}>
         <div style={{ textAlign:'center', marginBottom:64 }}>
-          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:10 }}>Simple as that</p>
-          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#fff', letterSpacing:'-0.025em', margin:'0 0 12px' }}>How FoodTaxi Works</h2>
-          <p style={{ fontSize:15, color:'rgba(255,255,255,.4)', margin:0 }}>From search to checkout in under 2 minutes</p>
+          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'rgba(255,255,255,0.8)', marginBottom:10 }}>Simple as that</p>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#fff', letterSpacing:'-0.025em', margin:'0 0 12px', textShadow:'0 2px 12px rgba(0,0,0,0.3)' }}>How FoodTaxi Works</h2>
+          <p style={{ fontSize:15, color:'rgba(255,255,255,.8)', margin:0 }}>From search to checkout in under 2 minutes</p>
         </div>
         <div className="ft-how-grid">
           {HOW.map(h => (
-            <div key={h.n} className="ft-card" style={{ borderRadius:24, padding:'40px 32px', textAlign:'center', position:'relative', overflow:'hidden', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)' }}>
-              <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:`linear-gradient(90deg,${h.color},transparent)` }} />
-              <div style={{ width:70, height:70, borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2rem', margin:'0 auto 24px', background:`${h.color}18`, border:`1px solid ${h.color}35` }}>{h.icon}</div>
-              <div style={{ fontSize:11, fontWeight:700, color:h.color, letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:12 }}>{h.n}</div>
-              <h3 style={{ fontSize:'1.2rem', fontWeight:700, color:'#fff', margin:'0 0 14px' }}>{h.title}</h3>
-              <p style={{ fontSize:14, color:'rgba(255,255,255,.44)', lineHeight:1.75, margin:0 }}>{h.desc}</p>
+            <div key={h.n} className="ft-card" style={{ borderRadius:24, padding:'40px 32px', textAlign:'center', position:'relative', overflow:'hidden', background:'rgba(255,255,255,0.18)', backdropFilter:'blur(12px)', border:'1px solid rgba(255,255,255,0.35)', boxShadow:'0 8px 32px rgba(0,0,0,0.15)' }}>
+              <div style={{ position:'absolute', top:0, left:0, right:0, height:4, background:'rgba(255,255,255,0.5)' }} />
+              <div style={{ width:70, height:70, borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2rem', margin:'0 auto 24px', background:'rgba(255,255,255,0.25)', border:'2px solid rgba(255,255,255,0.5)' }}>{h.icon}</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.9)', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:12 }}>{h.n}</div>
+              <h3 style={{ fontSize:'1.2rem', fontWeight:700, color:'#fff', margin:'0 0 14px', textShadow:'0 1px 4px rgba(0,0,0,0.2)' }}>{h.title}</h3>
+              <p style={{ fontSize:14, color:'rgba(255,255,255,.85)', lineHeight:1.75, margin:0 }}>{h.desc}</p>
             </div>
           ))}
         </div>
@@ -243,31 +243,31 @@ function SectionPopular() {
 
 function SectionPricing() {
   return (
-    <section id="pricing" style={{ padding:'88px 20px', borderTop:'1px solid rgba(255,255,255,.06)' }}>
+    <section id="pricing" style={{ padding:'88px 20px', background:'#ffffff', borderTop:'1px solid #e2e8f0' }}>
       <div style={{ maxWidth:1100, margin:'0 auto' }}>
         <div style={{ textAlign:'center', marginBottom:64 }}>
-          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:10 }}>Simple pricing</p>
-          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#fff', letterSpacing:'-0.025em', margin:'0 0 12px' }}>Plans for Every Business</h2>
-          <p style={{ fontSize:15, color:'rgba(255,255,255,.4)', margin:0 }}>14-day free trial on all plans. No credit card required.</p>
+          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#7c3aed', marginBottom:10 }}>Simple pricing</p>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:'0 0 12px' }}>Plans for Every Business</h2>
+          <p style={{ fontSize:15, color:'#64748b', margin:0 }}>14-day free trial on all plans. No credit card required.</p>
         </div>
         <div className="ft-price-grid">
           {PRICING.map(plan => (
-            <div key={plan.name} className="ft-card" style={{ position:'relative', borderRadius:24, padding:'36px 30px 34px', background:plan.bg, border:plan.highlight?`1.5px solid ${plan.glow}55`:'1px solid rgba(255,255,255,.08)', boxShadow:plan.highlight?`0 0 60px ${plan.glow}1a`:'none' }}>
-              {plan.badge && <div style={{ position:'absolute', top:-14, left:'50%', transform:'translateX(-50%)', background:`linear-gradient(135deg,${plan.glow},${plan.glow}bb)`, color:'#fff', fontSize:11, fontWeight:800, padding:'5px 18px', borderRadius:20, whiteSpace:'nowrap', letterSpacing:'0.05em' }}>{plan.badge}</div>}
-              <h3 style={{ fontSize:'1.25rem', fontWeight:700, color:'#fff', margin:'0 0 8px' }}>{plan.name}</h3>
+            <div key={plan.name} className="ft-card" style={{ position:'relative', borderRadius:24, padding:'36px 30px 34px', background:plan.highlight?'linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)':'#f8fafc', border:plan.highlight?'none':'1px solid #e2e8f0', boxShadow:plan.highlight?'0 20px 60px rgba(99,102,241,0.4)':'0 4px 20px rgba(0,0,0,0.06)' }}>
+              {plan.badge && <div style={{ position:'absolute', top:-14, left:'50%', transform:'translateX(-50%)', background:'linear-gradient(135deg,#f97316,#dc2626)', color:'#fff', fontSize:11, fontWeight:800, padding:'5px 18px', borderRadius:20, whiteSpace:'nowrap', letterSpacing:'0.05em' }}>{plan.badge}</div>}
+              <h3 style={{ fontSize:'1.25rem', fontWeight:700, color:plan.highlight?'#fff':'#1e293b', margin:'0 0 8px' }}>{plan.name}</h3>
               <div style={{ marginBottom:28 }}>
-                <span style={{ fontSize:'2.8rem', fontWeight:900, color:'#fff', letterSpacing:'-0.04em' }}>{plan.price}</span>
-                <span style={{ fontSize:15, color:'rgba(255,255,255,.4)', fontWeight:500 }}>{plan.period}</span>
+                <span style={{ fontSize:'2.8rem', fontWeight:900, color:plan.highlight?'#fff':'#1e293b', letterSpacing:'-0.04em' }}>{plan.price}</span>
+                <span style={{ fontSize:15, color:plan.highlight?'rgba(255,255,255,.7)':'#64748b', fontWeight:500 }}>{plan.period}</span>
               </div>
               <ul style={{ listStyle:'none', padding:0, margin:'0 0 32px', display:'flex', flexDirection:'column', gap:13 }}>
                 {plan.features.map(f => (
-                  <li key={f} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, color:'rgba(255,255,255,.75)' }}>
-                    <span style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, background:`${plan.glow}22`, border:`1px solid ${plan.glow}44`, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, color:plan.glow }}>✓</span>
+                  <li key={f} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, color:plan.highlight?'rgba(255,255,255,.9)':'#475569' }}>
+                    <span style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, background:plan.highlight?'rgba(255,255,255,0.2)':'#ede9fe', border:plan.highlight?'1px solid rgba(255,255,255,0.4)':'1px solid #c4b5fd', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, color:plan.highlight?'#fff':'#7c3aed' }}>✓</span>
                     {f}
                   </li>
                 ))}
               </ul>
-              <Link href="/register/business" className="ft-btn-primary" style={{ width:'100%', padding:'14px', borderRadius:12, fontSize:15, background:plan.highlight?`linear-gradient(135deg,${plan.glow},${plan.glow}bb)`:'rgba(255,255,255,.1)', display:'block' }}>
+              <Link href="/register/business" className="ft-btn-primary" style={{ width:'100%', padding:'14px', borderRadius:12, fontSize:15, background:plan.highlight?'linear-gradient(135deg,#f97316,#ea580c)':'linear-gradient(135deg,#4f46e5,#7c3aed)', display:'block' }}>
                 Start Free Trial →
               </Link>
             </div>
@@ -280,22 +280,22 @@ function SectionPricing() {
 
 function SectionTestimonials() {
   return (
-    <section style={{ padding:'88px 20px', background:'rgba(255,255,255,.015)', borderTop:'1px solid rgba(255,255,255,.06)' }}>
+    <section style={{ padding:'88px 20px', background:'#f1f5f9', borderTop:'1px solid #e2e8f0' }}>
       <div style={{ maxWidth:1100, margin:'0 auto' }}>
         <div style={{ textAlign:'center', marginBottom:56 }}>
           <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#f97316', marginBottom:10 }}>What they say</p>
-          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#fff', letterSpacing:'-0.025em', margin:0 }}>Loved by Van Owners</h2>
+          <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.8rem)', fontWeight:800, color:'#1e293b', letterSpacing:'-0.025em', margin:0 }}>Loved by Van Owners</h2>
         </div>
         <div className="ft-test-grid">
           {TESTIMONIALS.map(t => (
-            <div key={t.name} className="ft-card" style={{ borderRadius:24, padding:'32px', background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)' }}>
-              <div style={{ display:'flex', gap:3, marginBottom:20 }}>{[0,1,2,3,4].map(i=><span key={i} style={{ color:'#fbbf24', fontSize:16 }}>★</span>)}</div>
-              <p style={{ fontSize:15, color:'rgba(255,255,255,.7)', lineHeight:1.75, marginBottom:24, fontStyle:'italic' }}>"{t.text}"</p>
+            <div key={t.name} className="ft-card" style={{ borderRadius:24, padding:'32px', background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 4px 20px rgba(0,0,0,0.06)' }}>
+              <div style={{ display:'flex', gap:3, marginBottom:20 }}>{[0,1,2,3,4].map(i=><span key={i} style={{ color:'#f59e0b', fontSize:16 }}>★</span>)}</div>
+              <p style={{ fontSize:15, color:'#475569', lineHeight:1.75, marginBottom:24, fontStyle:'italic' }}>"{t.text}"</p>
               <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-                <div style={{ width:46, height:46, borderRadius:'50%', background:'rgba(255,255,255,.07)', border:'1px solid rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', flexShrink:0 }}>{t.emoji}</div>
+                <div style={{ width:46, height:46, borderRadius:'50%', background:'#fef3c7', border:'2px solid #fcd34d', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', flexShrink:0 }}>{t.emoji}</div>
                 <div>
-                  <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{t.name}</div>
-                  <div style={{ fontSize:12, color:'rgba(255,255,255,.38)', marginTop:3 }}>{t.biz}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:'#1e293b' }}>{t.name}</div>
+                  <div style={{ fontSize:12, color:'#94a3b8', marginTop:3 }}>{t.biz}</div>
                 </div>
               </div>
             </div>

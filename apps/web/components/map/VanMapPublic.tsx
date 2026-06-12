@@ -247,6 +247,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
   const [claimPlace, setClaimPlace]     = useState<GooglePlace|null>(null)
   const [invitePlace, setInvitePlace]   = useState<GooglePlace|null>(null)
   const [mapDark, setMapDark]           = useState(false)
+  const mapDarkRef                      = useRef(false)
   const [showFoodTaxi, setShowFoodTaxi] = useState(true)
   const [showGoogle, setShowGoogle]     = useState(true)
   const [typeFilters, setTypeFilters]   = useState<Set<string>>(new Set())
@@ -282,16 +283,6 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
       setFoodTaxiVans(vans)
     } catch {}
   }, [])
-
-  /* ── Switch tile layer ───────────────────────────────────────── */
-  useEffect(() => {
-    if (!mapRef.current || !LRef.current) return
-    const L = LRef.current
-    if (tileRef.current) tileRef.current.remove()
-    tileRef.current = L.tileLayer(mapDark ? TILE_DARK : TILE_LIGHT, {
-      attribution: '© OpenStreetMap contributors © CARTO', maxZoom: 19,
-    }).addTo(mapRef.current)
-  }, [mapDark])
 
   /* ── Init Leaflet ────────────────────────────────────────────── */
   useEffect(() => {
@@ -439,8 +430,8 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
         <button onClick={()=>setShowGoogle(v=>!v)}   style={tog(showGoogle,'#f97316')}>🌍 Google Businesses</button>
         {/* Map style toggle */}
         <div style={{ marginLeft:'auto', display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:20, overflow:'hidden', border:'1px solid rgba(255,255,255,0.1)' }}>
-          <button onClick={()=>setMapDark(false)} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:!mapDark?'#fff':'transparent', color:!mapDark?'#111':'rgba(255,255,255,0.5)', transition:'background .15s' }}>☀️ Light</button>
-          <button onClick={()=>setMapDark(true)}  style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:mapDark?'#334155':'transparent', color:mapDark?'#fff':'rgba(255,255,255,0.5)', transition:'background .15s' }}>🌙 Dark</button>
+          <button onClick={()=>{ mapDarkRef.current=false; setMapDark(false); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_LIGHT,{attribution:'© OpenStreetMap contributors © CARTO',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:!mapDark?'#fff':'transparent', color:!mapDark?'#111':'rgba(255,255,255,0.5)', transition:'background .15s' }}>☀️ Light</button>
+          <button onClick={()=>{ mapDarkRef.current=true; setMapDark(true); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_DARK,{attribution:'© OpenStreetMap contributors © CARTO',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:mapDark?'#334155':'transparent', color:mapDark?'#fff':'rgba(255,255,255,0.5)', transition:'background .15s' }}>🌙 Dark</button>
         </div>
       </div>
 
