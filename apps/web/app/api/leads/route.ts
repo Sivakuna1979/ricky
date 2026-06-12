@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     // Send via Resend
     await getResend().emails.send({
-      from: process.env.EMAIL_FROM!,
+      from: process.env.EMAIL_FROM ?? '',
       to: email,
       subject: `Help ${business_name} get found by more customers`,
       text: emailBody,

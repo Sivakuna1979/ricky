@@ -8,8 +8,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 function getAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
   return createServerClient(url, key, {
     cookies: { getAll: () => [], setAll: () => {} },
     auth: { persistSession: false },
