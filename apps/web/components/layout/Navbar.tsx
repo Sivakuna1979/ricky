@@ -41,7 +41,7 @@ export function Navbar() {
         @media(min-width:769px){.ft-nav-mobile{display:none!important}}
       `}</style>
 
-      <header style={{ position:'sticky', top:0, zIndex:100, background:'rgba(6,9,20,0.92)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+      <header style={{ position:'relative', zIndex:100, background:'rgba(6,9,20,0.92)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
         <div style={{ maxWidth:1280, margin:'0 auto', padding:'0 20px', height:68, display:'flex', alignItems:'center', justifyContent:'space-between', gap:16 }}>
 
           {/* Logo */}
