@@ -15,15 +15,25 @@ export function Navbar() {
   const [open, setOpen]       = useState(false)
   const [role, setRole]       = useState<string | null>(null)
   const [userEmail, setEmail] = useState<string | null>(null)
+  const [loaded, setLoaded]   = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
+      if (!user) { setLoaded(true); return }
       setEmail(user.email ?? null)
-      const { data } = await supabase.from('users').select('role').eq('auth_id', user.id).single()
-      setRole(data?.role ?? null)
-    })
+      // Check role — but email check is enough for super admin
+      if (user.email === 'sivakuna@icloud.com') {
+        setRole('super_admin')
+        setLoaded(true)
+        return
+      }
+      try {
+        const { data } = await supabase.from('users').select('role').eq('auth_id', user.id).single()
+        setRole(data?.role ?? null)
+      } catch {}
+      setLoaded(true)
+    }).catch(() => setLoaded(true))
   }, [])
 
   const isAdmin = role === 'super_admin' || role === 'admin' || userEmail === 'sivakuna@icloud.com'
