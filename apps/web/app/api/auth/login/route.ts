@@ -4,7 +4,6 @@ import { createServerClient } from '@supabase/ssr'
 
 export async function POST(request: NextRequest) {
   const { email, password } = await request.json()
-
   const cookiesToSet: any[] = []
 
   const supabase = createServerClient(
@@ -25,12 +24,11 @@ export async function POST(request: NextRequest) {
   }
 
   const dest = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
-  const response = NextResponse.json({ redirectTo: dest })
 
-  // Write auth cookies onto the response so the browser stores them
+  // Server-side redirect with cookies attached
+  const response = NextResponse.redirect(new URL(dest, request.url))
   cookiesToSet.forEach(({ name, value, options }) => {
-    response.cookies.set(name, value, options)
+    response.cookies.set(name, value, { ...options, sameSite: 'lax', httpOnly: false })
   })
-
   return response
 }

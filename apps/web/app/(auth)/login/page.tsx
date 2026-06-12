@@ -14,21 +14,25 @@ function LoginForm() {
     e.preventDefault()
     setErrorMsg('')
     if (!email || !password) { setErrorMsg('Please enter your email and password.'); return }
-
     setLoading(true)
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
+        redirect: 'follow',
       })
-      const data = await res.json()
+
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
         setErrorMsg(data.error ?? 'Sign in failed. Please check your email and password.')
         setLoading(false)
         return
       }
-      window.location.href = data.redirectTo
+
+      // Follow the server redirect
+      window.location.href = res.url || (email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard')
     } catch {
       setErrorMsg('Network error. Please try again.')
       setLoading(false)
