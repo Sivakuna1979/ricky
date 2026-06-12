@@ -2,10 +2,6 @@
   "name": "food-taxi",
   "version": "0.0.1",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
     "build": "cd apps/web && npm install && npm run build",
     "dev": "turbo run dev",
