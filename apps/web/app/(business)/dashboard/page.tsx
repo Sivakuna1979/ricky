@@ -12,8 +12,9 @@ const PLAN_FEATURES: Record<string, string[]> = {
 
 export default async function BusinessDashboardPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) redirect('/login')
+  const user = session.user
 
   // Auto-create user profile if missing (handles users who registered before the trigger existed)
   let { data: userData } = await supabase

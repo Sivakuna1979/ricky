@@ -24,8 +24,9 @@ const STATUS_COLORS = {
 
 export default async function OrdersPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) redirect('/login')
+  const user = session.user
 
   const { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).single()
   const { data: biz } = await supabase.from('businesses').select('id,name').eq('owner_id', userData?.id).maybeSingle()

@@ -33,7 +33,8 @@ const NAV = [
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
+  const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
+  const user = session?.user ?? null
 
   // Guard: only sivakuna@icloud.com can access admin
   if (!user) return redirect('/login')

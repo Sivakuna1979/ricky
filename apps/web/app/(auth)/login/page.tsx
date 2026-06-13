@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 // Bump on every login change so we can confirm the live deploy.
-const BUILD_TAG = 'login-v10 · 2026-06-13'
+const BUILD_TAG = 'login-v11 · 2026-06-13'
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('')
@@ -50,13 +50,26 @@ export default function LoginPage() {
       return
     }
 
-    // 2. Redirect immediately — no server API call (avoids cookie race condition).
-    //    Super admin by email only; all others go to /dashboard where role routing happens.
+    // 2. Probe server-side session (tells us if the cookie is readable by the server)
+    try {
+      const probe = await fetch('/api/debug/session', { cache: 'no-store' })
+      const pd = await probe.json()
+      dbg.serverCookies   = pd.sbCookieNames
+      dbg.serverSession   = pd.sessionExists
+      dbg.serverSessionEmail = pd.sessionEmail
+      dbg.serverUser      = pd.userExists
+      dbg.serverUserError = pd.userError
+      dbg.totalCookies    = pd.totalCookies
+    } catch (e) {
+      dbg.probeError = String(e)
+    }
+
+    // 3. Redirect — super admin → /admin, everyone else → /dashboard
     const redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin' : '/dashboard'
     dbg.step         = 'redirecting'
     dbg.finalRedirect = redirect
     setDebug({ ...dbg })
-    window.location.replace(redirect)
+    setTimeout(() => window.location.replace(redirect), 1500) // pause so debug is visible
   }
 
   const inp: React.CSSProperties = {
