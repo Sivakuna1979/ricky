@@ -19,71 +19,79 @@ export default async function BusinessDashboardPage() {
   const { createAdminClient } = await import('@/lib/supabase/server')
   const admin = await createAdminClient()
 
+  const diagLog: string[] = []
+
   // Always use admin client for user row lookups to bypass RLS
-  let { data: userData } = await admin
+  let { data: userData, error: userErr1 } = await admin
     .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
+  diagLog.push(`auth_id lookup: ${userData?.id ?? 'null'} err=${userErr1?.message ?? 'none'}`)
 
   if (!userData) {
-    // Check if a row exists with this email but wrong/missing auth_id and repair it
-    const { data: existingByEmail } = await admin
+    const { data: existingByEmail, error: userErr2 } = await admin
       .from('users').select('id, role').eq('email', user.email).maybeSingle()
+    diagLog.push(`email lookup: ${existingByEmail?.id ?? 'null'} err=${userErr2?.message ?? 'none'}`)
     if (existingByEmail) {
       await admin.from('users').update({ auth_id: user.id }).eq('id', existingByEmail.id)
       userData = existingByEmail
+      diagLog.push('repaired auth_id on existing row')
     } else {
-      // Create fresh row, then re-fetch to ensure we have the id
-      await admin.from('users').insert({
+      const { error: insertErr } = await admin.from('users').insert({
         auth_id: user.id,
         email: user.email,
         full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
         role: 'business_owner',
       })
+      diagLog.push(`insert: err=${insertErr?.message ?? 'none'}`)
       const { data: refetched } = await admin
         .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
       userData = refetched
+      diagLog.push(`refetch after insert: ${refetched?.id ?? 'null'}`)
     }
   }
 
   // Look up business by owner_id first, then fall back to email match
-  let { data: business } = userData?.id
-    ? await admin
-        .from('businesses')
-        .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
-        .eq('owner_id', userData.id)
-        .maybeSingle()
-    : { data: null }
+  let business: any = null
+  if (userData?.id) {
+    const { data: bizByOwner, error: bizErr1 } = await admin
+      .from('businesses')
+      .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
+      .eq('owner_id', userData.id)
+      .maybeSingle()
+    diagLog.push(`biz by owner_id: ${bizByOwner?.id ?? 'null'} err=${bizErr1?.message ?? 'none'}`)
+    business = bizByOwner
+  }
 
   if (!business && user.email) {
-    const { data: bizByEmail } = await admin
+    const { data: bizByEmail, error: bizErr2 } = await admin
       .from('businesses')
       .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
       .eq('email', user.email)
       .maybeSingle()
+    diagLog.push(`biz by email: ${bizByEmail?.id ?? 'null'} bizEmail=${bizByEmail?.email ?? 'null'} err=${bizErr2?.message ?? 'none'}`)
     if (bizByEmail) {
-      // Repair owner_id if we have a users row, then use the business either way
       if (userData?.id) {
         await admin.from('businesses').update({ owner_id: userData.id }).eq('id', bizByEmail.id)
+        diagLog.push('repaired business owner_id')
       }
       business = bizByEmail
     }
   }
 
   if (!business) {
-    // Show diagnostic instead of redirecting — helps debug broken business links
+    // Also try listing all businesses to see what emails exist
+    const { data: allBiz } = await admin.from('businesses').select('id, name, email, owner_id').limit(20)
     const diagInfo = {
       authId: user.id,
       authEmail: user.email,
       usersRowId: userData?.id ?? null,
       usersRowRole: userData?.role ?? null,
+      log: diagLog,
+      allBusinesses: (allBiz ?? []).map(b => ({ id: b.id, name: b.name, email: b.email, owner_id: b.owner_id })),
     }
     return (
-      <div style={{ fontFamily: 'monospace', padding: 32, background: '#111', color: '#0f0', minHeight: '100vh' }}>
-        <h2 style={{ color: '#f97316' }}>⚠️ No Business Found</h2>
-        <p style={{ color: '#ccc' }}>Your account is logged in but no business is linked. Please screenshot this and send to support.</p>
-        <pre style={{ background: '#1a1a1a', padding: 16, borderRadius: 8, overflow: 'auto', fontSize: 13 }}>{JSON.stringify(diagInfo, null, 2)}</pre>
-        <p style={{ color: '#888', fontSize: 13 }}>
-          Auth ID, email, and users table state shown above. The admin needs to run Fix Account at /api/admin/fix-user.
-        </p>
+      <div style={{ fontFamily: 'monospace', padding: 24, background: '#111', color: '#0f0', minHeight: '100vh' }}>
+        <h2 style={{ color: '#f97316', fontSize: 16 }}>⚠️ No Business Found — Diagnostic</h2>
+        <pre style={{ background: '#1a1a1a', padding: 16, borderRadius: 8, overflow: 'auto', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(diagInfo, null, 2)}</pre>
         <a href="/api/auth/logout" style={{ color: '#f97316', fontSize: 14 }}>Sign out</a>
       </div>
     )
