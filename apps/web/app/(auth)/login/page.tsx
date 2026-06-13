@@ -5,30 +5,71 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
+// Bump this on every login change so we can confirm the live deploy.
+const BUILD_TAG = 'login-v7 · 2026-06-13'
+
 export default function LoginPage() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
+  const [debug, setDebug]       = useState<any>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
+    setError(''); setDebug(null)
     if (!email || !password) { setError('Please enter your email and password.'); return }
     setLoading(true)
 
     const supabase = createClient()
+    const dbg: any = {
+      url: typeof window !== 'undefined' ? window.location.href : '',
+      supabaseUrlSet: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      anonKeySet: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      email,
+    }
+
+    // 1. Sign in
     const { data, error: sbError } = await supabase.auth.signInWithPassword({ email, password })
 
+    dbg.errorMessage = sbError?.message ?? null
+    dbg.errorStatus  = sbError?.status ?? null
+    dbg.userExists   = !!data?.user
+    dbg.userEmail    = data?.user?.email ?? null
+
     if (sbError) {
+      console.error('[FoodTaxi login] auth error:', sbError)
       setError(sbError.message)
+      setDebug(dbg)
       setLoading(false)
       return
     }
 
-    // Redirect based on role
-    const dest = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
-    window.location.replace(dest)
+    // 2. Confirm session
+    const { data: sessionData } = await supabase.auth.getSession()
+    dbg.sessionExists = !!sessionData?.session
+    console.log('[FoodTaxi login] session:', sessionData?.session)
+
+    // 3. Resolve role + ensure profile via server
+    let redirect = '/dashboard'
+    try {
+      const res = await fetch('/api/auth/profile', { cache: 'no-store' })
+      const prof = await res.json()
+      dbg.profileExists = prof.profileExists
+      dbg.role = prof.role
+      dbg.redirect = prof.redirect
+      console.log('[FoodTaxi login] profile:', prof)
+      if (prof.redirect) redirect = prof.redirect
+    } catch (err) {
+      console.error('[FoodTaxi login] profile fetch failed:', err)
+      // Fallback role routing
+      redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
+      dbg.redirect = redirect
+      dbg.profileError = String(err)
+    }
+
+    console.log('[FoodTaxi login] redirecting to:', redirect)
+    window.location.replace(redirect)
   }
 
   const inp: React.CSSProperties = {
@@ -58,7 +99,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Error */}
+        {/* Error + debug */}
         {error && (
           <div style={{ background: 'rgba(239,68,68,.2)', border: '2px solid rgba(239,68,68,.5)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, color: '#fca5a5', fontSize: 14, lineHeight: 1.5 }}>
             ⚠️ {error}
@@ -67,6 +108,11 @@ export default function LoginPage() {
                 → Reset your password
               </Link>
             </div>
+            {debug && (
+              <pre style={{ marginTop: 12, padding: 10, background: 'rgba(0,0,0,.35)', borderRadius: 8, color: '#cbd5e1', fontSize: 11, lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
+{JSON.stringify(debug, null, 2)}
+              </pre>
+            )}
           </div>
         )}
 
@@ -75,7 +121,7 @@ export default function LoginPage() {
           <div style={{ marginBottom: 18 }}>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.6)', marginBottom: 6 }}>Email address</label>
             <input
-              type="email" value={email} onChange={e => setEmail(e.target.value)}
+              type="email" value={email} onChange={e => setEmail(e.target.value.trim())}
               autoComplete="email" placeholder="you@example.com" style={inp}
             />
           </div>
@@ -91,7 +137,7 @@ export default function LoginPage() {
           </div>
           <button
             type="submit" disabled={loading}
-            style={{ width: '100%', padding: '14px', background: loading ? 'rgba(251,191,36,.5)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)', border: 'none', borderRadius: 50, color: '#0a0a14', fontWeight: 800, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background .2s' }}
+            style={{ width: '100%', padding: '14px', background: loading ? 'rgba(251,191,36,.5)' : 'linear-gradient(135deg,#fbbf24,#f59e0b)', border: 'none', borderRadius: 50, color: '#0a0a14', fontWeight: 800, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
           >
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
@@ -100,6 +146,11 @@ export default function LoginPage() {
         <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(255,255,255,.25)' }}>
           Food business?{' '}
           <Link href="/register/business" style={{ color: '#fbbf24', textDecoration: 'none', fontWeight: 600 }}>Register your business →</Link>
+        </p>
+
+        {/* Build stamp — confirms which deploy is live */}
+        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 10, color: 'rgba(255,255,255,.18)', letterSpacing: '0.05em' }}>
+          {BUILD_TAG}
         </p>
       </div>
     </div>

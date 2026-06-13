@@ -31,8 +31,9 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Protect /dashboard/* — redirect unauthenticated to /login
-  if (path.startsWith('/dashboard') && !user) {
+  // Protect authenticated areas — redirect unauthenticated visitors to /login
+  const guarded = ['/dashboard', '/business', '/account']
+  if (guarded.some(p => path.startsWith(p)) && !user) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
