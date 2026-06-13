@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 // Bump on every login change so we can confirm the live deploy.
-const BUILD_TAG = 'login-v9 · 2026-06-13'
+const BUILD_TAG = 'login-v10 · 2026-06-13'
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('')
@@ -50,37 +50,13 @@ export default function LoginPage() {
       return
     }
 
-    // 2. Confirm session
-    const { data: sessionData } = await supabase.auth.getSession()
-    dbg.step          = 'after-session'
-    dbg.sessionExists = !!sessionData?.session
-    setDebug({ ...dbg })
-
-    // 3. Decide destination. Super admin is by email; everyone else → /dashboard.
-    //    We DON'T block on the profile API (server cookie may lag a beat); we
-    //    call it best-effort to surface role + ensure the profile row exists.
-    let redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin' : '/dashboard'
-    try {
-      const res  = await fetch('/api/auth/profile', { cache: 'no-store' })
-      const prof = await res.json()
-      dbg.step          = 'after-profile'
-      dbg.profileStatus = res.status
-      dbg.profileRaw    = prof
-      dbg.profileExists = prof.profileExists ?? null
-      dbg.role          = prof.role ?? null
-      dbg.redirect      = prof.redirect ?? redirect
-      setDebug({ ...dbg })
-      if (res.ok && prof.redirect) redirect = prof.redirect
-    } catch (err) {
-      dbg.profileError = String(err)
-      dbg.redirect = redirect
-      setDebug({ ...dbg })
-    }
-
-    dbg.step = 'redirecting'
+    // 2. Redirect immediately — no server API call (avoids cookie race condition).
+    //    Super admin by email only; all others go to /dashboard where role routing happens.
+    const redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin' : '/dashboard'
+    dbg.step         = 'redirecting'
     dbg.finalRedirect = redirect
     setDebug({ ...dbg })
-    setTimeout(() => window.location.replace(redirect), 400) // brief pause so debug is visible
+    window.location.replace(redirect)
   }
 
   const inp: React.CSSProperties = {
