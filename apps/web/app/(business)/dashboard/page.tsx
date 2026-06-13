@@ -18,25 +18,50 @@ export default async function BusinessDashboardPage() {
 
   // Auto-create user profile if missing (handles users who registered before the trigger existed)
   let { data: userData } = await supabase
-    .from('users').select('id, role').eq('auth_id', user.id).single()
+    .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
 
   if (!userData) {
     const { createAdminClient } = await import('@/lib/supabase/server')
     const admin = await createAdminClient()
-    const { data: created } = await admin.from('users').insert({
-      auth_id: user.id,
-      email: user.email,
-      full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
-      role: 'business_owner',
-    }).select('id, role').single()
-    userData = created
+    // Check if a row exists with this email but wrong/missing auth_id and repair it
+    const { data: existingByEmail } = await admin
+      .from('users').select('id, role').eq('email', user.email).maybeSingle()
+    if (existingByEmail) {
+      // Repair: link existing row to this auth user
+      await admin.from('users').update({ auth_id: user.id }).eq('id', existingByEmail.id)
+      userData = existingByEmail
+    } else {
+      const { data: created } = await admin.from('users').insert({
+        auth_id: user.id,
+        email: user.email,
+        full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
+        role: 'business_owner',
+      }).select('id, role').maybeSingle()
+      userData = created
+    }
   }
 
-  const { data: business } = await supabase
+  let { data: business } = await supabase
     .from('businesses')
     .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
     .eq('owner_id', userData?.id)
     .maybeSingle()
+
+  // Fallback: find business by email if owner_id link is broken
+  if (!business && user.email) {
+    const { createAdminClient } = await import('@/lib/supabase/server')
+    const admin = await createAdminClient()
+    const { data: bizByEmail } = await admin
+      .from('businesses')
+      .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
+      .eq('email', user.email)
+      .maybeSingle()
+    if (bizByEmail && userData?.id) {
+      // Repair: update owner_id to current users.id
+      await admin.from('businesses').update({ owner_id: userData.id }).eq('id', bizByEmail.id)
+      business = { ...bizByEmail, owner_id: userData.id }
+    }
+  }
 
   if (!business) redirect('/register/business')
 
