@@ -31,23 +31,27 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const { place_id, name, method = 'manual' } = body
+  const { place_id, name, method = 'manual', phone = null, website = null } = body
   if (!place_id) return NextResponse.json({ error: 'place_id required' }, { status: 400 })
 
   const db = getAdmin()
   const now = new Date().toISOString()
 
   // Upsert on google_place_id — create stub if not yet in DB
+  const record: any = {
+    name:             name ?? 'Unknown',
+    google_place_id:  place_id,
+    source:           'google_places',
+    status:           'invited',
+    invitation_sent_at: now,
+    notes:            `Invited via ${method} on ${now}`,
+  }
+  if (phone)   record.phone = phone
+  if (website) record.website = website
+
   const { error } = await db
     .from('discovered_businesses')
-    .upsert({
-      name:             name ?? 'Unknown',
-      google_place_id:  place_id,
-      source:           'google_places',
-      status:           'invited',
-      invitation_sent_at: now,
-      notes:            `Invited via ${method} on ${now}`,
-    }, { onConflict: 'google_place_id' })
+    .upsert(record, { onConflict: 'google_place_id' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

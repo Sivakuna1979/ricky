@@ -72,30 +72,71 @@ function buildInviteMessage(name: string, placeId: string) {
 }
 
 /* ─── Invite Modal ───────────────────────────────────────────────── */
+// Convert a phone string to WhatsApp format: digits only, with country code.
+function toWhatsAppNumber(intl: string | null, national: string | null): string | null {
+  const raw = intl || national
+  if (!raw) return null
+  let digits = raw.replace(/[^\d+]/g, '')
+  if (digits.startsWith('+')) digits = digits.slice(1)
+  else if (digits.startsWith('00')) digits = digits.slice(2)
+  else if (digits.startsWith('0')) digits = '44' + digits.slice(1) // assume UK if leading 0
+  return digits || null
+}
+
 function InviteModal({ place, onClose }: { place: GooglePlace; onClose: () => void }) {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied]   = useState(false)
   const [marked, setMarked]   = useState(false)
+  const [phone, setPhone]     = useState<string|null>(null)
+  const [phoneIntl, setPhoneIntl] = useState<string|null>(null)
+  const [website, setWebsite] = useState<string|null>(null)
+  const [fetching, setFetching] = useState(true)
   const msg  = buildInviteMessage(place.name, place.place_id)
   const link = `https://food-taxi.vercel.app/claim/${place.place_id}`
+
+  // Auto-fetch the business contact details so buttons connect directly.
+  useEffect(() => {
+    let cancelled = false
+    setFetching(true)
+    fetch(`/api/places/details?place_id=${place.place_id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        setPhone(d.phone ?? null)
+        setPhoneIntl(d.phone_intl ?? null)
+        setWebsite(d.website ?? null)
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setFetching(false) })
+    return () => { cancelled = true }
+  }, [place.place_id])
+
+  const waNumber = toWhatsAppNumber(phoneIntl, phone)
 
   const markInvited = async (method: string) => {
     setLoading(true)
     await fetch('/api/places/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ place_id: place.place_id, name: place.name, method }),
+      body: JSON.stringify({ place_id: place.place_id, name: place.name, method, phone, website }),
     }).catch(() => {})
     setLoading(false)
     setMarked(true)
   }
 
   const whatsapp = () => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+    // If we know the number, open a chat directly with that business; otherwise let user pick.
+    const url = waNumber
+      ? `https://wa.me/${waNumber}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
     markInvited('whatsapp')
   }
   const sms = () => {
-    window.open(`sms:?body=${encodeURIComponent(msg)}`, '_self')
+    const url = phone
+      ? `sms:${phone.replace(/[^\d+]/g, '')}?body=${encodeURIComponent(msg)}`
+      : `sms:?body=${encodeURIComponent(msg)}`
+    window.open(url, '_self')
     markInvited('sms')
   }
   const email = () => {
@@ -125,6 +166,21 @@ function InviteModal({ place, onClose }: { place: GooglePlace; onClose: () => vo
           </div>
         )}
 
+        {/* Auto-detected contact */}
+        <div style={{ background:'rgba(37,211,102,0.08)', border:'1px solid rgba(37,211,102,0.25)', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:12.5, color:'rgba(255,255,255,0.7)', lineHeight:1.6 }}>
+          {fetching ? (
+            <span style={{ color:'rgba(255,255,255,0.45)' }}>🔄 Fetching their contact details…</span>
+          ) : phone ? (
+            <>
+              <span style={{ color:'#6ee7b7', fontWeight:700 }}>✅ Contact connected</span><br />
+              📞 <strong style={{ color:'#fff' }}>{phone}</strong>{website ? <> · 🌐 <a href={website} target="_blank" rel="noopener" style={{ color:'#7dd3fc' }}>website</a></> : null}
+              <div style={{ fontSize:11.5, color:'rgba(255,255,255,0.4)', marginTop:3 }}>WhatsApp &amp; SMS will open straight to this number.</div>
+            </>
+          ) : (
+            <span style={{ color:'rgba(255,255,255,0.45)' }}>ℹ️ No public phone listed — you'll pick the recipient in your messaging app.</span>
+          )}
+        </div>
+
         {/* Invite message preview */}
         <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:14, marginBottom:18, fontSize:12, color:'rgba(255,255,255,0.55)', lineHeight:1.6, whiteSpace:'pre-wrap', maxHeight:140, overflowY:'auto' }}>
           {msg}
@@ -133,10 +189,10 @@ function InviteModal({ place, onClose }: { place: GooglePlace; onClose: () => vo
         {/* Send options */}
         <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
           <button onClick={whatsapp} style={{ padding:'12px 16px', borderRadius:12, border:'none', background:'#25d366', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:18 }}>💬</span> Send via WhatsApp
+            <span style={{ fontSize:18 }}>💬</span> Send via WhatsApp {waNumber && <span style={{ fontSize:11, opacity:0.85, fontWeight:600 }}>→ {phone}</span>}
           </button>
           <button onClick={sms} style={{ padding:'12px 16px', borderRadius:12, border:'none', background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:18 }}>📱</span> Send via SMS
+            <span style={{ fontSize:18 }}>📱</span> Send via SMS {phone && <span style={{ fontSize:11, opacity:0.85, fontWeight:600 }}>→ {phone}</span>}
           </button>
           <button onClick={email} style={{ padding:'12px 16px', borderRadius:12, border:'none', background:'#6366f1', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
             <span style={{ fontSize:18 }}>✉️</span> Send via Email

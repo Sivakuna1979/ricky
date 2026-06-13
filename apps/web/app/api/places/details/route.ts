@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL('https://maps.googleapis.com/maps/api/place/details/json')
     url.searchParams.set('place_id', placeId)
-    url.searchParams.set('fields', 'name,formatted_phone_number,website,opening_hours,url')
+    url.searchParams.set('fields', 'name,formatted_phone_number,international_phone_number,website,opening_hours,url')
     url.searchParams.set('key', apiKey)
 
     const res = await fetch(url.toString(), { next: { revalidate: 3600 } })
@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     const r = data.result
     return NextResponse.json({
       phone:         r.formatted_phone_number ?? null,
+      phone_intl:    r.international_phone_number ?? null,
       website:       r.website ?? null,
       google_url:    r.url ?? null,
       open_now:      r.opening_hours?.open_now ?? null,
