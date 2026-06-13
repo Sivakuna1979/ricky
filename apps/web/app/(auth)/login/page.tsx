@@ -5,71 +5,78 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
-// Bump this on every login change so we can confirm the live deploy.
-const BUILD_TAG = 'login-v7 · 2026-06-13'
+// Bump on every login change so we can confirm the live deploy.
+const BUILD_TAG = 'login-v8 · 2026-06-13'
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
+  const [showPw, setShowPw]     = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [debug, setDebug]       = useState<any>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(''); setDebug(null)
+    setError('')
     if (!email || !password) { setError('Please enter your email and password.'); return }
     setLoading(true)
 
     const supabase = createClient()
     const dbg: any = {
+      step: 'start',
       url: typeof window !== 'undefined' ? window.location.href : '',
-      supabaseUrlSet: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? '(missing)',
       anonKeySet: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       email,
     }
+    setDebug({ ...dbg })
 
     // 1. Sign in
     const { data, error: sbError } = await supabase.auth.signInWithPassword({ email, password })
-
-    dbg.errorMessage = sbError?.message ?? null
-    dbg.errorStatus  = sbError?.status ?? null
-    dbg.userExists   = !!data?.user
-    dbg.userEmail    = data?.user?.email ?? null
+    dbg.step          = 'after-signin'
+    dbg.errorMessage  = sbError?.message ?? null
+    dbg.errorStatus   = sbError?.status ?? null
+    dbg.errorName     = sbError?.name ?? null
+    dbg.userExists    = !!data?.user
+    dbg.userEmail     = data?.user?.email ?? null
+    dbg.emailConfirmed= data?.user?.email_confirmed_at ? true : (data?.user ? false : 'unknown')
+    setDebug({ ...dbg })
 
     if (sbError) {
       console.error('[FoodTaxi login] auth error:', sbError)
       setError(sbError.message)
-      setDebug(dbg)
       setLoading(false)
       return
     }
 
     // 2. Confirm session
     const { data: sessionData } = await supabase.auth.getSession()
+    dbg.step          = 'after-session'
     dbg.sessionExists = !!sessionData?.session
-    console.log('[FoodTaxi login] session:', sessionData?.session)
+    setDebug({ ...dbg })
 
     // 3. Resolve role + ensure profile via server
-    let redirect = '/dashboard'
+    let redirect = '/business/dashboard'
     try {
       const res = await fetch('/api/auth/profile', { cache: 'no-store' })
       const prof = await res.json()
+      dbg.step          = 'after-profile'
       dbg.profileExists = prof.profileExists
-      dbg.role = prof.role
-      dbg.redirect = prof.redirect
-      console.log('[FoodTaxi login] profile:', prof)
+      dbg.role          = prof.role
+      dbg.redirect      = prof.redirect
+      setDebug({ ...dbg })
       if (prof.redirect) redirect = prof.redirect
     } catch (err) {
-      console.error('[FoodTaxi login] profile fetch failed:', err)
-      // Fallback role routing
-      redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
-      dbg.redirect = redirect
       dbg.profileError = String(err)
+      redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin' : '/business/dashboard'
+      dbg.redirect = redirect
+      setDebug({ ...dbg })
     }
 
-    console.log('[FoodTaxi login] redirecting to:', redirect)
-    window.location.replace(redirect)
+    dbg.step = 'redirecting'
+    setDebug({ ...dbg })
+    setTimeout(() => window.location.replace(redirect), 350) // brief pause so debug is visible
   }
 
   const inp: React.CSSProperties = {
@@ -83,7 +90,7 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: 420 }}>
 
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#f97316,#dc2626)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ color: '#fff', fontSize: 15, fontWeight: 900 }}>FT</span>
@@ -99,20 +106,15 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Error + debug */}
+        {/* Error */}
         {error && (
-          <div style={{ background: 'rgba(239,68,68,.2)', border: '2px solid rgba(239,68,68,.5)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, color: '#fca5a5', fontSize: 14, lineHeight: 1.5 }}>
+          <div style={{ background: 'rgba(239,68,68,.2)', border: '2px solid rgba(239,68,68,.5)', borderRadius: 12, padding: '14px 16px', marginBottom: 16, color: '#fca5a5', fontSize: 14, lineHeight: 1.5 }}>
             ⚠️ {error}
             <div style={{ marginTop: 10 }}>
               <Link href="/forgot-password" style={{ color: '#fbbf24', textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>
                 → Reset your password
               </Link>
             </div>
-            {debug && (
-              <pre style={{ marginTop: 12, padding: 10, background: 'rgba(0,0,0,.35)', borderRadius: 8, color: '#cbd5e1', fontSize: 11, lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
-{JSON.stringify(debug, null, 2)}
-              </pre>
-            )}
           </div>
         )}
 
@@ -127,12 +129,18 @@ export default function LoginPage() {
           </div>
           <div style={{ marginBottom: 8 }}>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.6)', marginBottom: 6 }}>Password</label>
-            <input
-              type="password" value={password} onChange={e => setPassword(e.target.value)}
-              autoComplete="current-password" placeholder="••••••••" style={inp}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                autoComplete="current-password" placeholder="••••••••" style={{ ...inp, paddingRight: 64 }}
+              />
+              <button type="button" onClick={() => setShowPw(s => !s)}
+                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 7, color: '#fbbf24', fontSize: 12, fontWeight: 700, padding: '6px 10px', cursor: 'pointer' }}>
+                {showPw ? 'Hide' : 'Show'}
+              </button>
+            </div>
           </div>
-          <div style={{ textAlign: 'right', marginBottom: 24 }}>
+          <div style={{ textAlign: 'right', marginBottom: 22 }}>
             <Link href="/forgot-password" style={{ fontSize: 13, color: 'rgba(255,255,255,.35)', textDecoration: 'none' }}>Forgot password?</Link>
           </div>
           <button
@@ -143,13 +151,26 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(255,255,255,.25)' }}>
+        {/* Always-visible debug box */}
+        <div style={{ marginTop: 16, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.45)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
+            🐞 Test Login Debug
+          </div>
+          {debug ? (
+            <pre style={{ margin: 0, color: '#a7f3d0', fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+{JSON.stringify(debug, null, 2)}
+            </pre>
+          ) : (
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.3)' }}>Press “Sign In” to run diagnostics…</div>
+          )}
+        </div>
+
+        <p style={{ textAlign: 'center', marginTop: 18, fontSize: 13, color: 'rgba(255,255,255,.25)' }}>
           Food business?{' '}
           <Link href="/register/business" style={{ color: '#fbbf24', textDecoration: 'none', fontWeight: 600 }}>Register your business →</Link>
         </p>
 
-        {/* Build stamp — confirms which deploy is live */}
-        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 10, color: 'rgba(255,255,255,.18)', letterSpacing: '0.05em' }}>
+        <p style={{ textAlign: 'center', marginTop: 14, fontSize: 10, color: 'rgba(255,255,255,.25)', letterSpacing: '0.05em' }}>
           {BUILD_TAG}
         </p>
       </div>

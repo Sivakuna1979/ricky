@@ -7,8 +7,8 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 
 function destFor(role: string, email: string): string {
-  if (email === SUPER_ADMIN_EMAIL || role === 'super_admin') return '/admin/dashboard'
-  if (role === 'business_owner' || role === 'business_admin' || role === 'owner') return '/dashboard'
+  if (email === SUPER_ADMIN_EMAIL || role === 'super_admin') return '/admin'
+  if (role === 'business_owner' || role === 'business_admin' || role === 'owner') return '/business/dashboard'
   return '/account'
 }
 
@@ -24,7 +24,7 @@ export async function GET() {
   if (user.email === SUPER_ADMIN_EMAIL) {
     return NextResponse.json({
       sessionExists: true, profileExists: true,
-      role: 'super_admin', email: user.email, redirect: '/admin/dashboard',
+      role: 'super_admin', email: user.email, redirect: '/admin',
     })
   }
 
