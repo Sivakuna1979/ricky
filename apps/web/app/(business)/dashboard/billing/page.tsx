@@ -47,7 +47,7 @@ export default async function BillingPage() {
         .biz-sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e5e7eb;padding:16px 10px;min-height:calc(100vh - 56px)}
         .biz-main{flex:1;padding:24px;overflow-x:hidden;max-width:700px}
         .biz-body{display:flex;flex:1}
-        @media(max-width:700px){.biz-sidebar{display:none}.biz-main{padding:16px 14px 90px}}
+        .pub-site-link{display:inline-block}@media(max-width:700px){.biz-sidebar{display:none}.biz-main{padding:16px 14px 90px}.pub-site-link{display:none}}
       `}</style>
       <div className="biz-wrap">
         <div className="biz-topbar">
@@ -58,7 +58,7 @@ export default async function BillingPage() {
               <div style={{ fontSize:11, color:'#888' }}>{business.name}</div>
             </div>
           </div>
-          <a href="/" style={{ fontSize:12, color:'#6366f1', textDecoration:'none', padding:'5px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontWeight:600 }}>← Public Site</a>
+          <a href="/" className="pub-site-link" style={{ fontSize:12, color:'#6366f1', textDecoration:'none', padding:'5px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontWeight:600 }}>← Public Site</a>
         </div>
         <div className="biz-body">
           <div className="biz-sidebar">
@@ -68,7 +68,7 @@ export default async function BillingPage() {
               </a>
             ))}
             <div style={{ margin:'16px 0 0', paddingTop:12, borderTop:'1px solid #f3f4f6' }}>
-              <a href="/logout" style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:600, textDecoration:'none', color:'#ef4444' }}>🚪 Sign Out</a>
+              <a href="/api/auth/logout" style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:600, textDecoration:'none', color:'#ef4444' }}>🚪 Sign Out</a>
             </div>
           </div>
           <div className="biz-main">

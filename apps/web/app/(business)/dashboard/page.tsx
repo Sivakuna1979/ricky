@@ -83,11 +83,13 @@ export default async function BusinessDashboardPage() {
         .biz-body{display:flex;flex:1}
         .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
         .biz-bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:6px 0 18px}
+        .pub-site-link{display:inline-block}
         @media(max-width:700px){
           .biz-sidebar{display:none}
           .biz-main{padding:16px 14px 90px}
           .biz-bottom{display:flex;justify-content:space-around}
           .stat-grid{grid-template-columns:1fr 1fr}
+          .pub-site-link{display:none}
         }
       `}</style>
 
@@ -105,7 +107,7 @@ export default async function BusinessDashboardPage() {
             <span style={{ background: isTrialing ? '#fef3c7' : '#d1fae5', color: isTrialing ? '#92400e' : '#065f46', fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, textTransform:'uppercase' }}>
               {isTrialing ? '⏳ Trial' : `✅ ${planName}`}
             </span>
-            <a href="/" style={{ fontSize:12, color:'#6366f1', textDecoration:'none', padding:'5px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontWeight:600 }}>← Public Site</a>
+            <a href="/" className="pub-site-link" style={{ fontSize:12, color:'#6366f1', textDecoration:'none', padding:'5px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontWeight:600 }}>← Public Site</a>
           </div>
         </div>
 
@@ -118,7 +120,7 @@ export default async function BusinessDashboardPage() {
               </a>
             ))}
             <div style={{ margin:'16px 0 0', paddingTop:12, borderTop:'1px solid #f3f4f6' }}>
-              <a href="/logout" style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:600, textDecoration:'none', color:'#ef4444' }}>🚪 Sign Out</a>
+              <a href="/api/auth/logout" style={{ display:'flex', alignItems:'center', gap:9, padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:600, textDecoration:'none', color:'#ef4444' }}>🚪 Sign Out</a>
             </div>
           </div>
 
