@@ -236,6 +236,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
   const watchIdRef   = useRef<number|null>(null)
   const lastFetchRef = useRef<number>(0)
   const LRef         = useRef<any>(null)
+  const userPosRef   = useRef<{lat:number;lng:number}|null>(null)
 
   const [googlePlaces, setGooglePlaces] = useState<GooglePlace[]>([])
   const [foodTaxiVans, setFoodTaxiVans] = useState<FoodTaxiVan[]>([])
@@ -328,6 +329,9 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
     lastFetchRef.current=0; fetchGoogle(centerLat,centerLng); fetchFoodTaxi(centerLat,centerLng)
   }, [centerLat, centerLng]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Keep userPos ref in sync (markers read this without rebuilding) ── */
+  useEffect(() => { userPosRef.current = userPos }, [userPos])
+
   /* ── Google markers ──────────────────────────────────────────── */
   useEffect(() => {
     if (!mapRef.current || !LRef.current) return
@@ -336,6 +340,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
     if (!showGoogle) return
     const pinColor = mapDark ? '#f97316' : '#c2410c'
     const pinBorder = mapDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.25)'
+    const userPos = userPosRef.current
     googlePlaces.filter(p => p.lat!=null && p.lng!=null && (typeFilters.size===0||typeFilters.has(p.food_type))).forEach(p => {
       const emoji = FOOD_EMOJI[p.food_type]??'🍽️'
       const icon  = L.divIcon({ className:'', html:pinHtml(emoji,pinColor,pinBorder), iconSize:[34,34], iconAnchor:[17,34], popupAnchor:[0,-36] })
@@ -346,7 +351,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
       const textColor = mapDark ? '#fff' : '#111'
       const subColor  = mapDark ? '#999' : '#555'
       const addrColor = mapDark ? '#aaa' : '#555'
-      const popup = L.popup({ maxWidth:285 }).setContent(`
+      const popup = L.popup({ maxWidth:285, autoClose:false, closeOnClick:false }).setContent(`
         <div id="${pid}" style="font-family:system-ui,sans-serif;min-width:220px">
           <div style="font-weight:800;font-size:15px;margin-bottom:3px;color:${textColor}">${emoji} ${p.name}</div>
           <div style="font-size:11px;font-weight:700;color:#f97316;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${FOOD_LABEL[p.food_type]??'Food Business'}</div>
@@ -376,7 +381,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
       })
       gMarkers.current.push(marker)
     })
-  }, [googlePlaces, showGoogle, typeFilters, userPos, mapDark])
+  }, [googlePlaces, showGoogle, typeFilters, mapDark]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── FoodTaxi markers ────────────────────────────────────────── */
   useEffect(() => {
@@ -384,6 +389,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
     const L = LRef.current
     ftMarkers.current.forEach(m=>m.remove()); ftMarkers.current=[]
     if (!showFoodTaxi) return
+    const userPos = userPosRef.current
     foodTaxiVans.forEach(v => {
       if (!v.lat||!v.lng) return
       const color = v.isLive?'#22c55e':'#f97316'
@@ -403,9 +409,9 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
           ${v.slug?`<a href="/van/${v.slug}" style="padding:6px 11px;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">🍽 Menu</a>`:''}
         </div>
       </div>`
-      ftMarkers.current.push(L.marker([v.lat,v.lng],{icon}).addTo(mapRef.current).bindPopup(popup))
+      ftMarkers.current.push(L.marker([v.lat,v.lng],{icon}).addTo(mapRef.current).bindPopup(popup,{ autoClose:false, closeOnClick:false }))
     })
-  }, [foodTaxiVans, showFoodTaxi, userPos, mapDark])
+  }, [foodTaxiVans, showFoodTaxi, mapDark]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Expose handlers to popup buttons ───────────────────────── */
   useEffect(() => {
