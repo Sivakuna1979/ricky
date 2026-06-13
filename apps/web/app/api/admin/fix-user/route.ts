@@ -80,11 +80,23 @@ export async function POST(req: NextRequest) {
       log.push('Role corrected from super_admin to ' + role)
     }
 
-    // 4. Check business row
+    // 4. Check/repair business row link
     const profileRow = profile ?? (await sb.from('users').select('id').eq('auth_id', authUserId).maybeSingle()).data
     if (profileRow?.id) {
-      const { data: biz } = await sb.from('businesses').select('id, name').eq('owner_id', profileRow.id).maybeSingle()
-      log.push(biz ? `Business found: ${biz.name} (${biz.id})` : 'No business row linked to this user')
+      // First try by owner_id
+      let { data: biz } = await sb.from('businesses').select('id, name').eq('owner_id', profileRow.id).maybeSingle()
+      if (biz) {
+        log.push(`Business found by owner_id: ${biz.name} (${biz.id})`)
+      } else {
+        // Try by email — repairs broken owner_id link
+        const { data: bizByEmail } = await sb.from('businesses').select('id, name').eq('email', targetEmail).maybeSingle()
+        if (bizByEmail) {
+          await sb.from('businesses').update({ owner_id: profileRow.id }).eq('id', bizByEmail.id)
+          log.push(`Business link repaired: ${bizByEmail.name} (${bizByEmail.id}) → owner_id set to ${profileRow.id}`)
+        } else {
+          log.push('No business row found by owner_id or email — user may need to register a business')
+        }
+      }
     }
 
     return NextResponse.json({
