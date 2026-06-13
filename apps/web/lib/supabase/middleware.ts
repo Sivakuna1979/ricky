@@ -20,7 +20,10 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
+  // Use getSession (local JWT decode, no network call) for routing.
+  // Individual pages call getUser() for secure data access.
+  const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
+  const user = session?.user ?? null
   const path = request.nextUrl.pathname
 
   // Protect /admin/* — ONLY sivakuna@icloud.com
