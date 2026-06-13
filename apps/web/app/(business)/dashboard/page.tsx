@@ -63,7 +63,26 @@ export default async function BusinessDashboardPage() {
     }
   }
 
-  if (!business) redirect('/register/business')
+  if (!business) {
+    // Show diagnostic instead of redirecting — helps debug broken business links
+    const diagInfo = {
+      authId: user.id,
+      authEmail: user.email,
+      usersRowId: userData?.id ?? null,
+      usersRowRole: userData?.role ?? null,
+    }
+    return (
+      <div style={{ fontFamily: 'monospace', padding: 32, background: '#111', color: '#0f0', minHeight: '100vh' }}>
+        <h2 style={{ color: '#f97316' }}>⚠️ No Business Found</h2>
+        <p style={{ color: '#ccc' }}>Your account is logged in but no business is linked. Please screenshot this and send to support.</p>
+        <pre style={{ background: '#1a1a1a', padding: 16, borderRadius: 8, overflow: 'auto', fontSize: 13 }}>{JSON.stringify(diagInfo, null, 2)}</pre>
+        <p style={{ color: '#888', fontSize: 13 }}>
+          Auth ID, email, and users table state shown above. The admin needs to run Fix Account at /api/admin/fix-user.
+        </p>
+        <a href="/api/auth/logout" style={{ color: '#f97316', fontSize: 14 }}>Sign out</a>
+      </div>
+    )
+  }
 
   const { data: vans } = await supabase
     .from('vans').select('*').eq('business_id', business.id)
