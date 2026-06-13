@@ -16,50 +16,55 @@ export default async function BusinessDashboardPage() {
   if (!session) redirect('/login')
   const user = session.user
 
-  // Auto-create user profile if missing (handles users who registered before the trigger existed)
-  let { data: userData } = await supabase
+  const { createAdminClient } = await import('@/lib/supabase/server')
+  const admin = await createAdminClient()
+
+  // Always use admin client for user row lookups to bypass RLS
+  let { data: userData } = await admin
     .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
 
   if (!userData) {
-    const { createAdminClient } = await import('@/lib/supabase/server')
-    const admin = await createAdminClient()
     // Check if a row exists with this email but wrong/missing auth_id and repair it
     const { data: existingByEmail } = await admin
       .from('users').select('id, role').eq('email', user.email).maybeSingle()
     if (existingByEmail) {
-      // Repair: link existing row to this auth user
       await admin.from('users').update({ auth_id: user.id }).eq('id', existingByEmail.id)
       userData = existingByEmail
     } else {
-      const { data: created } = await admin.from('users').insert({
+      // Create fresh row, then re-fetch to ensure we have the id
+      await admin.from('users').insert({
         auth_id: user.id,
         email: user.email,
         full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
         role: 'business_owner',
-      }).select('id, role').maybeSingle()
-      userData = created
+      })
+      const { data: refetched } = await admin
+        .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
+      userData = refetched
     }
   }
 
-  let { data: business } = await supabase
-    .from('businesses')
-    .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
-    .eq('owner_id', userData?.id)
-    .maybeSingle()
+  // Look up business by owner_id first, then fall back to email match
+  let { data: business } = userData?.id
+    ? await admin
+        .from('businesses')
+        .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
+        .eq('owner_id', userData.id)
+        .maybeSingle()
+    : { data: null }
 
-  // Fallback: find business by email if owner_id link is broken
   if (!business && user.email) {
-    const { createAdminClient } = await import('@/lib/supabase/server')
-    const admin = await createAdminClient()
     const { data: bizByEmail } = await admin
       .from('businesses')
       .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
       .eq('email', user.email)
       .maybeSingle()
-    if (bizByEmail && userData?.id) {
-      // Repair: update owner_id to current users.id
-      await admin.from('businesses').update({ owner_id: userData.id }).eq('id', bizByEmail.id)
-      business = { ...bizByEmail, owner_id: userData.id }
+    if (bizByEmail) {
+      // Repair owner_id if we have a users row, then use the business either way
+      if (userData?.id) {
+        await admin.from('businesses').update({ owner_id: userData.id }).eq('id', bizByEmail.id)
+      }
+      business = bizByEmail
     }
   }
 
