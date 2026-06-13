@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 // Bump on every login change so we can confirm the live deploy.
-const BUILD_TAG = 'login-v11 · 2026-06-13'
+const BUILD_TAG = 'login-v12 · 2026-06-13'
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('')
@@ -50,7 +50,17 @@ export default function LoginPage() {
       return
     }
 
-    // 2. Probe server-side session (tells us if the cookie is readable by the server)
+    // 2. Confirm session is set client-side after sign-in
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      dbg.clientSessionExists = !!sessionData?.session
+      dbg.clientSessionEmail  = sessionData?.session?.user?.email ?? null
+    } catch (e) {
+      dbg.clientSessionError = String(e)
+    }
+    setDebug({ ...dbg })
+
+    // 3. Also probe server-side session (tells us if the cookie is readable by the server)
     try {
       const probe = await fetch('/api/debug/session', { cache: 'no-store' })
       const pd = await probe.json()
@@ -64,12 +74,12 @@ export default function LoginPage() {
       dbg.probeError = String(e)
     }
 
-    // 3. Redirect — super admin → /admin, everyone else → /dashboard
+    // 4. Redirect — super admin → /admin, everyone else → /dashboard
     const redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin' : '/dashboard'
     dbg.step         = 'redirecting'
     dbg.finalRedirect = redirect
     setDebug({ ...dbg })
-    setTimeout(() => window.location.replace(redirect), 1500) // pause so debug is visible
+    setTimeout(() => window.location.replace(redirect), 500) // pause so debug is visible
   }
 
   const inp: React.CSSProperties = {

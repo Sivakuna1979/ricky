@@ -7,8 +7,8 @@ export async function GET(request: NextRequest) {
   const sbCookies = allCookies.filter(c => c.name.startsWith('sb-'))
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'missing',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'missing',
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { cookies: { getAll: () => allCookies, setAll: () => {} } }
   )
 
