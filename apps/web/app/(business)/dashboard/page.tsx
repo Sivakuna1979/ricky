@@ -17,85 +17,59 @@ export default async function BusinessDashboardPage() {
   const user = session.user
 
   const { createAdminClient } = await import('@/lib/supabase/server')
-  const admin = await createAdminClient()
 
-  const diagLog: string[] = []
-
-  // Always use admin client for user row lookups to bypass RLS
-  let { data: userData, error: userErr1 } = await admin
+  // Use session client for reads (RLS: user sees their own rows)
+  // Use admin client only for writes/repairs (bypasses RLS for inserts/updates)
+  let { data: userData } = await supabase
     .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
-  diagLog.push(`auth_id lookup: ${userData?.id ?? 'null'} err=${userErr1?.message ?? 'none'}`)
 
   if (!userData) {
-    const { data: existingByEmail, error: userErr2 } = await admin
+    // Try admin for repair — falls back gracefully if service key missing
+    const admin = await createAdminClient()
+    const { data: existingByEmail } = await admin
       .from('users').select('id, role').eq('email', user.email).maybeSingle()
-    diagLog.push(`email lookup: ${existingByEmail?.id ?? 'null'} err=${userErr2?.message ?? 'none'}`)
     if (existingByEmail) {
       await admin.from('users').update({ auth_id: user.id }).eq('id', existingByEmail.id)
       userData = existingByEmail
-      diagLog.push('repaired auth_id on existing row')
     } else {
-      const { error: insertErr } = await admin.from('users').insert({
+      await admin.from('users').insert({
         auth_id: user.id,
         email: user.email,
         full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
         role: 'business_owner',
       })
-      diagLog.push(`insert: err=${insertErr?.message ?? 'none'}`)
-      const { data: refetched } = await admin
+      // Re-fetch via session client after insert
+      const { data: refetched } = await supabase
         .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
       userData = refetched
-      diagLog.push(`refetch after insert: ${refetched?.id ?? 'null'}`)
     }
   }
 
-  // Look up business by owner_id first, then fall back to email match
-  let business: any = null
-  if (userData?.id) {
-    const { data: bizByOwner, error: bizErr1 } = await admin
-      .from('businesses')
-      .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
-      .eq('owner_id', userData.id)
-      .maybeSingle()
-    diagLog.push(`biz by owner_id: ${bizByOwner?.id ?? 'null'} err=${bizErr1?.message ?? 'none'}`)
-    business = bizByOwner
-  }
+  // Session client for business read (RLS allows owner to see their own business)
+  let { data: business } = userData?.id
+    ? await supabase
+        .from('businesses')
+        .select('*, subscriptions(status, trial_ends_at, subscription_plans(name))')
+        .eq('owner_id', userData.id)
+        .maybeSingle()
+    : { data: null }
 
   if (!business && user.email) {
-    const { data: bizByEmail, error: bizErr2 } = await admin
+    const admin = await createAdminClient()
+    const { data: bizByEmail } = await admin
       .from('businesses')
-      .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
+      .select('*, subscriptions(status, trial_ends_at, subscription_plans(name))')
       .eq('email', user.email)
       .maybeSingle()
-    diagLog.push(`biz by email: ${bizByEmail?.id ?? 'null'} bizEmail=${bizByEmail?.email ?? 'null'} err=${bizErr2?.message ?? 'none'}`)
     if (bizByEmail) {
       if (userData?.id) {
         await admin.from('businesses').update({ owner_id: userData.id }).eq('id', bizByEmail.id)
-        diagLog.push('repaired business owner_id')
       }
       business = bizByEmail
     }
   }
 
-  if (!business) {
-    // Also try listing all businesses to see what emails exist
-    const { data: allBiz } = await admin.from('businesses').select('id, name, email, owner_id').limit(20)
-    const diagInfo = {
-      authId: user.id,
-      authEmail: user.email,
-      usersRowId: userData?.id ?? null,
-      usersRowRole: userData?.role ?? null,
-      log: diagLog,
-      allBusinesses: (allBiz ?? []).map(b => ({ id: b.id, name: b.name, email: b.email, owner_id: b.owner_id })),
-    }
-    return (
-      <div style={{ fontFamily: 'monospace', padding: 24, background: '#111', color: '#0f0', minHeight: '100vh' }}>
-        <h2 style={{ color: '#f97316', fontSize: 16 }}>⚠️ No Business Found — Diagnostic</h2>
-        <pre style={{ background: '#1a1a1a', padding: 16, borderRadius: 8, overflow: 'auto', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(diagInfo, null, 2)}</pre>
-        <a href="/api/auth/logout" style={{ color: '#f97316', fontSize: 14 }}>Sign out</a>
-      </div>
-    )
-  }
+  if (!business) redirect('/register/business')
 
   const { data: vans } = await supabase
     .from('vans').select('*').eq('business_id', business.id)
