@@ -22,8 +22,18 @@ const METHOD_LABEL: Record<string, string> = {
 }
 
 type Invite = {
-  id: string; name: string; address: string; phone: string; website: string
-  business_type: string; rating: number; invitation_sent_at: string; notes: string; google_place_id: string
+  id: string; name: string; address: string; phone: string; email: string; website: string
+  business_type: string; rating: number; invitation_sent_at: string; invitation_method: string
+  opened_at: string | null; claimed_at: string | null; notes: string; status: string; google_place_id: string
+}
+
+const STATUS_BADGE: Record<string, [string, string, string]> = {
+  // status → [label, color, bg]
+  invited: ['SENT',    '#fbbf24', 'rgba(251,191,36,.15)'],
+  sent:    ['SENT',    '#fbbf24', 'rgba(251,191,36,.15)'],
+  opened:  ['OPENED',  '#60a5fa', 'rgba(96,165,250,.15)'],
+  claimed: ['CLAIMED', '#4ade80', 'rgba(74,222,128,.15)'],
+  expired: ['EXPIRED', '#f87171', 'rgba(248,113,113,.15)'],
 }
 
 export default function AdminInvitationsPage() {
@@ -59,9 +69,41 @@ export default function AdminInvitationsPage() {
     setBulkRunning(false); setSelected(new Set())
   }
 
+  const [copiedId, setCopiedId] = useState('')
+  const [notesEdit, setNotesEdit] = useState<Record<string, string>>({})
+
+  const claimLink = (inv: Invite) => `https://food-taxi.vercel.app/claim/${inv.google_place_id}`
+  const inviteMsg = (inv: Invite) =>
+    `Hi ${inv.name}, we found your food business on Google and would like to invite you to join FoodTaxi — a platform where customers can find local mobile food businesses, request event bookings, view menus, and navigate to you. Claim your free business profile here: ${claimLink(inv)}`
+
   const reInvite = (inv: Invite) => {
-    const msg = `Hi ${inv.name}, we found your food business on FoodTaxi! Customers near you are already discovering your listing. Claim your free profile here: https://food-taxi.vercel.app/claim/${inv.google_place_id}\n\nAdd your menu, enable live GPS tracking, accept online orders and event bookings — completely free!`
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+    const num = inv.phone ? inv.phone.replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^0/, '44') : ''
+    const url = num
+      ? `https://wa.me/${num}?text=${encodeURIComponent(inviteMsg(inv))}`
+      : `https://wa.me/?text=${encodeURIComponent(inviteMsg(inv))}`
+    window.open(url, '_blank')
+  }
+
+  const copyLink = async (inv: Invite) => {
+    await navigator.clipboard.writeText(claimLink(inv)).catch(() => {})
+    setCopiedId(inv.id); setTimeout(() => setCopiedId(''), 1800)
+  }
+
+  const markContacted = async (inv: Invite) => {
+    await fetch('/api/places/invite', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: inv.id, status: 'opened' }),
+    }).catch(() => {})
+    setInvites(prev => prev.map(x => x.id === inv.id ? { ...x, status: 'opened' } : x))
+  }
+
+  const saveNotes = async (inv: Invite) => {
+    const notes = notesEdit[inv.id] ?? inv.notes ?? ''
+    await fetch('/api/places/invite', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: inv.id, notes }),
+    }).catch(() => {})
+    setInvites(prev => prev.map(x => x.id === inv.id ? { ...x, notes } : x))
   }
 
   return (
@@ -121,28 +163,52 @@ export default function AdminInvitationsPage() {
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                   {invites.map(inv => {
-                    const methodMatch = (inv.notes??'').match(/Invited via (\w+)/)
-                    const method = methodMatch?.[1] ?? 'manual'
+                    const method = inv.invitation_method ?? (inv.notes??'').match(/Invited via (\w+)/)?.[1] ?? 'manual'
                     const dateStr = inv.invitation_sent_at ? new Date(inv.invitation_sent_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'
+                    const [badgeLabel, badgeColor, badgeBg] = STATUS_BADGE[inv.status] ?? STATUS_BADGE.sent
+                    const isClaimed = inv.status === 'claimed' || !!inv.claimed_at
                     return (
                       <div key={inv.id} style={{ background:'rgba(255,255,255,0.04)', border:`1px solid ${selected.has(inv.id)?'rgba(249,115,22,0.4)':'rgba(255,255,255,0.08)'}`, borderRadius:14, padding:'16px 18px', display:'flex', gap:14, alignItems:'flex-start' }}>
                         <input type="checkbox" checked={selected.has(inv.id)} onChange={()=>toggle(inv.id)} style={{ width:16, height:16, accentColor:'#f97316', cursor:'pointer', marginTop:2, flexShrink:0 }} />
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:'flex', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
                             <div style={{ fontWeight:800, fontSize:15, color:'#fff' }}>{inv.name}</div>
-                            <span style={{ background:'rgba(5,150,105,0.15)', color:'#6ee7b7', border:'1px solid rgba(5,150,105,0.25)', padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700, flexShrink:0 }}>INVITED</span>
+                            <span style={{ background:badgeBg, color:badgeColor, border:`1px solid ${badgeColor}40`, padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700, flexShrink:0 }}>{badgeLabel}</span>
                           </div>
                           {inv.address && <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:4 }}>📍 {inv.address}</div>}
-                          <div style={{ display:'flex', gap:16, marginTop:8, flexWrap:'wrap', fontSize:12, color:'rgba(255,255,255,0.35)' }}>
+                          <div style={{ display:'flex', gap:16, marginTop:8, flexWrap:'wrap', fontSize:12, color:'rgba(255,255,255,0.4)' }}>
+                            {inv.phone && <span>📞 {inv.phone}</span>}
+                            {inv.email && <span>✉️ {inv.email}</span>}
+                            {inv.rating && <span>⭐ {inv.rating}</span>}
+                          </div>
+                          <div style={{ display:'flex', gap:16, marginTop:6, flexWrap:'wrap', fontSize:12, color:'rgba(255,255,255,0.3)' }}>
                             <span>📅 {dateStr}</span>
                             <span>{METHOD_LABEL[method]??method}</span>
-                            {inv.rating && <span>⭐ {inv.rating}</span>}
-                            {inv.business_type && <span style={{ textTransform:'capitalize' }}>{inv.business_type.replace('_',' ')}</span>}
+                            {inv.opened_at && <span>👁 Opened</span>}
+                          </div>
+
+                          {/* Action row */}
+                          <div style={{ display:'flex', gap:8, marginTop:12, flexWrap:'wrap' }}>
+                            {!isClaimed && (
+                              <button onClick={()=>reInvite(inv)} style={{ padding:'7px 13px', borderRadius:9, border:'1px solid rgba(37,211,102,0.3)', background:'rgba(37,211,102,0.1)', color:'#6ee7b7', fontSize:12, fontWeight:700, cursor:'pointer' }}>💬 Resend</button>
+                            )}
+                            <button onClick={()=>copyLink(inv)} style={{ padding:'7px 13px', borderRadius:9, border:'1px solid rgba(255,255,255,0.15)', background:'rgba(255,255,255,0.05)', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>{copiedId===inv.id?'✅ Copied':'🔗 Copy Link'}</button>
+                            {!isClaimed && inv.status!=='opened' && (
+                              <button onClick={()=>markContacted(inv)} style={{ padding:'7px 13px', borderRadius:9, border:'1px solid rgba(96,165,250,0.3)', background:'rgba(96,165,250,0.1)', color:'#93c5fd', fontSize:12, fontWeight:700, cursor:'pointer' }}>✓ Mark Contacted</button>
+                            )}
+                          </div>
+
+                          {/* Notes */}
+                          <div style={{ marginTop:10, display:'flex', gap:8, alignItems:'center' }}>
+                            <input
+                              value={notesEdit[inv.id] ?? inv.notes ?? ''}
+                              onChange={e=>setNotesEdit(p=>({...p,[inv.id]:e.target.value}))}
+                              placeholder="Add a note…"
+                              style={{ flex:1, padding:'7px 11px', borderRadius:8, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(0,0,0,0.2)', color:'#fff', fontSize:12, outline:'none' }}
+                            />
+                            <button onClick={()=>saveNotes(inv)} style={{ padding:'7px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.6)', fontSize:12, fontWeight:600, cursor:'pointer' }}>Save</button>
                           </div>
                         </div>
-                        <button onClick={()=>reInvite(inv)} style={{ padding:'8px 14px', borderRadius:10, border:'1px solid rgba(37,211,102,0.3)', background:'rgba(37,211,102,0.1)', color:'#6ee7b7', fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
-                          💬 Follow Up
-                        </button>
                       </div>
                     )
                   })}

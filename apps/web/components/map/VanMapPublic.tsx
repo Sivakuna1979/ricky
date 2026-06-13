@@ -68,7 +68,7 @@ function pinHtml(emoji: string, color: string, border = 'rgba(255,255,255,0.85)'
 }
 function buildInviteMessage(name: string, placeId: string) {
   const url = `https://food-taxi.vercel.app/claim/${placeId}`
-  return `Hi ${name}, we found your food business on FoodTaxi! Customers near you are already discovering your listing. Claim your free FoodTaxi profile here: ${url}\n\nOnce registered you can:\n✅ Add your full menu\n✅ Enable live GPS tracking\n✅ Accept online orders\n✅ Take event bookings\n\nIt's completely free to start!`
+  return `Hi ${name}, we found your food business on Google and would like to invite you to join FoodTaxi — a platform where customers can find local mobile food businesses, request event bookings, view menus, and navigate to you. Claim your free business profile here: ${url}`
 }
 
 /* ─── Invite Modal ───────────────────────────────────────────────── */
