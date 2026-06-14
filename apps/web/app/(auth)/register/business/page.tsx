@@ -72,18 +72,26 @@ export default function BusinessRegisterPage() {
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState('')
 
-  // If user is already logged in, skip to business info step
+  const { register, handleSubmit, trigger, getValues, setValue, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  })
+
+  // If user is already logged in, skip to business info step and pre-fill account fields
+  // so form validation passes even though those fields are hidden
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useState(() => {
     createClient().auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setAlreadyLoggedIn(true)
         setStep(1)
+        const u = session.user
+        setValue('email', u.email ?? '')
+        setValue('full_name', u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User')
+        // Set dummy password values so zod validation passes (they're not used for already-logged-in users)
+        setValue('password', 'Placeholder1!')
+        setValue('confirm_password', 'Placeholder1!')
       }
     })
-  })
-
-  const { register, handleSubmit, trigger, getValues, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
   })
 
   const nextStep = async () => {
