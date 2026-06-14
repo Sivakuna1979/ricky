@@ -24,22 +24,25 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Get or auto-create internal user profile
-  let { data: userData } = await admin
+  // Get or auto-create internal user profile — use session client for read (RLS allows own row)
+  let { data: userData } = await supabase
     .from('users')
     .select('id, role')
     .eq('auth_id', user.id)
-    .single() as { data: { id: string; role: string } | null }
+    .maybeSingle() as { data: { id: string; role: string } | null }
 
   if (!userData) {
-    const { data: created } = await admin.from('users').insert({
+    // Try admin for insert, then re-fetch via session client
+    await admin.from('users').insert({
       auth_id: user.id,
       email: user.email,
       full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User',
       role: 'business_owner',
-    }).select('id, role').single()
-    if (!created) return NextResponse.json({ error: 'Failed to create user profile' }, { status: 500 })
-    userData = created
+    })
+    const { data: refetched } = await supabase
+      .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
+    if (!refetched) return NextResponse.json({ error: 'Failed to create user profile' }, { status: 500 })
+    userData = refetched as { id: string; role: string }
   }
 
   // Update user role to business_owner if needed
