@@ -99,7 +99,6 @@ export default function BusinessRegisterPage() {
       setValue('full_name', u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User')
       setValue('password', 'Placeholder1!')
       setValue('confirm_password', 'Placeholder1!')
-      }
     })
   })
 
