@@ -76,20 +76,29 @@ export default function BusinessRegisterPage() {
     resolver: zodResolver(schema),
   })
 
-  // If user is already logged in, skip to business info step and pre-fill account fields
-  // so form validation passes even though those fields are hidden
+  // If user is already logged in, check if they already have a business → redirect to dashboard
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useState(() => {
-    createClient().auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setAlreadyLoggedIn(true)
-        setStep(1)
-        const u = session.user
-        setValue('email', u.email ?? '')
-        setValue('full_name', u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User')
-        // Set dummy password values so zod validation passes (they're not used for already-logged-in users)
-        setValue('password', 'Placeholder1!')
-        setValue('confirm_password', 'Placeholder1!')
+    const supabase = createClient()
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session?.user) return
+      // Check if business already exists
+      const { data: biz } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('email', session.user.email)
+        .maybeSingle()
+      if (biz) {
+        router.replace('/dashboard')
+        return
+      }
+      setAlreadyLoggedIn(true)
+      setStep(1)
+      const u = session.user
+      setValue('email', u.email ?? '')
+      setValue('full_name', u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User')
+      setValue('password', 'Placeholder1!')
+      setValue('confirm_password', 'Placeholder1!')
       }
     })
   })
