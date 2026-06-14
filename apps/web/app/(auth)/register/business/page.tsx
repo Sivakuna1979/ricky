@@ -67,9 +67,20 @@ function Field({ label, error, children }: any) {
 
 export default function BusinessRegisterPage() {
   const router = useRouter()
+  const [alreadyLoggedIn, setAlreadyLoggedIn] = useState(false)
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState('')
+
+  // If user is already logged in, skip to business info step
+  useState(() => {
+    createClient().auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setAlreadyLoggedIn(true)
+        setStep(1)
+      }
+    })
+  })
 
   const { register, handleSubmit, trigger, getValues, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -90,32 +101,40 @@ export default function BusinessRegisterPage() {
     setServerError('')
     const supabase = createClient()
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: { data: { full_name: data.full_name, role: 'business_owner' } },
-    })
+    // Check if already logged in — skip signUp if so
+    const { data: { session: existingSession } } = await supabase.auth.getSession()
+    let userId = existingSession?.user?.id ?? null
 
-    if (authError || !authData.user) {
-      setServerError(authError?.message ?? 'Registration failed')
-      setLoading(false)
-      return
-    }
-
-    // Auto-confirm email + create user profile so login works immediately
-    await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: authData.user.id,
+    if (!userId) {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
-        full_name: data.full_name,
-        role: 'business_owner',
-      }),
-    })
+        password: data.password,
+        options: { data: { full_name: data.full_name, role: 'business_owner' } },
+      })
 
-    // Sign in immediately after signup (email is now confirmed)
-    await supabase.auth.signInWithPassword({ email: data.email, password: data.password })
+      if (authError || !authData.user) {
+        setServerError(authError?.message ?? 'Registration failed')
+        setLoading(false)
+        return
+      }
+
+      userId = authData.user.id
+
+      // Auto-confirm email + create user profile so login works immediately
+      await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          email: data.email,
+          full_name: data.full_name,
+          role: 'business_owner',
+        }),
+      })
+
+      // Sign in immediately after signup (email is now confirmed)
+      await supabase.auth.signInWithPassword({ email: data.email, password: data.password })
+    }
 
     const slug = data.business_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
     const res = await fetch('/api/businesses', {
