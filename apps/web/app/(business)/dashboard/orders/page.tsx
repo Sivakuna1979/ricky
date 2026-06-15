@@ -28,8 +28,18 @@ export default async function OrdersPage() {
   if (!session) redirect('/login')
   const user = session.user
 
-  const { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).single()
-  const { data: biz } = await supabase.from('businesses').select('id,name').eq('owner_id', userData?.id).maybeSingle()
+  let { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
+
+  let { data: biz } = userData?.id
+    ? await supabase.from('businesses').select('id,name').eq('owner_id', userData.id).maybeSingle()
+    : { data: null }
+
+  // RPC fallback if business not found via RLS
+  if (!biz) {
+    const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
+    if (rpcBiz) biz = rpcBiz
+  }
+
   if (!biz) redirect('/register/business')
 
   const { data: vans } = await supabase.from('vans').select('id,name').eq('business_id', biz.id)

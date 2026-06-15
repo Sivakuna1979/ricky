@@ -24,8 +24,15 @@ export default function SettingsPage() {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { window.location.href = '/login'; return }
-      const { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).single()
-      const { data: business } = await supabase.from('businesses').select('*').eq('owner_id', userData.id).maybeSingle()
+      let { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
+      let { data: business } = userData?.id
+        ? await supabase.from('businesses').select('*').eq('owner_id', userData.id).maybeSingle()
+        : { data: null }
+      // RPC fallback if business not found via RLS
+      if (!business) {
+        const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
+        if (rpcBiz) business = rpcBiz
+      }
       if (!business) { window.location.href = '/register/business'; return }
       setBiz(business)
       setBizId(business.id)

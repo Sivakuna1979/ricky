@@ -11,11 +11,18 @@ export default async function TrackingPage() {
   if (!session) redirect('/login')
   const user = session.user
 
-  const { data: userData } = await supabase
-    .from('users').select('id').eq('auth_id', user.id).single()
+  let { data: userData } = await supabase
+    .from('users').select('id').eq('auth_id', user.id).maybeSingle()
 
-  const { data: business } = await supabase
-    .from('businesses').select('id, name').eq('owner_id', userData?.id).maybeSingle()
+  let { data: business } = userData?.id
+    ? await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
+    : { data: null }
+
+  // RPC fallback if business not found via RLS
+  if (!business) {
+    const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
+    if (rpcBiz) business = rpcBiz
+  }
 
   if (!business) redirect('/register/business')
 

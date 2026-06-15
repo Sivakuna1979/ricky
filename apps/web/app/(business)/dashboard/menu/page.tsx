@@ -28,8 +28,15 @@ export default function MenuPage() {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { window.location.href = '/login'; return }
-      const { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).single()
-      const { data: biz } = await supabase.from('businesses').select('id').eq('owner_id', userData.id).maybeSingle()
+      let { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
+      let { data: biz } = userData?.id
+        ? await supabase.from('businesses').select('id').eq('owner_id', userData.id).maybeSingle()
+        : { data: null }
+      // RPC fallback if business not found via RLS
+      if (!biz) {
+        const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
+        if (rpcBiz) biz = rpcBiz
+      }
       if (!biz) { window.location.href = '/register/business'; return }
       const { data: vans } = await supabase.from('vans').select('id').eq('business_id', biz.id).limit(1)
       const vid = vans?.[0]?.id ?? null
