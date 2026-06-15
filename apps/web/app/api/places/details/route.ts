@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL('https://maps.googleapis.com/maps/api/place/details/json')
     url.searchParams.set('place_id', placeId)
-    url.searchParams.set('fields', 'name,formatted_phone_number,international_phone_number,website,opening_hours,url')
+    url.searchParams.set('fields', 'name,formatted_phone_number,international_phone_number,website,opening_hours,url,address_components,geometry')
     url.searchParams.set('key', apiKey)
 
     const res = await fetch(url.toString(), { next: { revalidate: 3600 } })
@@ -29,27 +29,40 @@ export async function GET(req: NextRequest) {
 
     const r = data.result
 
-    // Look up FoodTaxi slug via discovered_businesses
+    // Extract postcode from address_components
+    const addrComponents: any[] = r.address_components ?? []
+    const postcodeComp = addrComponents.find((c: any) => c.types?.includes('postal_code'))
+    const postcode = postcodeComp?.long_name?.replace(/\s+/g, ' ').trim() ?? null
+
+    // Look up FoodTaxi slug — first via discovered_businesses link, then by postcode match
     let foodtaxi_slug: string | null = null
     try {
       const supabase = await createAdminClient()
+
+      // Try 1: direct link via discovered_businesses
       const { data: discovered } = await supabase
         .from('discovered_businesses')
         .select('converted_business_id')
         .eq('google_place_id', placeId)
-        .single()
+        .maybeSingle()
       if (discovered?.converted_business_id) {
         const { data: biz } = await supabase
-          .from('businesses')
-          .select('slug, status')
-          .eq('id', discovered.converted_business_id)
-          .single()
-        if (biz?.status === 'approved') {
-          foodtaxi_slug = biz.slug
-        }
+          .from('businesses').select('slug, status')
+          .eq('id', discovered.converted_business_id).maybeSingle()
+        if (biz?.status === 'approved') foodtaxi_slug = biz.slug
+      }
+
+      // Try 2: match by postcode (handles businesses created via SQL without claim flow)
+      if (!foodtaxi_slug && postcode) {
+        const { data: bizByPostcode } = await supabase
+          .from('businesses').select('slug, status')
+          .eq('status', 'approved')
+          .ilike('postcode', postcode)
+          .maybeSingle()
+        if (bizByPostcode?.slug) foodtaxi_slug = bizByPostcode.slug
       }
     } catch {
-      // non-fatal — slug just stays null
+      // non-fatal
     }
 
     return NextResponse.json({
