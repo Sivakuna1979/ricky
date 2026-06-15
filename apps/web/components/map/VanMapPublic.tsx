@@ -15,6 +15,7 @@ interface GooglePlace {
   open_now: boolean | null
   food_type: string
   source: string
+  foodtaxi_slug?: string | null
 }
 
 interface FoodTaxiVan {
@@ -586,7 +587,10 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', lineHeight:1.5 }}>{p.address}</div>
                   {dist!=null && <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>📍 {dist.toFixed(1)} mi · ~{eta} min drive</div>}
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:4 }}>
-                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ padding:'8px 12px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:10, textDecoration:'none', fontSize:12, fontWeight:700 }}>🗺 Directions</a>
+                    {p.foodtaxi_slug && (
+                      <a href={`/van/${p.foodtaxi_slug}`} style={{ padding:'8px 12px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:10, textDecoration:'none', fontSize:12, fontWeight:700 }}>🍽 View Profile</a>
+                    )}
+                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ padding:'8px 12px', background:'rgba(249,115,22,0.15)', border:'1px solid rgba(249,115,22,0.35)', color:'#fb923c', borderRadius:10, textDecoration:'none', fontSize:12, fontWeight:700 }}>🗺 Directions</a>
                     <LazyCardButtons placeId={p.place_id} />
                     <button onClick={()=>setInvitePlace(p)} style={{ padding:'8px 12px', background:'rgba(5,150,105,0.2)', border:'1px solid rgba(5,150,105,0.35)', color:'#6ee7b7', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer' }}>📨 Invite</button>
                     <button onClick={()=>setClaimPlace(p)}  style={{ padding:'8px 12px', background:'rgba(99,102,241,0.2)', border:'1px solid rgba(99,102,241,0.35)', color:'#a5b4fc', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer' }}>🏷 Claim</button>

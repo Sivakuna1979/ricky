@@ -131,6 +131,27 @@ export async function GET(req: NextRequest) {
     }
   })
 
+  // Enrich results with FoodTaxi slug for registered businesses (match by postcode)
+  const uniquePostcodes = [...new Set(results.map(r => r.postcode).filter(Boolean))]
+  const slugMap = new Map<string, string>()
+  if (uniquePostcodes.length > 0) {
+    try {
+      const db2 = getAdmin()
+      const { data: registered } = await db2
+        .from('businesses')
+        .select('slug, postcode')
+        .eq('status', 'approved')
+        .in('postcode', uniquePostcodes)
+      for (const b of registered ?? []) {
+        if (b.postcode && b.slug) slugMap.set(b.postcode.trim().toUpperCase(), b.slug)
+      }
+    } catch {}
+  }
+  const enriched = results.map(r => ({
+    ...r,
+    foodtaxi_slug: r.postcode ? (slugMap.get(r.postcode.trim().toUpperCase()) ?? null) : null,
+  }))
+
   // Auto-save to discovered_businesses (fire-and-forget — don't block response)
   const db = getAdmin()
   const rows = results
@@ -154,8 +175,8 @@ export async function GET(req: NextRequest) {
     .catch(() => {})
 
   return NextResponse.json({
-    results,
-    count:   results.length,
+    results: enriched,
+    count:   enriched.length,
     centre:  { lat, lng, radius: usedRadius },
     radius_miles: Math.round(usedRadius / 1609.34),
   })
