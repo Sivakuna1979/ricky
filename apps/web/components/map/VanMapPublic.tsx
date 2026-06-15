@@ -275,6 +275,11 @@ function LazyCardButtons({ placeId }: { placeId: string }) {
   if (!d) return null
   return (
     <>
+      {d.foodtaxi_slug && (
+        <a href={`/van/${d.foodtaxi_slug}`} style={{ padding:'8px 12px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:10, textDecoration:'none', fontSize:12, fontWeight:700 }}>
+          🍽 View Profile
+        </a>
+      )}
       {d.phone    && <a href={`tel:${d.phone}`} style={{ padding:'8px 12px', background:'rgba(16,185,129,0.2)', border:'1px solid rgba(16,185,129,0.35)', color:'#6ee7b7', borderRadius:10, textDecoration:'none', fontSize:12, fontWeight:700 }}>📞 Call</a>}
       {d.website  && <a href={d.website} target="_blank" rel="noopener noreferrer" style={{ padding:'8px 12px', background:'rgba(59,130,246,0.2)', border:'1px solid rgba(59,130,246,0.35)', color:'#93c5fd', borderRadius:10, textDecoration:'none', fontSize:12, fontWeight:700 }}>🌐 Website</a>}
     </>

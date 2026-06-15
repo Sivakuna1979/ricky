@@ -5,6 +5,7 @@
  * GOOGLE_PLACES_API_KEY never exposed to client.
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function GET(req: NextRequest) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
@@ -27,6 +28,30 @@ export async function GET(req: NextRequest) {
     }
 
     const r = data.result
+
+    // Look up FoodTaxi slug via discovered_businesses
+    let foodtaxi_slug: string | null = null
+    try {
+      const supabase = await createAdminClient()
+      const { data: discovered } = await supabase
+        .from('discovered_businesses')
+        .select('converted_business_id')
+        .eq('google_place_id', placeId)
+        .single()
+      if (discovered?.converted_business_id) {
+        const { data: biz } = await supabase
+          .from('businesses')
+          .select('slug, status')
+          .eq('id', discovered.converted_business_id)
+          .single()
+        if (biz?.status === 'approved') {
+          foodtaxi_slug = biz.slug
+        }
+      }
+    } catch {
+      // non-fatal — slug just stays null
+    }
+
     return NextResponse.json({
       phone:         r.formatted_phone_number ?? null,
       phone_intl:    r.international_phone_number ?? null,
@@ -34,6 +59,7 @@ export async function GET(req: NextRequest) {
       google_url:    r.url ?? null,
       open_now:      r.opening_hours?.open_now ?? null,
       weekday_text:  r.opening_hours?.weekday_text ?? null,
+      foodtaxi_slug,
     })
   } catch {
     return NextResponse.json({ error: 'Failed to fetch details' }, { status: 500 })
