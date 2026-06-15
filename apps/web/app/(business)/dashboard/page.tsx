@@ -45,20 +45,31 @@ export default async function BusinessDashboardPage() {
     }
   }
 
-  // Session client for business read (RLS allows owner to see their own business)
-  let { data: business } = userData?.id
-    ? await supabase
+  // Session client for business read — try without subscriptions first to avoid RLS errors on those tables
+  let business: any = null
+  if (userData?.id) {
+    const { data: bizData } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('owner_id', userData.id)
+      .maybeSingle()
+    business = bizData
+    // If found, try to add subscription data (non-fatal if it fails)
+    if (bizData) {
+      const { data: bizWithSub } = await supabase
         .from('businesses')
         .select('*, subscriptions(status, trial_ends_at, subscription_plans(name))')
         .eq('owner_id', userData.id)
         .maybeSingle()
-    : { data: null }
+      if (bizWithSub) business = bizWithSub
+    }
+  }
 
   if (!business && user.email) {
     const admin = await createAdminClient()
     const { data: bizByEmail } = await admin
       .from('businesses')
-      .select('*, subscriptions(status, trial_ends_at, subscription_plans(name))')
+      .select('*')
       .eq('email', user.email)
       .maybeSingle()
     if (bizByEmail) {
@@ -67,6 +78,12 @@ export default async function BusinessDashboardPage() {
       }
       business = bizByEmail
     }
+  }
+
+  // Last resort: call the get_my_business RPC (SECURITY DEFINER, bypasses all RLS)
+  if (!business) {
+    const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
+    if (rpcBiz) business = rpcBiz
   }
 
   if (!business) redirect('/register/business')
