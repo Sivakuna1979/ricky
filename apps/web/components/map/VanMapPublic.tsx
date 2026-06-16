@@ -483,11 +483,13 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
   }, [googlePlaces])
 
   /* ── Sorted cards ───────────────────────────────────────────── */
+  // Use search center for distances when provided; fall back to GPS position
+  const distRef = (centerLat!=null && centerLng!=null) ? { lat: centerLat, lng: centerLng } : userPos
   const visible = googlePlaces.filter(p => p.lat!=null&&p.lng!=null&&(typeFilters.size===0||typeFilters.has(p.food_type)))
   const sorted  = [...visible].sort((a,b) => {
     if (sortBy==='rating') return (b.rating??0)-(a.rating??0)
-    if (!userPos) return 0
-    return haversine(userPos.lat,userPos.lng,a.lat!,a.lng!)-haversine(userPos.lat,userPos.lng,b.lat!,b.lng!)
+    if (!distRef) return 0
+    return haversine(distRef.lat,distRef.lng,a.lat!,a.lng!)-haversine(distRef.lat,distRef.lng,b.lat!,b.lng!)
   })
 
   const tog = (on:boolean, c='#f97316'): React.CSSProperties => ({ padding:'6px 13px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:on?c:'rgba(255,255,255,0.08)', color:on?'#fff':'rgba(255,255,255,0.4)' })
@@ -572,7 +574,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))', gap:14 }}>
             {sorted.map(p => {
               const emoji=FOOD_EMOJI[p.food_type]??'🍽️'
-              const dist=userPos?haversine(userPos.lat,userPos.lng,p.lat!,p.lng!):null
+              const dist=distRef?haversine(distRef.lat,distRef.lng,p.lat!,p.lng!):null
               const eta=dist?Math.round((dist/30)*60):null
               const mapsUrl=`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=driving`
               return (
@@ -585,7 +587,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
                   <div style={{ fontSize:11, fontWeight:700, color:'#f97316', textTransform:'uppercase', letterSpacing:'.05em' }}>{FOOD_LABEL[p.food_type]??'Food Business'}</div>
                   {p.rating!=null && <div style={{ fontSize:13, color:'#f59e0b', fontWeight:600 }}>★ {p.rating.toFixed(1)} <span style={{ color:'rgba(255,255,255,0.3)', fontWeight:400 }}>({p.total_ratings} reviews)</span></div>}
                   <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', lineHeight:1.5 }}>{p.address}</div>
-                  {dist!=null && <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>📍 {dist.toFixed(1)} mi · ~{eta} min drive</div>}
+                  {dist!=null && <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>📍 {dist.toFixed(1)} mi{centerLat!=null ? ` from ${searchLabel??'search'}` : ''} · ~{eta} min drive</div>}
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:4 }}>
                     {p.foodtaxi_slug && (
                       <a href={`/van/${p.foodtaxi_slug}`} style={{ padding:'8px 12px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:10, textDecoration:'none', fontSize:12, fontWeight:700 }}>🍽 View Profile</a>
