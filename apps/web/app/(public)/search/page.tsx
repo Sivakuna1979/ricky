@@ -7,8 +7,30 @@ import { VanMapPublic } from '@/components/map/VanMapPublic'
 export const dynamic = 'force-dynamic'
 
 async function geocode(q: string): Promise<{ lat: number; lng: number; display_name: string } | null> {
+  const cleaned = q.trim().toUpperCase().replace(/\s+/g, '')
+  // UK postcode pattern — try postcodes.io first (fast, free, accurate)
+  if (/^[A-Z]{1,2}\d[\dA-Z]?\d[A-Z]{2}$/.test(cleaned) || /^[A-Z]{1,2}\d[\dA-Z]?$/.test(cleaned)) {
+    try {
+      const res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleaned)}`, { next: { revalidate: 3600 } })
+      const data = await res.json()
+      if (data.status === 200 && data.result) {
+        return { lat: data.result.latitude, lng: data.result.longitude, display_name: data.result.postcode }
+      }
+      // partial postcode autocomplete
+      const res2 = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleaned)}/autocomplete`, { next: { revalidate: 3600 } })
+      const data2 = await res2.json()
+      if (data2.status === 200 && data2.result?.length) {
+        const res3 = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(data2.result[0])}`, { next: { revalidate: 3600 } })
+        const data3 = await res3.json()
+        if (data3.status === 200 && data3.result) {
+          return { lat: data3.result.latitude, lng: data3.result.longitude, display_name: data3.result.postcode }
+        }
+      }
+    } catch {}
+  }
+  // Fallback: Nominatim for town/city names
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', UK')}&limit=1&format=json`
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', UK')}&limit=1&format=json&countrycodes=gb`
     const res = await fetch(url, {
       headers: { 'User-Agent': 'FoodTaxi/1.0' },
       next: { revalidate: 3600 },
@@ -37,6 +59,7 @@ export default async function SearchPage({ searchParams }: { searchParams: any }
   }
 
   const hasSearch = geoLat != null && geoLng != null
+  const geocodeFailed = postcode && !hasSearch
 
   return (
     <>
@@ -77,6 +100,18 @@ export default async function SearchPage({ searchParams }: { searchParams: any }
               <a href="/register/business" style={{ display: 'inline-block', padding: '11px 28px', borderRadius: 12, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none', boxShadow: '0 4px 14px rgba(249,115,22,.35)' }}>
                 🚐 Register Your Van Free
               </a>
+            </div>
+          </section>
+        ) : geocodeFailed ? (
+          <section style={{ padding: '48px 16px', maxWidth: 720, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 16, padding: '32px 24px' }}>
+              <p style={{ fontSize: 22, margin: '0 0 8px' }}>🔍</p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: '0 0 8px' }}>
+                We couldn&apos;t find &ldquo;{postcode}&rdquo;
+              </p>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,.45)', margin: 0 }}>
+                Try a full UK postcode (e.g. KT9 2AN) or a town name (e.g. Chessington, Manchester).
+              </p>
             </div>
           </section>
         ) : (
