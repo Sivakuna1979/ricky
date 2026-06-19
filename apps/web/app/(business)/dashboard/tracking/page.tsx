@@ -14,16 +14,18 @@ export default async function TrackingPage() {
   let { data: userData } = await supabase
     .from('users').select('id').eq('auth_id', user.id).maybeSingle()
 
-  let { data: business } = userData?.id
-    ? await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
-    : { data: null }
-
-  // RPC fallback if business not found via RLS
-  if (!business) {
-    const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
-    if (rpcBiz) business = rpcBiz
+  let business: any = null
+  if (userData?.id) {
+    const { data: b } = await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
+    business = b
   }
-
+  if (!business && user.email) {
+    const { createAdminClient } = await import('@/lib/supabase/server')
+    const admin = await createAdminClient()
+    const { data: b } = await admin.from('businesses').select('id, name').eq('email', user.email).maybeSingle()
+    if (b) { if (userData?.id) await admin.from('businesses').update({ owner_id: userData.id }).eq('id', b.id); business = b }
+  }
+  if (!business) { const { data: r } = await supabase.rpc('get_my_business'); if (r) business = r }
   if (!business) redirect('/register/business')
 
   const { data: vans } = await supabase

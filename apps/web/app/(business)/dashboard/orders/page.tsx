@@ -30,16 +30,18 @@ export default async function OrdersPage() {
 
   let { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
 
-  let { data: biz } = userData?.id
-    ? await supabase.from('businesses').select('id,name').eq('owner_id', userData.id).maybeSingle()
-    : { data: null }
-
-  // RPC fallback if business not found via RLS
-  if (!biz) {
-    const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
-    if (rpcBiz) biz = rpcBiz
+  let biz: any = null
+  if (userData?.id) {
+    const { data: b } = await supabase.from('businesses').select('id,name').eq('owner_id', userData.id).maybeSingle()
+    biz = b
   }
-
+  if (!biz && user.email) {
+    const { createAdminClient } = await import('@/lib/supabase/server')
+    const admin = await createAdminClient()
+    const { data: b } = await admin.from('businesses').select('id,name').eq('email', user.email).maybeSingle()
+    if (b) { if (userData?.id) await admin.from('businesses').update({ owner_id: userData.id }).eq('id', b.id); biz = b }
+  }
+  if (!biz) { const { data: r } = await supabase.rpc('get_my_business'); if (r) biz = r }
   if (!biz) redirect('/register/business')
 
   const { data: vans } = await supabase.from('vans').select('id,name').eq('business_id', biz.id)

@@ -14,13 +14,27 @@ export default async function VansPage() {
   let { data: userData } = await supabase
     .from('users').select('id').eq('auth_id', user.id).maybeSingle()
 
-  let { data: business } = userData?.id
-    ? await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
-    : { data: null }
+  let business: any = null
 
-  // RPC fallback if business not found via RLS
+  if (userData?.id) {
+    const { data: b } = await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
+    business = b
+  }
+
+  // Email fallback (handles businesses not linked by owner_id yet)
+  if (!business && user.email) {
+    const { createAdminClient } = await import('@/lib/supabase/server')
+    const admin = await createAdminClient()
+    const { data: b } = await admin.from('businesses').select('id, name').eq('email', user.email).maybeSingle()
+    if (b) {
+      if (userData?.id) await admin.from('businesses').update({ owner_id: userData.id }).eq('id', b.id)
+      business = b
+    }
+  }
+
+  // RPC fallback (SECURITY DEFINER bypasses RLS)
   if (!business) {
-    const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
+    const { data: rpcBiz } = await supabase.rpc('get_my_business')
     if (rpcBiz) business = rpcBiz
   }
 

@@ -14,25 +14,26 @@ export default async function BillingPage() {
   let { data: userData } = await supabase
     .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
 
-  let { data: business } = userData?.id
-    ? await supabase
-        .from('businesses')
-        .select('*, subscriptions(status, trial_ends_at, subscription_plans(name, price))')
-        .eq('owner_id', userData.id)
-        .maybeSingle()
-    : { data: null }
-
-  // RPC fallback if business not found via RLS
-  if (!business) {
-    const { data: rpcBiz } = await supabase.rpc('get_my_business').maybeSingle()
-    if (rpcBiz) business = rpcBiz
+  let business: any = null
+  if (userData?.id) {
+    const { data: b } = await supabase
+      .from('businesses')
+      .select('*, subscriptions(status, trial_ends_at, subscription_plans(name))')
+      .eq('owner_id', userData.id).maybeSingle()
+    business = b
   }
-
+  if (!business && user.email) {
+    const { createAdminClient } = await import('@/lib/supabase/server')
+    const admin = await createAdminClient()
+    const { data: b } = await admin.from('businesses').select('*').eq('email', user.email).maybeSingle()
+    if (b) { if (userData?.id) await admin.from('businesses').update({ owner_id: userData.id }).eq('id', b.id); business = b }
+  }
+  if (!business) { const { data: r } = await supabase.rpc('get_my_business'); if (r) business = r }
   if (!business) redirect('/register/business')
 
   const sub = (business.subscriptions as any)?.[0]
   const planName = sub?.subscription_plans?.name ?? 'starter'
-  const planPrice = sub?.subscription_plans?.price ?? 0
+  const planPrice = 0
   const subStatus = sub?.status ?? 'active'
   const trialEnd = sub?.trial_ends_at ? new Date(sub.trial_ends_at) : null
   const isTrialing = subStatus === 'trialing'
