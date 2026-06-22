@@ -140,7 +140,6 @@ export async function GET(req: NextRequest) {
       const { data: registered } = await db2
         .from('businesses')
         .select('slug, postcode')
-        .eq('status', 'approved')
         .in('postcode', uniquePostcodes)
       for (const b of registered ?? []) {
         if (b.postcode && b.slug) slugMap.set(b.postcode.trim().toUpperCase(), b.slug)

@@ -20,6 +20,7 @@ export default async function VanProfilePage({ params }: { params: { slug: strin
     .from('businesses')
     .select('id, name, slug, business_type, phone, email, website, postcode, city, address')
     .eq('slug', params.slug)
+    .not('slug', 'is', null)
     .maybeSingle()
 
   if (!business) notFound()
