@@ -66,19 +66,21 @@ function AIScanModal({ vanId, onClose, onImported }) {
 
   const importSelected = async () => {
     setStage('saving')
-    const supabase = createClient()
     const toInsert = (scanned.items ?? [])
       .filter((_, i) => selected[i])
       .map(item => ({
-        van_id:      vanId,
         name:        item.name,
         description: item.description ?? '',
         price:       parseFloat(item.price) || 0,
         category:    item.category ?? 'Mains',
-        available:   true,
       }))
-    const { error: err } = await supabase.from('menu_items').insert(toInsert)
-    if (err) { setError(err.message); setStage('review'); return }
+    const res = await fetch('/api/menu/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: toInsert, vanId }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) { setError(data.error ?? 'Import failed'); setStage('review'); return }
     setStage('done')
     onImported()
   }
