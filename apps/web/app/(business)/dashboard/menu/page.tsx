@@ -321,12 +321,19 @@ export default function MenuPage() {
     if (vanId) await loadMenu(supabase, vanId)
   }
 
-  const grouped = CATEGORIES.reduce((acc, cat) => {
+  // Group by actual categories in the data, preserving a sensible order
+  const ORDER = ['Fish', 'Chips', 'Burgers', 'Chicken', 'Vegetarian', 'Sides', 'Extras', 'Drinks', 'Desserts', 'Specials', 'Mains', 'Starters', 'Can Drink']
+  const allCats = [...new Set(items.map(i => i.category).filter(Boolean))]
+  const sortedCats = [
+    ...ORDER.filter(c => allCats.includes(c)),
+    ...allCats.filter(c => !ORDER.includes(c)),
+  ]
+  const grouped = sortedCats.reduce((acc, cat) => {
     const catItems = items.filter(i => i.category === cat)
     if (catItems.length) acc[cat] = catItems
     return acc
-  }, {})
-  const uncategorised = items.filter(i => !CATEGORIES.includes(i.category))
+  }, {} as Record<string, any[]>)
+  const uncategorised = items.filter(i => !i.category)
   if (uncategorised.length) grouped['Other'] = uncategorised
 
   return (
