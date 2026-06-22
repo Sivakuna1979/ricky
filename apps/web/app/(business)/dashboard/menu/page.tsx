@@ -23,7 +23,8 @@ function AIScanModal({ vanId, onClose, onImported }) {
   const [scanned, setScanned]   = useState(null)  // { business_name, phone, items[] }
   const [selected, setSelected] = useState({})
   const [error, setError]       = useState('')
-  const fileRef = useRef()
+  const cameraRef = useRef()
+  const galleryRef = useRef()
 
   const onFile = (e) => {
     const file = e.target.files[0]
@@ -109,25 +110,45 @@ function AIScanModal({ vanId, onClose, onImported }) {
           {/* UPLOAD */}
           {(stage === 'upload') && (
             <div>
-              <div
-                onClick={() => fileRef.current?.click()}
-                style={{ border:'2px dashed #f97316', borderRadius:14, padding:'32px 24px', textAlign:'center', cursor:'pointer', background:'#fff7ed', marginBottom:16 }}
-              >
-                {preview ? (
-                  <img src={preview} alt="Menu preview" style={{ maxWidth:'100%', maxHeight:300, borderRadius:10, objectFit:'contain' }} />
-                ) : (
-                  <>
-                    <div style={{ fontSize:48, marginBottom:8 }}>📸</div>
-                    <div style={{ fontWeight:700, fontSize:15, color:'#f97316', marginBottom:4 }}>Tap to upload your menu card</div>
-                    <div style={{ fontSize:12, color:'#888' }}>Photo, scan or screenshot — JPG, PNG, HEIC supported</div>
-                  </>
-                )}
-              </div>
-              <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFile} style={{ display:'none' }} />
+              {/* Preview */}
+              {preview ? (
+                <div style={{ marginBottom:16 }}>
+                  <img src={preview} alt="Menu preview" style={{ maxWidth:'100%', maxHeight:280, borderRadius:12, objectFit:'contain', display:'block', margin:'0 auto' }} />
+                </div>
+              ) : (
+                <div style={{ border:'2px dashed #e5e7eb', borderRadius:14, padding:'28px 20px', textAlign:'center', background:'#fafafa', marginBottom:16 }}>
+                  <div style={{ fontSize:44, marginBottom:8 }}>🍽️</div>
+                  <div style={{ fontWeight:700, fontSize:15, color:'#333', marginBottom:4 }}>Choose your menu card</div>
+                  <div style={{ fontSize:12, color:'#888' }}>Take a photo or pick from your gallery</div>
+                </div>
+              )}
+
+              {/* Two upload buttons */}
+              {!preview && (
+                <div style={{ display:'flex', gap:10, marginBottom:0 }}>
+                  <button
+                    onClick={() => cameraRef.current?.click()}
+                    style={{ flex:1, padding:'13px 10px', borderRadius:12, border:'1.5px solid #f97316', background:'#fff7ed', color:'#ea580c', fontSize:14, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:7 }}
+                  >
+                    📷 Take Photo
+                  </button>
+                  <button
+                    onClick={() => galleryRef.current?.click()}
+                    style={{ flex:1, padding:'13px 10px', borderRadius:12, border:'1.5px solid #6366f1', background:'#eef2ff', color:'#4338ca', fontSize:14, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:7 }}
+                  >
+                    🖼️ Upload from Gallery
+                  </button>
+                </div>
+              )}
+
+              {/* Hidden inputs — one with capture, one without */}
+              <input ref={cameraRef}  type="file" accept="image/*" capture="environment" onChange={onFile} style={{ display:'none' }} />
+              <input ref={galleryRef} type="file" accept="image/*" onChange={onFile} style={{ display:'none' }} />
+
               {preview && (
                 <div style={{ display:'flex', gap:10 }}>
                   <button onClick={() => { setPreview(null); setImageData(null) }} style={{ flex:1, padding:'12px', borderRadius:10, border:'1px solid #e5e7eb', background:'#f9fafb', fontSize:14, fontWeight:600, cursor:'pointer', color:'#555' }}>
-                    Change Photo
+                    ← Change
                   </button>
                   <button onClick={scan} style={{ flex:2, padding:'12px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:15, fontWeight:800, cursor:'pointer' }}>
                     🤖 Scan Menu
