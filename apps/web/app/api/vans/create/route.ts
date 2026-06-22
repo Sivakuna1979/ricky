@@ -1,15 +1,6 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-
-function getAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-  return createServerClient(url, key, {
-    cookies: { getAll: () => [], setAll: () => {} },
-    auth: { persistSession: false },
-  })
-}
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,12 +8,12 @@ export async function POST(req: NextRequest) {
     if (!name) return NextResponse.json({ error: 'Van name is required' }, { status: 400 })
     if (!business_id) return NextResponse.json({ error: 'Business ID is required' }, { status: 400 })
 
-    const admin = getAdmin()
+    const admin = await createAdminClient()
     const { data, error } = await admin.from('vans').insert({
       name,
-      van_type,
-      phone: phone || null,
-      description: description || null,
+      van_type:        van_type || null,
+      phone:           phone || null,
+      description:     description || null,
       business_id,
       tracking_status: 'offline',
     }).select().single()
