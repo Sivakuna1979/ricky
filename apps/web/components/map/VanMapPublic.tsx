@@ -302,6 +302,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
 
   const [googlePlaces, setGooglePlaces] = useState<GooglePlace[]>([])
   const [foodTaxiVans, setFoodTaxiVans] = useState<FoodTaxiVan[]>([])
+  const [ftBizList, setFtBizList]       = useState<any[]>([])
   const [userPos, setUserPos]           = useState<{lat:number;lng:number}|null>(null)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState('')
@@ -381,6 +382,11 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
       for (const b of data.businesses ?? []) vans.push({ id:b.id, name:b.name, lat:b.latitude, lng:b.longitude, van_type:b.van_type, phone:b.phone, slug:b.slug, isLive:false })
       setFoodTaxiVans(vans)
     } catch {}
+  }, [])
+
+  /* ── Load FoodTaxi registered businesses once ───────────────── */
+  useEffect(() => {
+    fetch('/api/foodtaxi-businesses').then(r => r.json()).then(d => setFtBizList(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
   /* ── Init Leaflet ────────────────────────────────────────────── */
@@ -592,6 +598,22 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
           ))}
         </div>
       </div>
+
+      {/* ── FoodTaxi registered businesses ── */}
+      {showCards && ftBizList.length > 0 && (
+        <div style={{ marginTop:20 }}>
+          <div style={{ fontSize:11, fontWeight:800, color:'#f97316', letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>🍽 On FoodTaxi</div>
+          {ftBizList.map((b: any) => (
+            <a key={b.slug} href={`/van/${b.slug}`} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(135deg,rgba(249,115,22,0.12),rgba(234,88,12,0.08))', border:'1px solid rgba(249,115,22,0.3)', borderRadius:14, padding:'14px 16px', marginBottom:8, textDecoration:'none', color:'#fff' }}>
+              <div>
+                <div style={{ fontWeight:800, fontSize:15 }}>{b.name}</div>
+                {b.postcode && <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:2 }}>📍 {b.postcode}</div>}
+              </div>
+              <div style={{ background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:10, padding:'8px 14px', fontSize:13, fontWeight:700, flexShrink:0 }}>View Menu →</div>
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* ── Result cards ── */}
       {showCards && sorted.length>0 && (
