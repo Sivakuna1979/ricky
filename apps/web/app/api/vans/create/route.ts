@@ -22,8 +22,12 @@ export async function POST(req: NextRequest) {
       }
     )
 
+    const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const slug = `${baseSlug}-${Date.now()}`
+
     const { data, error } = await supabase.from('vans').insert({
       name,
+      slug,
       van_type:        van_type || null,
       phone:           phone || null,
       description:     description || null,
