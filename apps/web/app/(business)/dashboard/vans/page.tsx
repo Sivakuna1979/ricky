@@ -1,38 +1,36 @@
 // @ts-nocheck
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+'use client'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
-export const dynamic = 'force-dynamic'
-export const metadata = { title: 'My Vans — FoodTaxi' }
+export default function VansPage() {
+  const [vans, setVans]       = useState<any[]>([])
+  const [bizName, setBizName] = useState('')
+  const [loading, setLoading] = useState(true)
 
-export default async function VansPage() {
-  const supabase = await createClient()
-  const { data: { user }, error: userErr } = await supabase.auth.getUser()
-  if (userErr || !user) redirect('/login')
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) { window.location.href = '/login'; return }
 
-  let { data: userData } = await supabase
-    .from('users').select('id').eq('auth_id', user.id).maybeSingle()
+      let biz: any = null
+      const { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
+      if (userData?.id) {
+        const { data: b } = await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
+        biz = b
+      }
+      if (!biz) {
+        const { data: r } = await supabase.rpc('get_my_business')
+        if (r) biz = r
+      }
+      if (!biz) { window.location.href = '/register/business'; return }
 
-  let business: any = null
-
-  try {
-    if (userData?.id) {
-      const { data: b } = await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
-      business = b
-    }
-
-    if (!business) {
-      const { data: rpcBiz } = await supabase.rpc('get_my_business')
-      if (rpcBiz) business = rpcBiz
-    }
-  } catch (_e) {
-    // ignore — will redirect below if still null
-  }
-
-  if (!business) redirect('/register/business')
-
-  const { data: vans } = await supabase
-    .from('vans').select('*').eq('business_id', business.id)
+      setBizName(biz.name ?? '')
+      const { data: vanList } = await supabase.from('vans').select('*').eq('business_id', biz.id)
+      setVans(vanList ?? [])
+      setLoading(false)
+    })
+  }, [])
 
   const NAV = [
     { icon: '📊', label: 'Dashboard', href: '/dashboard' },
@@ -60,10 +58,10 @@ export default async function VansPage() {
             <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg,#f97316,#dc2626)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:900, color:'#fff' }}>FT</div>
             <div>
               <div style={{ fontWeight:800, fontSize:15, color:'#111', lineHeight:1 }}>FoodTaxi</div>
-              <div style={{ fontSize:11, color:'#888' }}>{business.name}</div>
+              {bizName && <div style={{ fontSize:11, color:'#888' }}>{bizName}</div>}
             </div>
           </div>
-          <a href="/" className="pub-site-link" style={{ fontSize:12, color:'#6366f1', textDecoration:'none', padding:'5px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontWeight:600 }}>← Public Site</a>
+          <a href="/" style={{ fontSize:12, color:'#6366f1', textDecoration:'none', padding:'5px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontWeight:600 }}>← Public Site</a>
         </div>
         <div className="body">
           <div className="sidebar">
@@ -81,7 +79,10 @@ export default async function VansPage() {
               <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#111' }}>My Vans</h1>
               <p style={{ color:'#888', margin:0, fontSize:13 }}>Manage your food vans</p>
             </div>
-            {(vans ?? []).length === 0 ? (
+
+            {loading ? (
+              <div style={{ textAlign:'center', padding:40, color:'#888' }}>Loading…</div>
+            ) : vans.length === 0 ? (
               <div style={{ background:'#fff', borderRadius:14, padding:'40px', textAlign:'center', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
                 <div style={{ fontSize:48, marginBottom:12 }}>🚐</div>
                 <div style={{ fontSize:16, fontWeight:700, color:'#111', marginBottom:8 }}>No vans yet</div>
@@ -90,7 +91,7 @@ export default async function VansPage() {
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {(vans ?? []).map(van => (
+                {vans.map(van => (
                   <div key={van.id} style={{ background:'#fff', borderRadius:12, padding:'16px 20px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', display:'flex', alignItems:'center', gap:14 }}>
                     <div style={{ width:12, height:12, borderRadius:'50%', background: van.tracking_status === 'live' ? '#10b981' : '#d1d5db', flexShrink:0 }} />
                     <div style={{ flex:1 }}>
