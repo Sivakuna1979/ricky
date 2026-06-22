@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,7 +9,18 @@ export async function POST(req: NextRequest) {
     if (!items?.length) return NextResponse.json({ error: 'No items provided' }, { status: 400 })
     if (!vanId) return NextResponse.json({ error: 'vanId required' }, { status: 400 })
 
-    const admin = await createAdminClient()
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
+      {
+        cookies: {
+          getAll: () => cookieStore.getAll(),
+          setAll: () => {},
+        },
+      }
+    )
+
     const rows = items.map((item: any) => ({
       van_id:      vanId,
       name:        item.name,
@@ -17,7 +29,8 @@ export async function POST(req: NextRequest) {
       category:    item.category ?? 'Mains',
       available:   true,
     }))
-    const { error } = await admin.from('menu_items').insert(rows)
+
+    const { error } = await supabase.from('menu_items').insert(rows)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ inserted: rows.length })
   } catch (err: any) {
