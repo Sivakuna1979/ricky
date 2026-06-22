@@ -191,10 +191,19 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         </a>
       </div>
 
+      {/* Order Online banner */}
+      {menuItems?.length > 0 && (
+        <div style={{ padding:'0 16px 16px' }}>
+          <button onClick={() => { if (cartCount > 0) setView('checkout'); else document.getElementById('menu-top')?.scrollIntoView({ behavior:'smooth' }) }} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+            🛒 {cartCount > 0 ? `Order Online · £${cartTotal.toFixed(2)} (${cartCount} items)` : 'Order Online — tap + to add items'}
+          </button>
+        </div>
+      )}
+
       {/* Menu */}
       {menuItems?.length > 0 ? (
         <div style={{ padding:'0 16px 20px' }}>
-          <h2 style={{ fontSize:20, fontWeight:800, color:'#fff', margin:'0 0 16px', padding:'0 4px' }}>Our Menu</h2>
+          <h2 id="menu-top" style={{ fontSize:20, fontWeight:800, color:'#fff', margin:'0 0 16px', padding:'0 4px' }}>Our Menu</h2>
           {sortedCats.map(cat => (
             <div key={cat} style={{ marginBottom:24 }}>
               <div style={{ fontSize:13, fontWeight:800, color:'#f97316', letterSpacing:1, textTransform:'uppercase', marginBottom:10, padding:'0 4px' }}>{cat}</div>

@@ -328,10 +328,44 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
     lastFetchRef.current = now
     setLoading(true); setError('')
     try {
-      const res  = await fetch(`/api/places/nearby?lat=${lat}&lng=${lng}`)
-      const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Failed'); return }
-      setGooglePlaces(data.results ?? [])
+      const [placesRes, ftRes] = await Promise.all([
+        fetch(`/api/places/nearby?lat=${lat}&lng=${lng}`),
+        fetch('/api/foodtaxi-businesses'),
+      ])
+      const data   = await placesRes.json()
+      const ftBizs = placesRes.ok && ftRes.ok ? await ftRes.json() : []
+      if (!placesRes.ok) { setError(data.error ?? 'Failed'); return }
+
+      // Build lookup maps for client-side matching
+      const pcMap: Record<string, string>   = {}  // postcode (no spaces, upper) → slug
+      const nmMap: Record<string, string>   = {}  // normalised name prefix → slug
+      for (const b of ftBizs) {
+        if (b.postcode && b.slug) pcMap[b.postcode.replace(/\s/g,'').toUpperCase()] = b.slug
+        if (b.name && b.slug) {
+          const key = b.name.toLowerCase().replace(/[^a-z0-9]/g,'')
+          nmMap[key] = b.slug
+        }
+      }
+      function matchSlug(name: string, postcode: string | null): string | null {
+        if (postcode) {
+          const pc = postcode.replace(/\s/g,'').toUpperCase()
+          if (pcMap[pc]) return pcMap[pc]
+        }
+        const gKey = name.toLowerCase().replace(/[^a-z0-9]/g,'')
+        for (const [key, slug] of Object.entries(nmMap)) {
+          if (key.length < 6 || gKey.length < 6) continue
+          if (gKey.includes(key) || key.includes(gKey)) return slug
+          const pLen = Math.min(8, key.length, gKey.length)
+          if (pLen >= 6 && gKey.slice(0,pLen) === key.slice(0,pLen)) return slug
+        }
+        return null
+      }
+
+      const enriched = (data.results ?? []).map((r: any) => ({
+        ...r,
+        foodtaxi_slug: r.foodtaxi_slug ?? matchSlug(r.name, r.postcode),
+      }))
+      setGooglePlaces(enriched)
       setRadiusMiles(data.radius_miles ?? 5)
     } catch { setError('Network error') }
     finally { setLoading(false) }
