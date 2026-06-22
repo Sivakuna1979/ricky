@@ -131,24 +131,38 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  // Enrich results with FoodTaxi slug for registered businesses (match by postcode)
+  // Enrich results with FoodTaxi slug — match by postcode OR name similarity
   const uniquePostcodes = [...new Set(results.map(r => r.postcode).filter(Boolean))]
-  const slugMap = new Map<string, string>()
-  if (uniquePostcodes.length > 0) {
-    try {
-      const db2 = getAdmin()
-      const { data: registered } = await db2
-        .from('businesses')
-        .select('slug, postcode')
-        .in('postcode', uniquePostcodes)
-      for (const b of registered ?? []) {
-        if (b.postcode && b.slug) slugMap.set(b.postcode.trim().toUpperCase(), b.slug)
+  const slugMap      = new Map<string, string>()  // postcode → slug
+  const nameSlugMap  = new Map<string, string>()  // normalised name → slug
+  try {
+    const db2 = getAdmin()
+    const { data: registered } = await db2
+      .from('businesses')
+      .select('slug, postcode, name')
+    for (const b of registered ?? []) {
+      if (b.postcode && b.slug) slugMap.set(b.postcode.trim().toUpperCase(), b.slug)
+      if (b.name && b.slug) {
+        const key = b.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+        nameSlugMap.set(key, b.slug)
       }
-    } catch {}
+    }
+  } catch {}
+
+  function nameMatch(googleName: string): string | null {
+    const gKey = googleName.toLowerCase().replace(/[^a-z0-9]/g, '')
+    for (const [key, slug] of nameSlugMap) {
+      // Match if either contains the other (min 6 chars)
+      if (key.length >= 6 && gKey.length >= 6 && (gKey.includes(key) || key.includes(gKey))) return slug
+    }
+    return null
   }
+
   const enriched = results.map(r => ({
     ...r,
-    foodtaxi_slug: r.postcode ? (slugMap.get(r.postcode.trim().toUpperCase()) ?? null) : null,
+    foodtaxi_slug: (r.postcode ? slugMap.get(r.postcode.trim().toUpperCase()) : null)
+                   ?? nameMatch(r.name)
+                   ?? null,
   }))
 
   // Auto-save to discovered_businesses (fire-and-forget — don't block response)
