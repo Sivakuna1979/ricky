@@ -580,7 +580,9 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
               return (
                 <div key={p.place_id} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:18, display:'flex', flexDirection:'column', gap:8 }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                    <div style={{ fontWeight:800, fontSize:15, color:'#fff', lineHeight:1.3 }}>{emoji} {p.name}</div>
+                    <div style={{ fontWeight:800, fontSize:15, color:'#fff', lineHeight:1.3 }}>
+                      {p.foodtaxi_slug ? <a href={`/van/${p.foodtaxi_slug}`} style={{ color:'#fff', textDecoration:'none' }}>{emoji} {p.name}</a> : <>{emoji} {p.name}</>}
+                    </div>
                     {p.open_now===true  && <span style={{ background:'#10b981',color:'#fff',padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,flexShrink:0 }}>OPEN</span>}
                     {p.open_now===false && <span style={{ background:'#ef4444',color:'#fff',padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,flexShrink:0 }}>CLOSED</span>}
                   </div>
