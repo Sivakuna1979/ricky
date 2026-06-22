@@ -4,13 +4,20 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const VAN_TYPES = [
-  'Fish & Chips', 'Burger Van', 'Pizza Van', 'Coffee Van',
-  'Ice Cream Van', 'Kebab Van', 'Street Food', 'Catering Trailer',
-  'Mobile Bakery', 'Other',
+  { value: 'fish_and_chips', label: 'Fish & Chips' },
+  { value: 'burger',         label: 'Burger Van' },
+  { value: 'pizza',          label: 'Pizza Van' },
+  { value: 'coffee',         label: 'Coffee Van' },
+  { value: 'ice_cream',      label: 'Ice Cream Van' },
+  { value: 'kebab',          label: 'Kebab Van' },
+  { value: 'street_food',    label: 'Street Food' },
+  { value: 'catering_trailer', label: 'Catering Trailer' },
+  { value: 'bakery',         label: 'Mobile Bakery' },
+  { value: 'fast_food',      label: 'Other' },
 ]
 
 export default function NewVanPage() {
-  const [form, setForm]     = useState({ name: '', van_type: 'Fish & Chips', phone: '', description: '' })
+  const [form, setForm]     = useState({ name: '', van_type: 'fish_and_chips', phone: '', description: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const [bizId, setBizId]   = useState(null)
@@ -77,7 +84,7 @@ export default function NewVanPage() {
             <div style={{ marginBottom:16 }}>
               <label style={{ fontSize:12, fontWeight:700, color:'#555', display:'block', marginBottom:6 }}>Van Type</label>
               <select value={form.van_type} onChange={e => setForm(p => ({...p, van_type: e.target.value}))} style={{ ...inp, cursor:'pointer' }}>
-                {VAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {VAN_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
 
