@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
       .from('businesses')
       .select('slug, postcode, name')
     for (const b of registered ?? []) {
-      if (b.postcode && b.slug) slugMap.set(b.postcode.trim().toUpperCase(), b.slug)
+      if (b.postcode && b.slug) slugMap.set(b.postcode.replace(/\s/g,'').toUpperCase(), b.slug)
       if (b.name && b.slug) {
         const key = b.name.toLowerCase().replace(/[^a-z0-9]/g, '')
         nameSlugMap.set(key, b.slug)
@@ -152,15 +152,19 @@ export async function GET(req: NextRequest) {
   function nameMatch(googleName: string): string | null {
     const gKey = googleName.toLowerCase().replace(/[^a-z0-9]/g, '')
     for (const [key, slug] of nameSlugMap) {
-      // Match if either contains the other (min 6 chars)
-      if (key.length >= 6 && gKey.length >= 6 && (gKey.includes(key) || key.includes(gKey))) return slug
+      if (key.length < 6 || gKey.length < 6) continue
+      // Exact contains check
+      if (gKey.includes(key) || key.includes(gKey)) return slug
+      // Prefix match — first 8 normalised chars match (e.g. "howeandco")
+      const prefixLen = Math.min(8, key.length, gKey.length)
+      if (prefixLen >= 6 && gKey.slice(0, prefixLen) === key.slice(0, prefixLen)) return slug
     }
     return null
   }
 
   const enriched = results.map(r => ({
     ...r,
-    foodtaxi_slug: (r.postcode ? slugMap.get(r.postcode.trim().toUpperCase()) : null)
+    foodtaxi_slug: (r.postcode ? slugMap.get(r.postcode.replace(/\s/g,'').toUpperCase()) : null)
                    ?? nameMatch(r.name)
                    ?? null,
   }))
