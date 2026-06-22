@@ -347,11 +347,9 @@ export default function MenuPage() {
                 <p style={{ color:'#888', margin:0, fontSize:13 }}>Add items manually or scan your menu card with AI</p>
               </div>
               <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-                {vanId && (
-                  <button onClick={() => setShowScan(true)} style={{ padding:'10px 18px', borderRadius:10, background:'linear-gradient(135deg,#7c3aed,#6d28d9)', color:'#fff', fontWeight:700, fontSize:14, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
-                    🤖 Scan Menu Card
-                  </button>
-                )}
+                <button onClick={() => setShowScan(true)} style={{ padding:'10px 18px', borderRadius:10, background:'linear-gradient(135deg,#7c3aed,#6d28d9)', color:'#fff', fontWeight:700, fontSize:14, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
+                  🤖 Scan Menu Card
+                </button>
                 <button onClick={openAdd} style={{ padding:'10px 18px', borderRadius:10, background:'#f97316', color:'#fff', fontWeight:700, fontSize:14, border:'none', cursor:'pointer' }}>
                   + Add Item
                 </button>
@@ -359,7 +357,7 @@ export default function MenuPage() {
             </div>
 
             {/* AI banner (when no items yet) */}
-            {!loading && vanId && items.length === 0 && (
+            {!loading && items.length === 0 && (
               <div style={{ background:'linear-gradient(135deg,#7c3aed11,#6d28d911)', border:'1px solid #7c3aed33', borderRadius:14, padding:'20px 24px', marginBottom:20, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
                 <div style={{ fontSize:40 }}>🤖</div>
                 <div style={{ flex:1, minWidth:200 }}>
