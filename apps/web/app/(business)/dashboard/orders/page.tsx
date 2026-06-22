@@ -24,24 +24,19 @@ const STATUS_COLORS = {
 
 export default async function OrdersPage() {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) redirect('/login')
-  const user = session.user
+  const { data: { user }, error: userErr } = await supabase.auth.getUser()
+  if (userErr || !user) redirect('/login')
 
   let { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
 
   let biz: any = null
-  if (userData?.id) {
-    const { data: b } = await supabase.from('businesses').select('id,name').eq('owner_id', userData.id).maybeSingle()
-    biz = b
-  }
-  if (!biz && user.email) {
-    const { createAdminClient } = await import('@/lib/supabase/server')
-    const admin = await createAdminClient()
-    const { data: b } = await admin.from('businesses').select('id,name').eq('email', user.email).maybeSingle()
-    if (b) { if (userData?.id) await admin.from('businesses').update({ owner_id: userData.id }).eq('id', b.id); biz = b }
-  }
-  if (!biz) { const { data: r } = await supabase.rpc('get_my_business'); if (r) biz = r }
+  try {
+    if (userData?.id) {
+      const { data: b } = await supabase.from('businesses').select('id,name').eq('owner_id', userData.id).maybeSingle()
+      biz = b
+    }
+    if (!biz) { const { data: r } = await supabase.rpc('get_my_business'); if (r) biz = r }
+  } catch (_e) {}
   if (!biz) redirect('/register/business')
 
   const { data: vans } = await supabase.from('vans').select('id,name').eq('business_id', biz.id)

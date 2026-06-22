@@ -7,35 +7,26 @@ export const metadata = { title: 'My Vans — FoodTaxi' }
 
 export default async function VansPage() {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) redirect('/login')
-  const user = session.user
+  const { data: { user }, error: userErr } = await supabase.auth.getUser()
+  if (userErr || !user) redirect('/login')
 
   let { data: userData } = await supabase
     .from('users').select('id').eq('auth_id', user.id).maybeSingle()
 
   let business: any = null
 
-  if (userData?.id) {
-    const { data: b } = await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
-    business = b
-  }
-
-  // Email fallback (handles businesses not linked by owner_id yet)
-  if (!business && user.email) {
-    const { createAdminClient } = await import('@/lib/supabase/server')
-    const admin = await createAdminClient()
-    const { data: b } = await admin.from('businesses').select('id, name').eq('email', user.email).maybeSingle()
-    if (b) {
-      if (userData?.id) await admin.from('businesses').update({ owner_id: userData.id }).eq('id', b.id)
+  try {
+    if (userData?.id) {
+      const { data: b } = await supabase.from('businesses').select('id, name').eq('owner_id', userData.id).maybeSingle()
       business = b
     }
-  }
 
-  // RPC fallback (SECURITY DEFINER bypasses RLS)
-  if (!business) {
-    const { data: rpcBiz } = await supabase.rpc('get_my_business')
-    if (rpcBiz) business = rpcBiz
+    if (!business) {
+      const { data: rpcBiz } = await supabase.rpc('get_my_business')
+      if (rpcBiz) business = rpcBiz
+    }
+  } catch (_e) {
+    // ignore — will redirect below if still null
   }
 
   if (!business) redirect('/register/business')
