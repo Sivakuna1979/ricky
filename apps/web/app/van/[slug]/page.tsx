@@ -1,68 +1,162 @@
 // @ts-nocheck
-export const dynamic = 'force-dynamic'
-
-import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
-
-const TYPE_EMOJI: Record<string, string> = {
-  fish_and_chips: '🐟', burger: '🍔', pizza: '🍕', coffee: '☕',
-  ice_cream: '🍦', kebab: '🥙', street_food: '🌮', catering_trailer: '🚐',
-  bakery: '🥖', fast_food: '🍟', other: '🍽️',
-}
+'use client'
+import { useState, useEffect } from 'react'
 
 const CAT_ORDER = ['Fish','Chips','Burgers','Chicken','Vegetarian','Sides','Extras','Drinks','Desserts','Specials','Mains','Starters']
+const TYPE_EMOJI: Record<string, string> = {
+  fish_and_chips:'🐟', burger:'🍔', pizza:'🍕', coffee:'☕',
+  ice_cream:'🍦', kebab:'🥙', street_food:'🌮', catering_trailer:'🚐',
+  bakery:'🥖', fast_food:'🍟', other:'🍽️',
+}
 
-export default async function VanProfilePage({ params }: { params: { slug: string } }) {
-  const supabase = await createClient()
+export default function VanProfilePage({ params }: { params: { slug: string } }) {
+  const [data, setData]         = useState<any>(null)
+  const [loading, setLoading]   = useState(true)
+  const [cart, setCart]         = useState<Record<string, number>>({})
+  const [view, setView]         = useState<'menu'|'checkout'|'done'>('menu')
+  const [form, setForm]         = useState({ name:'', phone:'', notes:'' })
+  const [placing, setPlacing]   = useState(false)
+  const [orderNum, setOrderNum] = useState('')
 
-  // Look up business by slug — no status gate so pending businesses still show
-  const { data: business } = await supabase
-    .from('businesses')
-    .select('id, name, slug, business_type, phone, email, website, postcode, city, address')
-    .eq('slug', params.slug)
-    .not('slug', 'is', null)
-    .maybeSingle()
+  useEffect(() => {
+    fetch(`/api/van-profile/${params.slug}`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [params.slug])
 
-  if (!business) notFound()
+  const addToCart = (id: string) => setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
+  const removeFromCart = (id: string) => setCart(c => {
+    const next = { ...c }
+    if ((next[id] ?? 0) <= 1) delete next[id]
+    else next[id]--
+    return next
+  })
 
-  const { data: vans } = await supabase
-    .from('vans')
-    .select('id, name, van_type, tracking_status, lat, lng, phone, description')
-    .eq('business_id', business.id)
+  const cartItems = data?.menuItems?.filter((i: any) => cart[i.id]) ?? []
+  const cartTotal = cartItems.reduce((s: number, i: any) => s + i.price * (cart[i.id] ?? 0), 0)
+  const cartCount = Object.values(cart).reduce((s: number, n) => s + (n as number), 0)
 
-  // Get menu items for all vans of this business
-  const vanIds = (vans ?? []).map(v => v.id)
-  let menuItems: any[] = []
-  if (vanIds.length > 0) {
-    const { data: items } = await supabase
-      .from('menu_items')
-      .select('id, name, description, price, category, available, van_id')
-      .in('van_id', vanIds)
-      .eq('available', true)
-      .order('category')
-    menuItems = items ?? []
+  const placeOrder = async () => {
+    if (!form.name || !form.phone) return
+    setPlacing(true)
+    const res = await fetch('/api/orders/guest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        van_id: data.vans?.[0]?.id,
+        business_id: data.business?.id,
+        customer_name: form.name,
+        customer_phone: form.phone,
+        notes: form.notes,
+        items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
+        subtotal: cartTotal,
+        total: cartTotal,
+        payment_method: 'cash_at_van',
+      }),
+    })
+    const json = await res.json()
+    setPlacing(false)
+    if (res.ok) { setOrderNum(json.order_number ?? json.id?.slice(0,8).toUpperCase() ?? 'OK'); setView('done') }
+    else alert(json.error ?? 'Failed to place order')
   }
 
-  // Group by category
-  const allCats = [...new Set(menuItems.map(i => i.category).filter(Boolean))]
-  const sortedCats = [
-    ...CAT_ORDER.filter(c => allCats.includes(c)),
-    ...allCats.filter(c => !CAT_ORDER.includes(c)),
-  ]
+  if (loading) return (
+    <div style={{ background:'#080c18', minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'system-ui,sans-serif' }}>
+      Loading…
+    </div>
+  )
+
+  if (!data?.business) return (
+    <div style={{ background:'#080c18', minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'system-ui,sans-serif', gap:16 }}>
+      <div style={{ fontSize:48 }}>🍽️</div>
+      <div style={{ fontSize:20, fontWeight:800 }}>Business Not Found</div>
+      <a href="/" style={{ color:'#f97316', textDecoration:'none', fontWeight:600 }}>← Back to FoodTaxi</a>
+    </div>
+  )
+
+  const { business, vans, menuItems } = data
+  const allCats = [...new Set(menuItems?.map((i: any) => i.category).filter(Boolean))] as string[]
+  const sortedCats = [...CAT_ORDER.filter(c => allCats.includes(c)), ...allCats.filter(c => !CAT_ORDER.includes(c))]
   const byCategory: Record<string, any[]> = {}
-  for (const item of menuItems) {
+  for (const item of menuItems ?? []) {
     const cat = item.category ?? 'Other'
     if (!byCategory[cat]) byCategory[cat] = []
     byCategory[cat].push(item)
   }
 
   const emoji = TYPE_EMOJI[business.business_type] ?? '🍽️'
-  const anyLive = (vans ?? []).some(v => v.tracking_status === 'live')
+  const anyLive = vans?.some((v: any) => v.tracking_status === 'live')
   const mapsQuery = encodeURIComponent([business.name, business.city, business.postcode].filter(Boolean).join(' '))
-  const phone = business.phone || (vans ?? [])[0]?.phone
+  const phone = business.phone || vans?.[0]?.phone
+
+  if (view === 'done') return (
+    <div style={{ background:'#080c18', minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'system-ui,sans-serif', padding:24, textAlign:'center' }}>
+      <div style={{ fontSize:72, marginBottom:16 }}>✅</div>
+      <h1 style={{ fontSize:26, fontWeight:900, margin:'0 0 8px' }}>Order Placed!</h1>
+      <div style={{ fontSize:14, color:'#9ca3af', marginBottom:8 }}>Order reference</div>
+      <div style={{ fontSize:28, fontWeight:900, color:'#f97316', marginBottom:24 }}>#{orderNum}</div>
+      <p style={{ color:'#9ca3af', fontSize:14, maxWidth:300, lineHeight:1.6, marginBottom:32 }}>
+        We've received your order at {business.name}. They'll contact you on {form.phone} when it's ready.
+      </p>
+      <a href={`/van/${params.slug}`} style={{ padding:'14px 32px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:14, textDecoration:'none', fontWeight:800, fontSize:15 }}>
+        ← Back to Menu
+      </a>
+    </div>
+  )
+
+  if (view === 'checkout') return (
+    <div style={{ background:'#080c18', minHeight:'100vh', fontFamily:'system-ui,sans-serif', color:'#fff' }}>
+      <div style={{ background:'#0d1427', borderBottom:'1px solid #1e2a45', padding:'12px 20px', display:'flex', alignItems:'center', gap:12 }}>
+        <button onClick={() => setView('menu')} style={{ background:'none', border:'none', color:'#f97316', fontSize:14, fontWeight:600, cursor:'pointer', padding:0 }}>← Back to Menu</button>
+      </div>
+      <div style={{ padding:'24px 20px', maxWidth:480, margin:'0 auto' }}>
+        <h2 style={{ fontSize:22, fontWeight:900, margin:'0 0 20px' }}>Your Order</h2>
+        {cartItems.map((item: any) => (
+          <div key={item.id} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid #1e2a45' }}>
+            <div>
+              <div style={{ fontWeight:600, fontSize:14 }}>{item.name}</div>
+              <div style={{ fontSize:12, color:'#9ca3af' }}>x{cart[item.id]} · £{(item.price * cart[item.id]).toFixed(2)}</div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <button onClick={() => removeFromCart(item.id)} style={{ width:28, height:28, borderRadius:'50%', border:'1px solid #374151', background:'#1e2a45', color:'#fff', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
+              <span style={{ fontSize:14, fontWeight:700 }}>{cart[item.id]}</span>
+              <button onClick={() => addToCart(item.id)} style={{ width:28, height:28, borderRadius:'50%', border:'none', background:'#f97316', color:'#fff', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
+            </div>
+          </div>
+        ))}
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'14px 0', fontSize:18, fontWeight:900, color:'#f97316', marginBottom:24 }}>
+          <span>Total</span><span>£{cartTotal.toFixed(2)}</span>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <div>
+            <label style={{ fontSize:12, fontWeight:700, color:'#9ca3af', display:'block', marginBottom:6 }}>Your Name *</label>
+            <input value={form.name} onChange={e => setForm(f => ({...f, name:e.target.value}))} placeholder="e.g. John Smith" style={{ width:'100%', padding:'12px 14px', borderRadius:10, border:'1px solid #1e2a45', background:'#0d1427', color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
+          </div>
+          <div>
+            <label style={{ fontSize:12, fontWeight:700, color:'#9ca3af', display:'block', marginBottom:6 }}>Phone Number *</label>
+            <input value={form.phone} onChange={e => setForm(f => ({...f, phone:e.target.value}))} placeholder="e.g. 07700 900000" type="tel" style={{ width:'100%', padding:'12px 14px', borderRadius:10, border:'1px solid #1e2a45', background:'#0d1427', color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
+          </div>
+          <div>
+            <label style={{ fontSize:12, fontWeight:700, color:'#9ca3af', display:'block', marginBottom:6 }}>Notes (optional)</label>
+            <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes:e.target.value}))} placeholder="Any special requests?" rows={2} style={{ width:'100%', padding:'12px 14px', borderRadius:10, border:'1px solid #1e2a45', background:'#0d1427', color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box', resize:'vertical' }} />
+          </div>
+        </div>
+
+        <div style={{ background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.2)', borderRadius:10, padding:12, fontSize:12, color:'#fdba74', margin:'16px 0' }}>
+          💵 Payment: Cash at van — pay when you collect your order
+        </div>
+
+        <button onClick={placeOrder} disabled={placing || !form.name || !form.phone} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background: placing ? 'rgba(249,115,22,0.5)' : 'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:16, fontWeight:800, cursor: placing ? 'wait' : 'pointer' }}>
+          {placing ? 'Placing Order…' : `✅ Place Order · £${cartTotal.toFixed(2)}`}
+        </button>
+      </div>
+    </div>
+  )
 
   return (
-    <div style={{ background:'#080c18', minHeight:'100vh', fontFamily:'system-ui,-apple-system,sans-serif', color:'#fff' }}>
+    <div style={{ background:'#080c18', minHeight:'100vh', fontFamily:'system-ui,-apple-system,sans-serif', color:'#fff', paddingBottom: cartCount > 0 ? 100 : 0 }}>
       {/* Header */}
       <div style={{ background:'#0d1427', borderBottom:'1px solid #1e2a45', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <a href="/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
@@ -75,7 +169,7 @@ export default async function VanProfilePage({ params }: { params: { slug: strin
       {/* Hero */}
       <div style={{ padding:'36px 20px 20px', textAlign:'center' }}>
         <div style={{ fontSize:64, marginBottom:12, lineHeight:1 }}>{emoji}</div>
-        <h1 style={{ fontSize:28, fontWeight:900, margin:'0 0 6px', letterSpacing:-0.5 }}>{business.name}</h1>
+        <h1 style={{ fontSize:28, fontWeight:900, margin:'0 0 10px', letterSpacing:-0.5 }}>{business.name}</h1>
         <div style={{ display:'inline-flex', alignItems:'center', gap:6, background: anyLive ? 'rgba(16,185,129,0.15)' : 'rgba(107,114,128,0.15)', border:`1px solid ${anyLive ? 'rgba(16,185,129,0.4)' : 'rgba(107,114,128,0.3)'}`, borderRadius:20, padding:'4px 12px', fontSize:12, fontWeight:700, color: anyLive ? '#6ee7b7' : '#9ca3af', marginBottom:10 }}>
           <div style={{ width:7, height:7, borderRadius:'50%', background: anyLive ? '#10b981' : '#4b5563', boxShadow: anyLive ? '0 0 6px #10b981' : 'none' }} />
           {anyLive ? 'Van is Live Now' : 'Currently Offline'}
@@ -89,57 +183,59 @@ export default async function VanProfilePage({ params }: { params: { slug: strin
       <div style={{ padding:'0 20px 20px', display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
         {phone && (
           <a href={`tel:${phone}`} style={{ padding:'12px 20px', background:'rgba(16,185,129,0.15)', border:'1px solid rgba(16,185,129,0.3)', color:'#6ee7b7', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
-            📞 Call to Order
+            📞 Call
           </a>
         )}
         <a href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ padding:'12px 20px', background:'rgba(249,115,22,0.15)', border:'1px solid rgba(249,115,22,0.3)', color:'#fdba74', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
           🗺 Directions
         </a>
-        {business.website && (
-          <a href={business.website} target="_blank" rel="noopener noreferrer" style={{ padding:'12px 20px', background:'rgba(59,130,246,0.15)', border:'1px solid rgba(59,130,246,0.3)', color:'#93c5fd', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
-            🌐 Website
-          </a>
-        )}
       </div>
 
       {/* Menu */}
-      {menuItems.length > 0 ? (
-        <div style={{ padding:'0 16px 40px' }}>
+      {menuItems?.length > 0 ? (
+        <div style={{ padding:'0 16px 20px' }}>
           <h2 style={{ fontSize:20, fontWeight:800, color:'#fff', margin:'0 0 16px', padding:'0 4px' }}>Our Menu</h2>
           {sortedCats.map(cat => (
             <div key={cat} style={{ marginBottom:24 }}>
               <div style={{ fontSize:13, fontWeight:800, color:'#f97316', letterSpacing:1, textTransform:'uppercase', marginBottom:10, padding:'0 4px' }}>{cat}</div>
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                {byCategory[cat]?.map(item => (
-                  <div key={item.id} style={{ background:'#0d1427', borderRadius:10, padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                {byCategory[cat]?.map((item: any) => (
+                  <div key={item.id} style={{ background:'#0d1427', borderRadius:10, padding:'12px 14px', display:'flex', alignItems:'center', gap:12 }}>
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:700, fontSize:14, color:'#fff' }}>{item.name}</div>
                       {item.description && <div style={{ fontSize:12, color:'#6b7280', marginTop:2 }}>{item.description}</div>}
+                      <div style={{ fontWeight:800, fontSize:15, color:'#f97316', marginTop:4 }}>£{Number(item.price).toFixed(2)}</div>
                     </div>
-                    <div style={{ fontWeight:800, fontSize:15, color:'#f97316', flexShrink:0 }}>
-                      £{Number(item.price).toFixed(2)}
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                      {cart[item.id] ? (
+                        <>
+                          <button onClick={() => removeFromCart(item.id)} style={{ width:32, height:32, borderRadius:'50%', border:'1px solid #374151', background:'#1e2a45', color:'#fff', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
+                          <span style={{ fontSize:14, fontWeight:700, minWidth:20, textAlign:'center' }}>{cart[item.id]}</span>
+                        </>
+                      ) : null}
+                      <button onClick={() => addToCart(item.id)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'#f97316', color:'#fff', fontSize:20, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>+</button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           ))}
-
-          {/* Order CTA */}
-          {phone && (
-            <div style={{ background:'linear-gradient(135deg,rgba(249,115,22,0.15),rgba(234,88,12,0.15))', border:'1px solid rgba(249,115,22,0.3)', borderRadius:16, padding:20, textAlign:'center', marginTop:8 }}>
-              <div style={{ fontSize:18, fontWeight:800, color:'#fff', marginBottom:6 }}>Ready to order?</div>
-              <div style={{ fontSize:13, color:'#9ca3af', marginBottom:16 }}>Call us to place your order</div>
-              <a href={`tel:${phone}`} style={{ display:'inline-block', padding:'14px 32px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:14, textDecoration:'none', fontWeight:800, fontSize:16 }}>
-                📞 Call {phone}
-              </a>
-            </div>
-          )}
         </div>
       ) : (
-        <div style={{ padding:'20px 20px 40px', textAlign:'center', color:'#6b7280' }}>
+        <div style={{ padding:'20px', textAlign:'center', color:'#6b7280' }}>
           <div style={{ fontSize:40, marginBottom:12 }}>🍽️</div>
           <div style={{ fontSize:15, fontWeight:600 }}>Menu coming soon</div>
+        </div>
+      )}
+
+      {/* Sticky cart bar */}
+      {cartCount > 0 && (
+        <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'16px 20px', background:'#0d1427', borderTop:'1px solid #1e2a45', zIndex:100 }}>
+          <button onClick={() => setView('checkout')} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span style={{ background:'rgba(255,255,255,0.2)', borderRadius:8, padding:'2px 10px', fontSize:14 }}>{cartCount}</span>
+            <span>Order Online</span>
+            <span>£{cartTotal.toFixed(2)}</span>
+          </button>
         </div>
       )}
 
