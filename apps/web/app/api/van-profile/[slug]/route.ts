@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
     const vanIds = vans.map((v: any) => v.id)
     let menuItems: any[] = []
     if (vanIds.length > 0) {
-      const inClause = `(${vanIds.map((id: string) => `"${id}"`).join(',')})`
+      const inClause = `(${vanIds.join(',')})`
       menuItems = await supabaseGet(
         `menu_items?select=id,name,description,price,category,available,van_id&van_id=in.${inClause}&available=eq.true&order=category`
       ) ?? []
