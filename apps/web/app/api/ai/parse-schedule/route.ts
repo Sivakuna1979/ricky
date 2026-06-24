@@ -4,18 +4,20 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const PROMPT = `You are reading a food van weekly schedule. Extract every location stop you can find.
+const PROMPT = `You are reading a food van schedule. Extract every location stop you can find.
 Return ONLY a valid JSON array, no other text, no markdown.
 Each stop object must have:
-  day_of_week: number (0=Monday,1=Tuesday,2=Wednesday,3=Thursday,4=Friday,5=Saturday,6=Sunday)
+  day_of_week: number or null (0=Monday,1=Tuesday,2=Wednesday,3=Thursday,4=Friday,5=Saturday,6=Sunday — use null if day is not mentioned or unclear)
   location_name: string
-  arrival_time: string (HH:MM 24-hour format)
-  departure_time: string (HH:MM 24-hour format)
+  arrival_time: string (HH:MM 24-hour format, e.g. "16:30")
+  departure_time: string (HH:MM 24-hour format, e.g. "20:30")
   notes: string (empty string if none)
 Rules:
-- Convert 12h times (e.g. 4:30pm → 16:30, 8:30pm → 20:30)
+- Convert 12h times to 24h (4:30pm → 16:30, 8:30pm → 20:30)
 - If only one time given, assume 4-hour slot
-- If a day says "off" or "rest" skip it
+- If a day says "off" or "rest" skip it entirely
+- If this looks like a route map with numbered stops and no day info, set day_of_week to null for all stops
+- IMPORTANT: if you cannot confidently determine the day, set day_of_week to null — do NOT guess
 Return JSON array only:`
 
 export async function POST(req: NextRequest) {

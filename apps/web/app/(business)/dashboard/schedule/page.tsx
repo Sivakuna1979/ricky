@@ -113,7 +113,13 @@ export default function SchedulePage() {
       })
       const data = await res.json()
       if (data.error) { setAiError(data.error); setAiLoading(false); return }
-      setAiPreview(data.stops ?? [])
+      // Mark stops where AI couldn't determine the day
+      const stops = (data.stops ?? []).map((s: any) => ({
+        ...s,
+        day_unset: s.day_of_week == null || s.day_of_week === -1,
+        day_of_week: s.day_of_week ?? null,
+      }))
+      setAiPreview(stops)
     } catch (e: any) {
       setAiError(e.message)
     }
@@ -124,7 +130,7 @@ export default function SchedulePage() {
     if (!aiPreview?.length || !vanId) return
     setSaving(true)
     const supabase = createClient()
-    await supabase.from('van_schedule').insert(aiPreview.map(s => ({ van_id: vanId, ...s })))
+    await supabase.from('van_schedule').insert(aiPreview.map(({ day_unset, ...s }) => ({ van_id: vanId, ...s })))
     setAiPreview(null)
     setAiText('')
     setAiImage(null)
@@ -284,43 +290,58 @@ export default function SchedulePage() {
                         <div style={{ fontSize:13, opacity:0.8, marginTop:6 }}>Could not read the schedule. Try a clearer photo or type it in.</div>
                       ) : (
                         <>
-                          <div style={{ fontSize:11, opacity:0.8, marginBottom:10 }}>Tap any field to edit before saving</div>
-                          {aiPreview.map((s, i) => (
-                            <div key={i} style={{ background:'rgba(255,255,255,0.12)', borderRadius:10, padding:'10px 12px', marginBottom:8 }}>
-                              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                                <select
-                                  value={s.day_of_week ?? 0}
-                                  onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, day_of_week: Number(e.target.value)} : x) : prev)}
-                                  style={{ padding:'5px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#764ba2', fontWeight:800, fontSize:13, cursor:'pointer' }}>
-                                  {DAYS.map((d,idx) => <option key={idx} value={idx}>{d}</option>)}
-                                </select>
-                                <button onClick={() => removeAIPreviewStop(i)} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', fontSize:14, cursor:'pointer', borderRadius:6, padding:'3px 8px', fontWeight:700 }}>Remove</button>
-                              </div>
-                              <input
-                                value={s.location_name}
-                                onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, location_name: e.target.value} : x) : prev)}
-                                style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13, fontWeight:700, boxSizing:'border-box', marginBottom:6 }}
-                              />
-                              <div style={{ display:'flex', gap:6 }}>
-                                <input
-                                  type="time"
-                                  value={s.arrival_time}
-                                  onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, arrival_time: e.target.value} : x) : prev)}
-                                  style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }}
-                                />
-                                <span style={{ alignSelf:'center', opacity:0.8, fontSize:12 }}>to</span>
-                                <input
-                                  type="time"
-                                  value={s.departure_time}
-                                  onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, departure_time: e.target.value} : x) : prev)}
-                                  style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }}
-                                />
-                              </div>
+                          {aiPreview.some((s: any) => s.day_of_week == null) && (
+                            <div style={{ background:'rgba(251,191,36,0.25)', border:'1px solid rgba(251,191,36,0.5)', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:700, color:'#fef08a', marginBottom:10 }}>
+                              ⚠️ Some stops have no day — pick a day for each one before saving
                             </div>
-                          ))}
-                          <button onClick={saveAIStops} disabled={saving || !aiPreview.length} style={{ marginTop:6, width:'100%', padding:'12px', borderRadius:10, border:'none', background:'#10b981', color:'#fff', fontWeight:800, fontSize:15, cursor:'pointer' }}>
-                            {saving ? 'Saving…' : `✅ Save ${aiPreview.length} Stop${aiPreview.length !== 1 ? 's' : ''}`}
-                          </button>
+                          )}
+                          {aiPreview.map((s: any, i: number) => {
+                            const needsDay = s.day_of_week == null
+                            return (
+                              <div key={i} style={{ background: needsDay ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.12)', border: needsDay ? '1px solid rgba(251,191,36,0.4)' : '1px solid transparent', borderRadius:10, padding:'10px 12px', marginBottom:8 }}>
+                                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                                  <select
+                                    value={s.day_of_week ?? ''}
+                                    onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, day_of_week: Number(e.target.value), day_unset: false} : x) : prev)}
+                                    style={{ padding:'6px 10px', borderRadius:7, border: needsDay ? '2px solid #fbbf24' : 'none', background:'rgba(255,255,255,0.95)', color: needsDay ? '#b45309' : '#764ba2', fontWeight:800, fontSize:13, cursor:'pointer' }}>
+                                    {needsDay && <option value="" disabled>📅 Pick a day…</option>}
+                                    {DAYS.map((d,idx) => <option key={idx} value={idx}>{d}</option>)}
+                                  </select>
+                                  <button onClick={() => removeAIPreviewStop(i)} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', fontSize:13, cursor:'pointer', borderRadius:6, padding:'4px 10px', fontWeight:700 }}>Remove</button>
+                                </div>
+                                <input
+                                  value={s.location_name}
+                                  onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, location_name: e.target.value} : x) : prev)}
+                                  placeholder="Location name"
+                                  style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13, fontWeight:700, boxSizing:'border-box', marginBottom:6 }}
+                                />
+                                <div style={{ display:'flex', gap:6 }}>
+                                  <input
+                                    type="time"
+                                    value={s.arrival_time ?? '16:30'}
+                                    onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, arrival_time: e.target.value} : x) : prev)}
+                                    style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }}
+                                  />
+                                  <span style={{ alignSelf:'center', opacity:0.8, fontSize:12 }}>to</span>
+                                  <input
+                                    type="time"
+                                    value={s.departure_time ?? '20:30'}
+                                    onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, departure_time: e.target.value} : x) : prev)}
+                                    style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }}
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {(() => {
+                            const unset = aiPreview.filter((s: any) => s.day_of_week == null).length
+                            return (
+                              <button onClick={saveAIStops} disabled={saving || unset > 0}
+                                style={{ marginTop:6, width:'100%', padding:'12px', borderRadius:10, border:'none', background: unset > 0 ? 'rgba(107,114,128,0.5)' : '#10b981', color:'#fff', fontWeight:800, fontSize:15, cursor: unset > 0 ? 'not-allowed' : 'pointer' }}>
+                                {saving ? 'Saving…' : unset > 0 ? `⚠️ Assign day for ${unset} stop${unset !== 1 ? 's' : ''} first` : `✅ Save ${aiPreview.length} Stop${aiPreview.length !== 1 ? 's' : ''} to Schedule`}
+                              </button>
+                            )
+                          })()}
                         </>
                       )}
                     </div>
