@@ -237,34 +237,29 @@ export default function SchedulePage() {
                     />
                   ) : (
                     <div>
-                      <label style={{ display:'block', cursor:'pointer' }}>
-                        <input type="file" accept="image/*" capture="environment" onChange={handleImagePick}
-                          style={{ display:'none' }} />
-                        {aiImage ? (
-                          <div style={{ position:'relative' }}>
-                            <img src={aiImage.preview} alt="schedule" style={{ width:'100%', borderRadius:10, maxHeight:220, objectFit:'cover', display:'block' }} />
-                            <div style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.6)', borderRadius:8, padding:'4px 10px', fontSize:12, color:'#fff', fontWeight:700 }}>Tap to change</div>
-                          </div>
-                        ) : (
-                          <div style={{ border:'2px dashed rgba(255,255,255,0.4)', borderRadius:12, padding:'32px 20px', textAlign:'center' }}>
-                            <div style={{ fontSize:40, marginBottom:8 }}>📷</div>
-                            <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>Tap to take photo or choose from gallery</div>
-                            <div style={{ fontSize:12, opacity:0.8 }}>Photo of handwritten or printed schedule</div>
-                          </div>
-                        )}
-                      </label>
                       {aiImage && (
-                        <div style={{ display:'flex', gap:8, marginTop:10 }}>
-                          <label style={{ flex:1, display:'block', cursor:'pointer' }}>
-                            <input type="file" accept="image/*" capture="environment" onChange={handleImagePick} style={{ display:'none' }} />
-                            <div style={{ padding:'9px', borderRadius:10, border:'1px solid rgba(255,255,255,0.3)', textAlign:'center', fontSize:13, fontWeight:700 }}>📷 Camera</div>
-                          </label>
-                          <label style={{ flex:1, display:'block', cursor:'pointer' }}>
-                            <input type="file" accept="image/*" onChange={handleImagePick} style={{ display:'none' }} />
-                            <div style={{ padding:'9px', borderRadius:10, border:'1px solid rgba(255,255,255,0.3)', textAlign:'center', fontSize:13, fontWeight:700 }}>🖼 Gallery</div>
-                          </label>
+                        <div style={{ position:'relative', marginBottom:10 }}>
+                          <img src={aiImage.preview} alt="schedule" style={{ width:'100%', borderRadius:10, maxHeight:220, objectFit:'cover', display:'block' }} />
                         </div>
                       )}
+                      <div style={{ display:'flex', gap:8 }}>
+                        <label style={{ flex:1, display:'block', cursor:'pointer' }}>
+                          <input type="file" accept="image/*" capture="environment" onChange={handleImagePick} style={{ display:'none' }} />
+                          <div style={{ padding:'14px 8px', borderRadius:12, border:'2px solid rgba(255,255,255,0.4)', textAlign:'center', background:'rgba(255,255,255,0.1)' }}>
+                            <div style={{ fontSize:28, marginBottom:4 }}>📷</div>
+                            <div style={{ fontSize:13, fontWeight:700 }}>Camera</div>
+                            <div style={{ fontSize:11, opacity:0.75 }}>Take a photo</div>
+                          </div>
+                        </label>
+                        <label style={{ flex:1, display:'block', cursor:'pointer' }}>
+                          <input type="file" accept="image/*" onChange={handleImagePick} style={{ display:'none' }} />
+                          <div style={{ padding:'14px 8px', borderRadius:12, border:'2px solid rgba(255,255,255,0.4)', textAlign:'center', background:'rgba(255,255,255,0.1)' }}>
+                            <div style={{ fontSize:28, marginBottom:4 }}>🖼️</div>
+                            <div style={{ fontSize:13, fontWeight:700 }}>Gallery</div>
+                            <div style={{ fontSize:11, opacity:0.75 }}>Pick from photos</div>
+                          </div>
+                        </label>
+                      </div>
                     </div>
                   )}
 
