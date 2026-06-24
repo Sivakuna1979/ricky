@@ -268,24 +268,26 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         </a>
       </div>
 
-      {/* Live Tracking */}
-      {anyLive && (
-        <div style={{ padding:'0 16px 12px' }}>
-          <a href="https://liveshare.ramtracking.com/?token=cb236545-b5ef-4bbd-b8a3-ca7dc6b08cbe" target="_blank" rel="noopener noreferrer" style={{ display:'flex', alignItems:'center', gap:10, background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.3)', borderRadius:12, padding:'12px 16px', textDecoration:'none' }}>
-            <div style={{ width:10, height:10, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 8px #10b981', flexShrink:0 }} />
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:700, fontSize:14, color:'#6ee7b7' }}>Track Van Live</div>
-              <div style={{ fontSize:12, color:'#4ade80', opacity:0.8 }}>Tap to see live location on map</div>
-            </div>
-            <div style={{ color:'#6ee7b7', fontSize:18 }}>→</div>
-          </a>
-        </div>
-      )}
+      {/* Live Tracking — always shown */}
+      <div style={{ padding:'0 16px 12px' }}>
+        <a href="https://liveshare.ramtracking.com/?token=cb236545-b5ef-4bbd-b8a3-ca7dc6b08cbe" target="_blank" rel="noopener noreferrer" style={{ display:'flex', alignItems:'center', gap:10, background: anyLive ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)', border:`1px solid ${anyLive ? 'rgba(16,185,129,0.3)' : '#1e2a45'}`, borderRadius:12, padding:'12px 16px', textDecoration:'none' }}>
+          <div style={{ width:10, height:10, borderRadius:'50%', background: anyLive ? '#10b981' : '#4b5563', boxShadow: anyLive ? '0 0 8px #10b981' : 'none', flexShrink:0 }} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, fontSize:14, color: anyLive ? '#6ee7b7' : '#9ca3af' }}>{anyLive ? 'Track Van Live' : '🗺 Van Location Tracker'}</div>
+            <div style={{ fontSize:12, color: anyLive ? '#4ade80' : '#4b5563', opacity:0.8 }}>{anyLive ? 'Tap to see live location on map' : 'Live tracking available when van is out'}</div>
+          </div>
+          <div style={{ color: anyLive ? '#6ee7b7' : '#374151', fontSize:18 }}>→</div>
+        </a>
+      </div>
 
-      {/* Weekly Schedule */}
-      {schedDays.length > 0 && (
-        <div style={{ padding:'0 16px 20px' }}>
-          <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>📍 Where We'll Be This Week</h2>
+      {/* Weekly Schedule — always shown */}
+      <div style={{ padding:'0 16px 20px' }}>
+        <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>📍 Where We'll Be This Week</h2>
+        {schedDays.length === 0 ? (
+          <div style={{ background:'#0d1427', border:'1px solid #1e2a45', borderRadius:10, padding:'16px 14px', color:'#4b5563', fontSize:13, fontStyle:'italic' }}>
+            Schedule coming soon — follow us on social media for updates
+          </div>
+        ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {schedDays.map(day => {
               const stops = schedule.filter(s => s.day_of_week === day)
@@ -306,8 +308,8 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
               )
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Order Online banner */}
       {menuItems?.length > 0 && (
