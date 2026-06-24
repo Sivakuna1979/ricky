@@ -296,7 +296,37 @@ export default function SchedulePage() {
                       {aiLoading ? '⏳ Reading…' : aiTab === 'image' ? '🔍 Scan & Parse' : '✨ Parse Schedule'}
                     </button>
                     {aiSaved && <span style={{ fontSize:13, fontWeight:700, color:'#a7f3d0' }}>✅ Stops saved!</span>}
-                    {aiError && <span style={{ fontSize:13, color:'#fca5a5' }}>Error: {aiError}</span>}
+                    {aiError && (
+                      <div style={{ width:'100%', marginTop:8, background:'rgba(239,68,68,0.2)', border:'1px solid rgba(239,68,68,0.4)', borderRadius:10, padding:'10px 14px' }}>
+                        <div style={{ fontSize:13, color:'#fca5a5', fontWeight:700, marginBottom:6 }}>⚠️ {aiError}</div>
+                        {(aiError.includes('permission') || aiError.includes('does not exist') || aiError.includes('Load failed')) && (
+                          <div>
+                            <div style={{ fontSize:12, color:'#fca5a5', marginBottom:8, opacity:0.9 }}>The schedule table needs to be set up in your database. Tap below to open Supabase and run the setup SQL.</div>
+                            <a href="https://app.supabase.com/project/fzrridbzelijulofgzxo/sql/new" target="_blank" rel="noopener noreferrer"
+                              style={{ display:'inline-block', padding:'8px 16px', background:'#fff', color:'#764ba2', borderRadius:8, fontWeight:800, fontSize:13, textDecoration:'none' }}>
+                              🔧 Open Supabase SQL Editor →
+                            </a>
+                            <div style={{ marginTop:10, background:'rgba(0,0,0,0.3)', borderRadius:8, padding:'10px 12px' }}>
+                              <div style={{ fontSize:11, color:'#d1d5db', marginBottom:6, fontWeight:700 }}>PASTE THIS SQL AND CLICK RUN:</div>
+                              <pre style={{ fontSize:10, color:'#e5e7eb', margin:0, whiteSpace:'pre-wrap', fontFamily:'monospace', lineHeight:1.5 }}>{`create table if not exists van_schedule (
+  id uuid primary key default gen_random_uuid(),
+  van_id uuid references vans(id) on delete cascade,
+  day_of_week integer not null,
+  location_name text not null,
+  arrival_time text not null,
+  departure_time text not null,
+  notes text default '',
+  sort_order integer default 0,
+  created_at timestamptz default now()
+);
+alter table van_schedule enable row level security;
+create policy "public_read" on van_schedule for select using (true);
+create policy "auth_all" on van_schedule for all to authenticated using (true) with check (true);`}</pre>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* AI Preview */}
