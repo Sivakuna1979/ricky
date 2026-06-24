@@ -2,6 +2,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const CAT_ORDER = ['Fish','Chips','Burgers','Chicken','Vegetarian','Sides','Extras','Drinks','Desserts','Specials','Mains','Starters']
 const TYPE_EMOJI: Record<string, string> = {
   fish_and_chips:'🐟', burger:'🍔', pizza:'🍕', coffee:'☕',
@@ -10,18 +11,23 @@ const TYPE_EMOJI: Record<string, string> = {
 }
 
 export default function VanProfilePage({ params }: { params: { slug: string } }) {
-  const [data, setData]         = useState<any>(null)
-  const [loading, setLoading]   = useState(true)
-  const [cart, setCart]         = useState<Record<string, number>>({})
-  const [view, setView]         = useState<'menu'|'checkout'|'done'>('menu')
-  const [form, setForm]         = useState({ name:'', phone:'', notes:'' })
-  const [placing, setPlacing]   = useState(false)
-  const [orderNum, setOrderNum] = useState('')
+  const [data, setData]           = useState<any>(null)
+  const [schedule, setSchedule]   = useState<any[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [cart, setCart]           = useState<Record<string, number>>({})
+  const [view, setView]           = useState<'menu'|'checkout'|'done'>('menu')
+  const [form, setForm]           = useState({ name:'', phone:'', notes:'' })
+  const [placing, setPlacing]     = useState(false)
+  const [orderNum, setOrderNum]   = useState('')
 
   useEffect(() => {
     fetch(`/api/van-profile/${params.slug}`)
       .then(r => r.json())
-      .then(d => { setData(d); setLoading(false) })
+      .then(d => {
+        setData(d)
+        setSchedule(Array.isArray(d?.schedule) ? d.schedule : [])
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [params.slug])
 
@@ -89,6 +95,8 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const anyLive = vans?.some((v: any) => v.tracking_status === 'live')
   const mapsQuery = encodeURIComponent([business.name, business.city, business.postcode].filter(Boolean).join(' '))
   const phone = business.phone || vans?.[0]?.phone
+  const todayIdx = (new Date().getDay() + 6) % 7
+  const schedDays = [0,1,2,3,4,5,6].filter(d => schedule.some(s => s.day_of_week === d))
 
   if (view === 'done') return (
     <div style={{ background:'#080c18', minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'system-ui,sans-serif', padding:24, textAlign:'center' }}>
@@ -190,6 +198,47 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           🗺 Directions
         </a>
       </div>
+
+      {/* Live Tracking */}
+      {anyLive && (
+        <div style={{ padding:'0 16px 12px' }}>
+          <a href="https://liveshare.ramtracking.com/?token=cb236545-b5ef-4bbd-b8a3-ca7dc6b08cbe" target="_blank" rel="noopener noreferrer" style={{ display:'flex', alignItems:'center', gap:10, background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.3)', borderRadius:12, padding:'12px 16px', textDecoration:'none' }}>
+            <div style={{ width:10, height:10, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 8px #10b981', flexShrink:0 }} />
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, fontSize:14, color:'#6ee7b7' }}>Track Van Live</div>
+              <div style={{ fontSize:12, color:'#4ade80', opacity:0.8 }}>Tap to see live location on map</div>
+            </div>
+            <div style={{ color:'#6ee7b7', fontSize:18 }}>→</div>
+          </a>
+        </div>
+      )}
+
+      {/* Weekly Schedule */}
+      {schedDays.length > 0 && (
+        <div style={{ padding:'0 16px 20px' }}>
+          <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>📍 Where We'll Be This Week</h2>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {schedDays.map(day => {
+              const stops = schedule.filter(s => s.day_of_week === day)
+              const isToday = day === todayIdx
+              return (
+                <div key={day} style={{ background: isToday ? 'rgba(249,115,22,0.1)' : '#0d1427', border: isToday ? '1px solid rgba(249,115,22,0.4)' : '1px solid #1e2a45', borderRadius:10, padding:'12px 14px' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: stops.length > 0 ? 8 : 0 }}>
+                    <span style={{ fontWeight:800, fontSize:13, color: isToday ? '#f97316' : '#9ca3af', minWidth:36 }}>{DAYS[day].slice(0,3)}</span>
+                    {isToday && <span style={{ background:'#f97316', color:'#fff', fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6 }}>TODAY</span>}
+                  </div>
+                  {stops.map((stop, i) => (
+                    <div key={i} style={{ fontSize:13, color:'#e5e7eb', paddingLeft:44, lineHeight:1.6 }}>
+                      <span style={{ fontWeight:700 }}>{stop.location_name}</span>
+                      <span style={{ color:'#6b7280' }}> · {stop.arrival_time}–{stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Order Online banner */}
       {menuItems?.length > 0 && (

@@ -36,7 +36,14 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
       ) ?? []
     }
 
-    return NextResponse.json({ business, vans, menuItems })
+    let schedule: any[] = []
+    if (vanIds.length > 0) {
+      schedule = await supabaseGet(
+        `van_schedule?van_id=eq.${vanIds[0]}&order=day_of_week,sort_order`
+      ) ?? []
+    }
+
+    return NextResponse.json({ business, vans, menuItems, schedule })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
