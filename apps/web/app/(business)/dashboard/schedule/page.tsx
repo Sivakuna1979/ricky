@@ -65,9 +65,13 @@ export default function SchedulePage() {
   const addStop = async (day: number) => {
     if (!form.location_name || !vanId) return
     setSaving(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('van_schedule').insert({ van_id: vanId, day_of_week: day, ...form })
-    if (error) { alert(`Could not save: ${error.message}`); setSaving(false); return }
+    const res = await fetch('/api/schedule/stops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ van_id: vanId, stops: [{ day_of_week: day, ...form }] }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) { alert(`Could not save: ${data.error ?? 'Unknown error'}`); setSaving(false); return }
     setForm({ location_name:'', arrival_time:'16:30', departure_time:'20:30', notes:'' })
     setEditDay(null)
     await refresh()
@@ -75,8 +79,11 @@ export default function SchedulePage() {
   }
 
   const deleteStop = async (id: string) => {
-    const supabase = createClient()
-    await supabase.from('van_schedule').delete().eq('id', id)
+    await fetch('/api/schedule/stops', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
     await refresh()
   }
 
@@ -131,11 +138,15 @@ export default function SchedulePage() {
     if (!aiPreview?.length || !vanId) return
     setSaving(true)
     setAiError('')
-    const supabase = createClient()
-    const rows = aiPreview.map(({ day_unset, ...s }) => ({ van_id: vanId, ...s }))
-    const { error } = await supabase.from('van_schedule').insert(rows)
-    if (error) {
-      setAiError(`Save failed: ${error.message}`)
+    const stops = aiPreview.map(({ day_unset, ...s }) => s)
+    const res = await fetch('/api/schedule/stops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ van_id: vanId, stops }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) {
+      setAiError(`Save failed: ${data.error ?? 'Unknown error'}`)
       setSaving(false)
       return
     }
