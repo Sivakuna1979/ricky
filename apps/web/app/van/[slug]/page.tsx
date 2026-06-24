@@ -17,6 +17,8 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const [cart, setCart]           = useState<Record<string, number>>({})
   const [view, setView]           = useState<'menu'|'checkout'|'done'>('menu')
   const [form, setForm]           = useState({ name:'', phone:'', notes:'' })
+  const [pickupStop, setPickupStop] = useState<any>(null)
+  const [pickupTime, setPickupTime] = useState('')
   const [placing, setPlacing]     = useState(false)
   const [orderNum, setOrderNum]   = useState('')
 
@@ -46,6 +48,10 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const placeOrder = async () => {
     if (!form.name || !form.phone) return
     setPlacing(true)
+    const pickupNote = pickupStop
+      ? `Pickup: ${pickupStop.location_name}${pickupTime ? ` around ${pickupTime}` : ''}`
+      : ''
+    const combinedNotes = [pickupNote, form.notes].filter(Boolean).join(' — ')
     const res = await fetch('/api/orders/guest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,7 +60,9 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         business_id: data.business?.id,
         customer_name: form.name,
         customer_phone: form.phone,
-        notes: form.notes,
+        notes: combinedNotes || null,
+        pickup_location: pickupStop?.location_name ?? null,
+        pickup_time: pickupTime || null,
         items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         subtotal: cartTotal,
         total: cartTotal,
@@ -104,6 +112,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       <h1 style={{ fontSize:26, fontWeight:900, margin:'0 0 8px' }}>Order Placed!</h1>
       <div style={{ fontSize:14, color:'#9ca3af', marginBottom:8 }}>Order reference</div>
       <div style={{ fontSize:28, fontWeight:900, color:'#f97316', marginBottom:24 }}>#{orderNum}</div>
+      {pickupStop && (
+        <div style={{ background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.3)', borderRadius:12, padding:'12px 20px', marginBottom:16, textAlign:'center' }}>
+          <div style={{ fontSize:13, color:'#fdba74', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
+        </div>
+      )}
       <p style={{ color:'#9ca3af', fontSize:14, maxWidth:300, lineHeight:1.6, marginBottom:32 }}>
         We've received your order at {business.name}. They'll contact you on {form.phone} when it's ready.
       </p>
@@ -136,6 +149,62 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         <div style={{ display:'flex', justifyContent:'space-between', padding:'14px 0', fontSize:18, fontWeight:900, color:'#f97316', marginBottom:24 }}>
           <span>Total</span><span>£{cartTotal.toFixed(2)}</span>
         </div>
+
+        {/* Pickup location + time */}
+        {(() => {
+          const todayStops = schedule.filter((s: any) => s.day_of_week === (new Date().getDay() + 6) % 7)
+          if (!todayStops.length) return null
+          const genSlots = (stop: any) => {
+            const slots: string[] = []
+            const [ah, am] = stop.arrival_time.split(':').map(Number)
+            const [dh, dm] = stop.departure_time.split(':').map(Number)
+            let cur = ah * 60 + am
+            const end = dh * 60 + dm
+            while (cur + 30 <= end) {
+              const h = Math.floor(cur / 60), m = cur % 60
+              const label = `${h > 12 ? h - 12 : h}:${m.toString().padStart(2,'0')}${h >= 12 ? 'pm' : 'am'}`
+              slots.push(label)
+              cur += 30
+            }
+            return slots
+          }
+          return (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:'#f97316', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>📍 Where to pick up?</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {todayStops.map((stop: any) => {
+                  const sel = pickupStop?.id === stop.id
+                  const slots = sel ? genSlots(stop) : []
+                  return (
+                    <div key={stop.id} style={{ border: sel ? '1px solid #f97316' : '1px solid #1e2a45', borderRadius:12, overflow:'hidden' }}>
+                      <button onClick={() => { setPickupStop(sel ? null : stop); setPickupTime('') }} style={{ width:'100%', padding:'12px 14px', background: sel ? 'rgba(249,115,22,0.12)' : '#0d1427', border:'none', color:'#fff', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
+                        <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${sel ? '#f97316' : '#374151'}`, background: sel ? '#f97316' : 'transparent', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          {sel && <div style={{ width:8, height:8, borderRadius:'50%', background:'#fff' }} />}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:700, fontSize:14 }}>{stop.location_name}</div>
+                          <div style={{ fontSize:12, color:'#6b7280' }}>Van here {stop.arrival_time}–{stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</div>
+                        </div>
+                      </button>
+                      {sel && slots.length > 0 && (
+                        <div style={{ padding:'10px 14px 12px', background:'rgba(249,115,22,0.05)', borderTop:'1px solid rgba(249,115,22,0.15)' }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', marginBottom:8 }}>ROUGHLY WHAT TIME?</div>
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                            {slots.map(slot => (
+                              <button key={slot} onClick={() => setPickupTime(pickupTime === slot ? '' : slot)} style={{ padding:'6px 12px', borderRadius:8, border: pickupTime === slot ? '1px solid #f97316' : '1px solid #1e2a45', background: pickupTime === slot ? 'rgba(249,115,22,0.2)' : '#0d1427', color: pickupTime === slot ? '#f97316' : '#9ca3af', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                                {slot}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           <div>

@@ -22,7 +22,7 @@ async function sbPost(table: string, body: any) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { van_id, business_id, customer_name, customer_phone, notes, items, subtotal, total, payment_method } = await req.json()
+    const { van_id, business_id, customer_name, customer_phone, notes, pickup_location, pickup_time, items, subtotal, total, payment_method } = await req.json()
 
     if (!customer_name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     if (!customer_phone) return NextResponse.json({ error: 'Phone is required' }, { status: 400 })
@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
         guest_name: customer_name,
         guest_phone: customer_phone,
         notes: notes || null,
+        pickup_location: pickup_location || null,
+        pickup_time: pickup_time || null,
         subtotal: subtotal ?? 0,
         total: total ?? 0,
         payment_method: payment_method ?? 'cash_at_van',
@@ -45,9 +47,10 @@ export async function POST(req: NextRequest) {
         order_number,
       })
     } catch {
+      const pickupStr = pickup_location ? ` | Pickup: ${pickup_location}${pickup_time ? ` ~${pickup_time}` : ''}` : ''
       order = await sbPost('orders', {
         van_id: van_id || null,
-        notes: `Order from ${customer_name} (${customer_phone})${notes ? '. ' + notes : ''}`,
+        notes: `Order from ${customer_name} (${customer_phone})${notes ? '. ' + notes : ''}${pickupStr}`,
         subtotal: subtotal ?? 0,
         total: total ?? 0,
         payment_method: payment_method ?? 'cash_at_van',

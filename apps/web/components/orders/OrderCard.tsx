@@ -71,9 +71,11 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
       <p className="text-sm font-medium text-gray-900 truncate">
         {order.customers?.users.full_name ?? 'Customer'}
       </p>
-      {order.route_stops && (
+      {(order as any).pickup_location ? (
+        <p className="text-xs text-orange-500 font-semibold truncate">📍 {(order as any).pickup_location}{(order as any).pickup_time ? ` · ~${(order as any).pickup_time}` : ''}</p>
+      ) : order.route_stops ? (
         <p className="text-xs text-gray-500 truncate">📍 {order.route_stops.name}</p>
-      )}
+      ) : null}
 
       <div className="mt-2 space-y-0.5">
         {order.order_items.slice(0, 3).map(item => (
