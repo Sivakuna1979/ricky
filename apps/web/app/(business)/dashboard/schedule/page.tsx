@@ -213,50 +213,50 @@ export default function SchedulePage() {
                 {/* AI Schedule Helper */}
                 <div style={{ background:'linear-gradient(135deg,#667eea,#764ba2)', borderRadius:14, padding:20, marginBottom:24, color:'#fff' }}>
                   <div style={{ fontWeight:800, fontSize:16, marginBottom:4 }}>✨ AI Schedule Helper</div>
-                  <div style={{ fontSize:13, opacity:0.9, marginBottom:14 }}>Type your schedule or scan a photo — AI reads it and builds your stops</div>
+                  <div style={{ fontSize:13, opacity:0.9, marginBottom:14 }}>Type your schedule or upload a photo — AI reads it and builds your stops</div>
 
                   {/* Tabs */}
                   <div style={{ display:'flex', gap:6, marginBottom:14 }}>
-                    {(['text','image'] as const).map(tab => (
-                      <button key={tab} onClick={() => { setAiTab(tab); setAiError(''); setAiPreview(null) }}
-                        style={{ flex:1, padding:'8px', borderRadius:10, border:'none', fontWeight:800, fontSize:13, cursor:'pointer',
-                          background: aiTab === tab ? '#fff' : 'rgba(255,255,255,0.15)',
-                          color: aiTab === tab ? '#764ba2' : '#fff' }}>
-                        {tab === 'text' ? '⌨️ Type Schedule' : '📷 Scan Photo'}
-                      </button>
-                    ))}
+                    <button onClick={() => { setAiTab('text'); setAiError(''); setAiPreview(null) }}
+                      style={{ flex:1, padding:'8px', borderRadius:10, border:'none', fontWeight:800, fontSize:13, cursor:'pointer', background: aiTab === 'text' ? '#fff' : 'rgba(255,255,255,0.15)', color: aiTab === 'text' ? '#764ba2' : '#fff' }}>
+                      ⌨️ Type Schedule
+                    </button>
+                    <button onClick={() => { setAiTab('image'); setAiError(''); setAiPreview(null) }}
+                      style={{ flex:1, padding:'8px', borderRadius:10, border:'none', fontWeight:800, fontSize:13, cursor:'pointer', background: aiTab === 'image' ? '#fff' : 'rgba(255,255,255,0.15)', color: aiTab === 'image' ? '#764ba2' : '#fff' }}>
+                      📷 Upload Photo
+                    </button>
                   </div>
 
                   {aiTab === 'text' ? (
                     <textarea
                       value={aiText}
                       onChange={e => setAiText(e.target.value)}
-                      placeholder={'e.g. Monday Pulborough 4:30-8:30pm, Tuesday Wisborough Green 5pm to 9pm, Wednesday off, Thursday Billingshurst 4:30-8:30pm'}
+                      placeholder="e.g. Monday Pulborough 4:30-8:30pm, Tuesday Wisborough Green 5pm to 9pm, Thursday Billingshurst 4:30-8:30pm"
                       rows={3}
                       style={{ width:'100%', padding:'10px 12px', borderRadius:10, border:'none', fontSize:13, fontFamily:'inherit', outline:'none', resize:'vertical', boxSizing:'border-box', color:'#111', lineHeight:1.5 }}
                     />
                   ) : (
                     <div>
                       {aiImage && (
-                        <div style={{ position:'relative', marginBottom:10 }}>
+                        <div style={{ marginBottom:10 }}>
                           <img src={aiImage.preview} alt="schedule" style={{ width:'100%', borderRadius:10, maxHeight:220, objectFit:'cover', display:'block' }} />
                         </div>
                       )}
                       <div style={{ display:'flex', gap:8 }}>
-                        <label style={{ flex:1, display:'block', cursor:'pointer' }}>
-                          <input type="file" accept="image/*" capture="environment" onChange={handleImagePick} style={{ display:'none' }} />
-                          <div style={{ padding:'14px 8px', borderRadius:12, border:'2px solid rgba(255,255,255,0.4)', textAlign:'center', background:'rgba(255,255,255,0.1)' }}>
-                            <div style={{ fontSize:28, marginBottom:4 }}>📷</div>
-                            <div style={{ fontSize:13, fontWeight:700 }}>Camera</div>
-                            <div style={{ fontSize:11, opacity:0.75 }}>Take a photo</div>
+                        <label style={{ flex:1, cursor:'pointer' }}>
+                          <input type="file" accept="image/*" capture="camera" onChange={handleImagePick} style={{ display:'none' }} />
+                          <div style={{ padding:'14px 8px', borderRadius:12, border:'2px solid rgba(255,255,255,0.5)', textAlign:'center', background:'rgba(255,255,255,0.12)' }}>
+                            <div style={{ fontSize:30, marginBottom:4 }}>📷</div>
+                            <div style={{ fontSize:13, fontWeight:800 }}>Camera</div>
+                            <div style={{ fontSize:11, opacity:0.8, marginTop:2 }}>Take a photo now</div>
                           </div>
                         </label>
-                        <label style={{ flex:1, display:'block', cursor:'pointer' }}>
-                          <input type="file" accept="image/*" onChange={handleImagePick} style={{ display:'none' }} />
-                          <div style={{ padding:'14px 8px', borderRadius:12, border:'2px solid rgba(255,255,255,0.4)', textAlign:'center', background:'rgba(255,255,255,0.1)' }}>
-                            <div style={{ fontSize:28, marginBottom:4 }}>🖼️</div>
-                            <div style={{ fontSize:13, fontWeight:700 }}>Gallery</div>
-                            <div style={{ fontSize:11, opacity:0.75 }}>Pick from photos</div>
+                        <label style={{ flex:1, cursor:'pointer' }}>
+                          <input type="file" accept="image/jpeg,image/png,image/heic,image/*" onChange={handleImagePick} style={{ display:'none' }} />
+                          <div style={{ padding:'14px 8px', borderRadius:12, border:'2px solid rgba(255,255,255,0.5)', textAlign:'center', background:'rgba(255,255,255,0.12)' }}>
+                            <div style={{ fontSize:30, marginBottom:4 }}>🖼️</div>
+                            <div style={{ fontSize:13, fontWeight:800 }}>Gallery</div>
+                            <div style={{ fontSize:11, opacity:0.8, marginTop:2 }}>Pick from photos</div>
                           </div>
                         </label>
                       </div>
@@ -267,7 +267,7 @@ export default function SchedulePage() {
                     <button onClick={parseWithAI}
                       disabled={aiLoading || (aiTab === 'text' ? !aiText.trim() : !aiImage)}
                       style={{ padding:'10px 22px', borderRadius:10, border:'none', background:'#fff', color:'#764ba2', fontWeight:800, fontSize:14, cursor:'pointer',
-                        opacity: aiLoading || (aiTab === 'text' ? !aiText.trim() : !aiImage) ? 0.5 : 1 }}>
+                        opacity: (aiLoading || (aiTab === 'text' ? !aiText.trim() : !aiImage)) ? 0.5 : 1 }}>
                       {aiLoading ? '⏳ Reading…' : aiTab === 'image' ? '🔍 Scan & Parse' : '✨ Parse Schedule'}
                     </button>
                     {aiSaved && <span style={{ fontSize:13, fontWeight:700, color:'#a7f3d0' }}>✅ Stops saved!</span>}
