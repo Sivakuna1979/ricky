@@ -66,7 +66,8 @@ export default function SchedulePage() {
     if (!form.location_name || !vanId) return
     setSaving(true)
     const supabase = createClient()
-    await supabase.from('van_schedule').insert({ van_id: vanId, day_of_week: day, ...form })
+    const { error } = await supabase.from('van_schedule').insert({ van_id: vanId, day_of_week: day, ...form })
+    if (error) { alert(`Could not save stop: ${error.message}`); setSaving(false); return }
     setForm({ location_name:'', arrival_time:'16:30', departure_time:'20:30', notes:'' })
     setEditDay(null)
     await refresh()
@@ -129,15 +130,23 @@ export default function SchedulePage() {
   const saveAIStops = async () => {
     if (!aiPreview?.length || !vanId) return
     setSaving(true)
+    setAiError('')
     const supabase = createClient()
-    await supabase.from('van_schedule').insert(aiPreview.map(({ day_unset, ...s }) => ({ van_id: vanId, ...s })))
+    const { error } = await supabase.from('van_schedule').insert(
+      aiPreview.map(({ day_unset, ...s }) => ({ van_id: vanId, ...s }))
+    )
+    if (error) {
+      setAiError(`Save failed: ${error.message}`)
+      setSaving(false)
+      return
+    }
     setAiPreview(null)
     setAiText('')
     setAiImage(null)
     setAiSaved(true)
     await refresh()
     setSaving(false)
-    setTimeout(() => setAiSaved(false), 3000)
+    setTimeout(() => setAiSaved(false), 4000)
   }
 
   const removeAIPreviewStop = (idx: number) => {
