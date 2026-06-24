@@ -280,35 +280,30 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         </a>
       </div>
 
-      {/* Weekly Schedule — always shown */}
+      {/* Weekly Schedule — all 7 days always shown */}
       <div style={{ padding:'0 16px 20px' }}>
         <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>📍 Where We'll Be This Week</h2>
-        {schedDays.length === 0 ? (
-          <div style={{ background:'#0d1427', border:'1px solid #1e2a45', borderRadius:10, padding:'16px 14px', color:'#4b5563', fontSize:13, fontStyle:'italic' }}>
-            Schedule coming soon — follow us on social media for updates
-          </div>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {schedDays.map(day => {
-              const stops = schedule.filter(s => s.day_of_week === day)
-              const isToday = day === todayIdx
-              return (
-                <div key={day} style={{ background: isToday ? 'rgba(249,115,22,0.1)' : '#0d1427', border: isToday ? '1px solid rgba(249,115,22,0.4)' : '1px solid #1e2a45', borderRadius:10, padding:'12px 14px' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: stops.length > 0 ? 8 : 0 }}>
-                    <span style={{ fontWeight:800, fontSize:13, color: isToday ? '#f97316' : '#9ca3af', minWidth:36 }}>{DAYS[day].slice(0,3)}</span>
-                    {isToday && <span style={{ background:'#f97316', color:'#fff', fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6 }}>TODAY</span>}
-                  </div>
-                  {stops.map((stop, i) => (
-                    <div key={i} style={{ fontSize:13, color:'#e5e7eb', paddingLeft:44, lineHeight:1.6 }}>
-                      <span style={{ fontWeight:700 }}>{stop.location_name}</span>
-                      <span style={{ color:'#6b7280' }}> · {stop.arrival_time}–{stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</span>
-                    </div>
-                  ))}
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {[0,1,2,3,4,5,6].map(day => {
+            const stops = schedule.filter(s => s.day_of_week === day)
+            const isToday = day === todayIdx
+            return (
+              <div key={day} style={{ background: isToday ? 'rgba(249,115,22,0.1)' : '#0d1427', border: isToday ? '1px solid rgba(249,115,22,0.4)' : '1px solid #1e2a45', borderRadius:10, padding:'10px 14px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: stops.length > 0 ? 6 : 0 }}>
+                  <span style={{ fontWeight:800, fontSize:13, color: isToday ? '#f97316' : '#6b7280', minWidth:36 }}>{DAYS[day].slice(0,3)}</span>
+                  {isToday && <span style={{ background:'#f97316', color:'#fff', fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6 }}>TODAY</span>}
+                  {stops.length === 0 && <span style={{ fontSize:12, color:'#374151' }}>—</span>}
                 </div>
-              )
-            })}
-          </div>
-        )}
+                {stops.map((stop, i) => (
+                  <div key={i} style={{ fontSize:13, color:'#e5e7eb', paddingLeft:44, lineHeight:1.7 }}>
+                    <span style={{ fontWeight:700 }}>{stop.location_name}</span>
+                    <span style={{ color:'#6b7280' }}> · {stop.arrival_time}–{stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* Order Online banner */}
