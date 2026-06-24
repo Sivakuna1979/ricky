@@ -18,13 +18,13 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
     const slug = encodeURIComponent(params.slug)
 
     const bizArr = await supabaseGet(
-      `businesses?select=id,name,slug,business_type,phone,email,website,postcode,city,address&slug=eq.${slug}&limit=1`
+      `businesses?select=*&slug=eq.${slug}&limit=1`
     )
     const business = Array.isArray(bizArr) ? bizArr[0] : null
     if (!business) return NextResponse.json({ business: null }, { status: 404 })
 
     const vans = await supabaseGet(
-      `vans?select=id,name,van_type,tracking_status,lat,lng,phone,description&business_id=eq.${business.id}`
+      `vans?select=*&business_id=eq.${business.id}`
     ) ?? []
 
     const vanIds = vans.map((v: any) => v.id)
@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
     if (vanIds.length > 0) {
       const inClause = `(${vanIds.join(',')})`
       menuItems = await supabaseGet(
-        `menu_items?select=id,name,description,price,category,available,van_id&van_id=in.${inClause}&available=eq.true&order=category`
+        `menu_items?select=*&van_id=in.${inClause}&available=eq.true&order=category`
       ) ?? []
     }
 
