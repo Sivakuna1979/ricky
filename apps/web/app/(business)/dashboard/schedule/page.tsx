@@ -55,12 +55,6 @@ export default function SchedulePage() {
     setSchedule(data ?? [])
   }
 
-  const getToken = async () => {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token ?? ''
-  }
-
   const refresh = async () => {
     if (!vanId) return
     const supabase = createClient()
@@ -71,14 +65,9 @@ export default function SchedulePage() {
   const addStop = async (day: number) => {
     if (!form.location_name || !vanId) return
     setSaving(true)
-    const token = await getToken()
-    const res = await fetch('/api/schedule/stops', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-user-token': token },
-      body: JSON.stringify({ van_id: vanId, stops: [{ day_of_week: day, ...form }] }),
-    })
-    const json = await res.json()
-    if (!res.ok) { alert(`Could not save stop: ${json.error}`); setSaving(false); return }
+    const supabase = createClient()
+    const { error } = await supabase.from('van_schedule').insert({ van_id: vanId, day_of_week: day, ...form })
+    if (error) { alert(`Could not save: ${error.message}`); setSaving(false); return }
     setForm({ location_name:'', arrival_time:'16:30', departure_time:'20:30', notes:'' })
     setEditDay(null)
     await refresh()
@@ -86,12 +75,8 @@ export default function SchedulePage() {
   }
 
   const deleteStop = async (id: string) => {
-    const token = await getToken()
-    await fetch('/api/schedule/stops', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', 'x-user-token': token },
-      body: JSON.stringify({ id }),
-    })
+    const supabase = createClient()
+    await supabase.from('van_schedule').delete().eq('id', id)
     await refresh()
   }
 
@@ -146,16 +131,11 @@ export default function SchedulePage() {
     if (!aiPreview?.length || !vanId) return
     setSaving(true)
     setAiError('')
-    const stops = aiPreview.map(({ day_unset, ...s }) => s)
-    const token = await getToken()
-    const res = await fetch('/api/schedule/stops', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-user-token': token },
-      body: JSON.stringify({ van_id: vanId, stops }),
-    })
-    const json = await res.json()
-    if (!res.ok) {
-      setAiError(`Save failed: ${json.error}`)
+    const supabase = createClient()
+    const rows = aiPreview.map(({ day_unset, ...s }) => ({ van_id: vanId, ...s }))
+    const { error } = await supabase.from('van_schedule').insert(rows)
+    if (error) {
+      setAiError(`Save failed: ${error.message}`)
       setSaving(false)
       return
     }
