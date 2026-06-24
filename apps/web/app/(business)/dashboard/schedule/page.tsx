@@ -15,10 +15,12 @@ export default function SchedulePage() {
   const [editDay, setEditDay]     = useState<number|null>(null)
   const [form, setForm]           = useState({ location_name:'', arrival_time:'16:30', departure_time:'20:30', notes:'' })
   const [aiText, setAiText]       = useState('')
+  const [aiImage, setAiImage]     = useState<{data:string,mediaType:string,preview:string}|null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiPreview, setAiPreview] = useState<any[]|null>(null)
   const [aiError, setAiError]     = useState('')
   const [aiSaved, setAiSaved]     = useState(false)
+  const [aiTab, setAiTab]         = useState<'text'|'image'>('text')
 
   useEffect(() => {
     const supabase = createClient()
@@ -77,17 +79,37 @@ export default function SchedulePage() {
     await refresh()
   }
 
+  const handleImagePick = (e: any) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string
+      const [meta, data] = dataUrl.split(',')
+      const mediaType = meta.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
+      setAiImage({ data, mediaType, preview: dataUrl })
+      setAiError('')
+      setAiPreview(null)
+    }
+    reader.readAsDataURL(file)
+  }
+
   const parseWithAI = async () => {
-    if (!aiText.trim()) return
+    const hasImage = aiTab === 'image' && aiImage
+    const hasText = aiTab === 'text' && aiText.trim()
+    if (!hasImage && !hasText) return
     setAiLoading(true)
     setAiError('')
     setAiPreview(null)
     setAiSaved(false)
     try {
+      const body = hasImage
+        ? { image: { data: aiImage.data, mediaType: aiImage.mediaType } }
+        : { text: aiText }
       const res = await fetch('/api/ai/parse-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: aiText })
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (data.error) { setAiError(data.error); setAiLoading(false); return }
@@ -105,6 +127,7 @@ export default function SchedulePage() {
     await supabase.from('van_schedule').insert(aiPreview.map(s => ({ van_id: vanId, ...s })))
     setAiPreview(null)
     setAiText('')
+    setAiImage(null)
     setAiSaved(true)
     await refresh()
     setSaving(false)
@@ -190,17 +213,67 @@ export default function SchedulePage() {
                 {/* AI Schedule Helper */}
                 <div style={{ background:'linear-gradient(135deg,#667eea,#764ba2)', borderRadius:14, padding:20, marginBottom:24, color:'#fff' }}>
                   <div style={{ fontWeight:800, fontSize:16, marginBottom:4 }}>✨ AI Schedule Helper</div>
-                  <div style={{ fontSize:13, opacity:0.9, marginBottom:14 }}>Describe your week in plain English — AI will convert it to stops for you</div>
-                  <textarea
-                    value={aiText}
-                    onChange={e => setAiText(e.target.value)}
-                    placeholder={'e.g. Monday Pulborough 4:30-8:30pm, Tuesday Wisborough Green 5pm to 9pm, Wednesday off, Thursday Billingshurst 4:30-8:30pm'}
-                    rows={3}
-                    style={{ width:'100%', padding:'10px 12px', borderRadius:10, border:'none', fontSize:13, fontFamily:'inherit', outline:'none', resize:'vertical', boxSizing:'border-box', color:'#111', lineHeight:1.5 }}
-                  />
-                  <div style={{ display:'flex', gap:10, marginTop:10, alignItems:'center', flexWrap:'wrap' }}>
-                    <button onClick={parseWithAI} disabled={aiLoading || !aiText.trim()} style={{ padding:'10px 22px', borderRadius:10, border:'none', background:'#fff', color:'#764ba2', fontWeight:800, fontSize:14, cursor:'pointer', opacity: aiLoading || !aiText.trim() ? 0.6 : 1 }}>
-                      {aiLoading ? '⏳ Parsing…' : '✨ Parse Schedule'}
+                  <div style={{ fontSize:13, opacity:0.9, marginBottom:14 }}>Type your schedule or scan a photo — AI reads it and builds your stops</div>
+
+                  {/* Tabs */}
+                  <div style={{ display:'flex', gap:6, marginBottom:14 }}>
+                    {(['text','image'] as const).map(tab => (
+                      <button key={tab} onClick={() => { setAiTab(tab); setAiError(''); setAiPreview(null) }}
+                        style={{ flex:1, padding:'8px', borderRadius:10, border:'none', fontWeight:800, fontSize:13, cursor:'pointer',
+                          background: aiTab === tab ? '#fff' : 'rgba(255,255,255,0.15)',
+                          color: aiTab === tab ? '#764ba2' : '#fff' }}>
+                        {tab === 'text' ? '⌨️ Type Schedule' : '📷 Scan Photo'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {aiTab === 'text' ? (
+                    <textarea
+                      value={aiText}
+                      onChange={e => setAiText(e.target.value)}
+                      placeholder={'e.g. Monday Pulborough 4:30-8:30pm, Tuesday Wisborough Green 5pm to 9pm, Wednesday off, Thursday Billingshurst 4:30-8:30pm'}
+                      rows={3}
+                      style={{ width:'100%', padding:'10px 12px', borderRadius:10, border:'none', fontSize:13, fontFamily:'inherit', outline:'none', resize:'vertical', boxSizing:'border-box', color:'#111', lineHeight:1.5 }}
+                    />
+                  ) : (
+                    <div>
+                      <label style={{ display:'block', cursor:'pointer' }}>
+                        <input type="file" accept="image/*" capture="environment" onChange={handleImagePick}
+                          style={{ display:'none' }} />
+                        {aiImage ? (
+                          <div style={{ position:'relative' }}>
+                            <img src={aiImage.preview} alt="schedule" style={{ width:'100%', borderRadius:10, maxHeight:220, objectFit:'cover', display:'block' }} />
+                            <div style={{ position:'absolute', top:8, right:8, background:'rgba(0,0,0,0.6)', borderRadius:8, padding:'4px 10px', fontSize:12, color:'#fff', fontWeight:700 }}>Tap to change</div>
+                          </div>
+                        ) : (
+                          <div style={{ border:'2px dashed rgba(255,255,255,0.4)', borderRadius:12, padding:'32px 20px', textAlign:'center' }}>
+                            <div style={{ fontSize:40, marginBottom:8 }}>📷</div>
+                            <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>Tap to take photo or choose from gallery</div>
+                            <div style={{ fontSize:12, opacity:0.8 }}>Photo of handwritten or printed schedule</div>
+                          </div>
+                        )}
+                      </label>
+                      {aiImage && (
+                        <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                          <label style={{ flex:1, display:'block', cursor:'pointer' }}>
+                            <input type="file" accept="image/*" capture="environment" onChange={handleImagePick} style={{ display:'none' }} />
+                            <div style={{ padding:'9px', borderRadius:10, border:'1px solid rgba(255,255,255,0.3)', textAlign:'center', fontSize:13, fontWeight:700 }}>📷 Camera</div>
+                          </label>
+                          <label style={{ flex:1, display:'block', cursor:'pointer' }}>
+                            <input type="file" accept="image/*" onChange={handleImagePick} style={{ display:'none' }} />
+                            <div style={{ padding:'9px', borderRadius:10, border:'1px solid rgba(255,255,255,0.3)', textAlign:'center', fontSize:13, fontWeight:700 }}>🖼 Gallery</div>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ display:'flex', gap:10, marginTop:12, alignItems:'center', flexWrap:'wrap' }}>
+                    <button onClick={parseWithAI}
+                      disabled={aiLoading || (aiTab === 'text' ? !aiText.trim() : !aiImage)}
+                      style={{ padding:'10px 22px', borderRadius:10, border:'none', background:'#fff', color:'#764ba2', fontWeight:800, fontSize:14, cursor:'pointer',
+                        opacity: aiLoading || (aiTab === 'text' ? !aiText.trim() : !aiImage) ? 0.5 : 1 }}>
+                      {aiLoading ? '⏳ Reading…' : aiTab === 'image' ? '🔍 Scan & Parse' : '✨ Parse Schedule'}
                     </button>
                     {aiSaved && <span style={{ fontSize:13, fontWeight:700, color:'#a7f3d0' }}>✅ Stops saved!</span>}
                     {aiError && <span style={{ fontSize:13, color:'#fca5a5' }}>Error: {aiError}</span>}
