@@ -299,9 +299,25 @@ export default function SchedulePage() {
                         <div style={{ fontSize:13, opacity:0.8, marginTop:6 }}>Could not read the schedule. Try a clearer photo or type it in.</div>
                       ) : (
                         <>
+                          {/* Apply day to all stops at once */}
+                          <div style={{ background:'rgba(255,255,255,0.15)', borderRadius:10, padding:'12px 14px', marginBottom:12, display:'flex', alignItems:'center', gap:10 }}>
+                            <div style={{ fontSize:13, fontWeight:800, flex:1 }}>📅 Set day for all stops:</div>
+                            <select
+                              defaultValue=""
+                              onChange={e => {
+                                if (!e.target.value) return
+                                const day = Number(e.target.value)
+                                setAiPreview(prev => prev ? prev.map(x => ({...x, day_of_week: day, day_unset: false})) : prev)
+                              }}
+                              style={{ padding:'7px 10px', borderRadius:8, border:'none', background:'#fff', color:'#764ba2', fontWeight:800, fontSize:13, cursor:'pointer' }}>
+                              <option value="">Pick a day…</option>
+                              {DAYS.map((d,idx) => <option key={idx} value={idx}>{d}</option>)}
+                            </select>
+                          </div>
+
                           {aiPreview.some((s: any) => s.day_of_week == null) && (
                             <div style={{ background:'rgba(251,191,36,0.25)', border:'1px solid rgba(251,191,36,0.5)', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:700, color:'#fef08a', marginBottom:10 }}>
-                              ⚠️ Some stops have no day — pick a day for each one before saving
+                              ⚠️ Or pick a day individually for each stop below
                             </div>
                           )}
                           {aiPreview.map((s: any, i: number) => {
@@ -325,19 +341,13 @@ export default function SchedulePage() {
                                   style={{ width:'100%', padding:'7px 10px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13, fontWeight:700, boxSizing:'border-box', marginBottom:6 }}
                                 />
                                 <div style={{ display:'flex', gap:6 }}>
-                                  <input
-                                    type="time"
-                                    value={s.arrival_time ?? '16:30'}
+                                  <input type="time" value={s.arrival_time ?? '16:30'}
                                     onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, arrival_time: e.target.value} : x) : prev)}
-                                    style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }}
-                                  />
+                                    style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }} />
                                   <span style={{ alignSelf:'center', opacity:0.8, fontSize:12 }}>to</span>
-                                  <input
-                                    type="time"
-                                    value={s.departure_time ?? '20:30'}
+                                  <input type="time" value={s.departure_time ?? '20:30'}
                                     onChange={e => setAiPreview(prev => prev ? prev.map((x,j) => j===i ? {...x, departure_time: e.target.value} : x) : prev)}
-                                    style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }}
-                                  />
+                                    style={{ flex:1, padding:'7px 8px', borderRadius:7, border:'none', background:'rgba(255,255,255,0.9)', color:'#111', fontSize:13 }} />
                                 </div>
                               </div>
                             )
@@ -347,7 +357,7 @@ export default function SchedulePage() {
                             return (
                               <button onClick={saveAIStops} disabled={saving || unset > 0}
                                 style={{ marginTop:6, width:'100%', padding:'12px', borderRadius:10, border:'none', background: unset > 0 ? 'rgba(107,114,128,0.5)' : '#10b981', color:'#fff', fontWeight:800, fontSize:15, cursor: unset > 0 ? 'not-allowed' : 'pointer' }}>
-                                {saving ? 'Saving…' : unset > 0 ? `⚠️ Assign day for ${unset} stop${unset !== 1 ? 's' : ''} first` : `✅ Save ${aiPreview.length} Stop${aiPreview.length !== 1 ? 's' : ''} to Schedule`}
+                                {saving ? 'Saving…' : unset > 0 ? `⚠️ Pick day for ${unset} stop${unset!==1?'s':''}` : `✅ Save ${aiPreview.length} Stop${aiPreview.length!==1?'s':''} to Schedule`}
                               </button>
                             )
                           })()}
