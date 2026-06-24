@@ -55,6 +55,12 @@ export default function SchedulePage() {
     setSchedule(data ?? [])
   }
 
+  const getToken = async () => {
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ?? ''
+  }
+
   const refresh = async () => {
     if (!vanId) return
     const supabase = createClient()
@@ -65,9 +71,10 @@ export default function SchedulePage() {
   const addStop = async (day: number) => {
     if (!form.location_name || !vanId) return
     setSaving(true)
+    const token = await getToken()
     const res = await fetch('/api/schedule/stops', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-user-token': token },
       body: JSON.stringify({ van_id: vanId, stops: [{ day_of_week: day, ...form }] }),
     })
     const json = await res.json()
@@ -79,9 +86,10 @@ export default function SchedulePage() {
   }
 
   const deleteStop = async (id: string) => {
+    const token = await getToken()
     await fetch('/api/schedule/stops', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-user-token': token },
       body: JSON.stringify({ id }),
     })
     await refresh()
@@ -139,9 +147,10 @@ export default function SchedulePage() {
     setSaving(true)
     setAiError('')
     const stops = aiPreview.map(({ day_unset, ...s }) => s)
+    const token = await getToken()
     const res = await fetch('/api/schedule/stops', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-user-token': token },
       body: JSON.stringify({ van_id: vanId, stops }),
     })
     const json = await res.json()

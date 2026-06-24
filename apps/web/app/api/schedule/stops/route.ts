@@ -2,14 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const SB_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
-async function sbReq(path: string, method: string, body?: any) {
+async function sbReq(path: string, method: string, userToken: string, body?: any) {
+  // Use service role key if available (bypasses RLS), otherwise use user's JWT
+  const authKey = SB_SERVICE && SB_SERVICE !== 'your-service-role-key-here' ? SB_SERVICE : userToken
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
     method,
     headers: {
-      apikey: SB_KEY,
-      Authorization: `Bearer ${SB_KEY}`,
+      apikey: SB_ANON,
+      Authorization: `Bearer ${authKey}`,
       'Content-Type': 'application/json',
       Prefer: 'return=representation',
     },
@@ -24,6 +27,7 @@ async function sbReq(path: string, method: string, body?: any) {
 
 export async function POST(req: NextRequest) {
   try {
+    const userToken = req.headers.get('x-user-token') ?? SB_ANON
     const { van_id, stops } = await req.json()
     if (!van_id) return NextResponse.json({ error: 'van_id required' }, { status: 400 })
     if (!stops?.length) return NextResponse.json({ error: 'No stops provided' }, { status: 400 })
@@ -38,7 +42,7 @@ export async function POST(req: NextRequest) {
       sort_order: s.sort_order ?? 0,
     }))
 
-    const data = await sbReq('van_schedule', 'POST', rows)
+    const data = await sbReq('van_schedule', 'POST', userToken, rows)
     return NextResponse.json({ ok: true, inserted: Array.isArray(data) ? data.length : 1 })
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Failed to save' }, { status: 500 })
@@ -47,9 +51,10 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const userToken = req.headers.get('x-user-token') ?? SB_ANON
     const { id } = await req.json()
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
-    await sbReq(`van_schedule?id=eq.${id}`, 'DELETE')
+    await sbReq(`van_schedule?id=eq.${id}`, 'DELETE', userToken)
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Failed to delete' }, { status: 500 })
