@@ -52,6 +52,23 @@ Point a scheduler (Vercel Cron / GitHub Action) at
 `POST /api/cron/run-jobs` every minute with header
 `Authorization: Bearer $CRON_SECRET`.
 
+## Deployment (Vercel)
+
+This app deploys as its **own Vercel project**, separate from `apps/web`:
+
+1. New Vercel project → import this repo → set **Root Directory** to `apps/agent`.
+   `apps/agent/vercel.json` provides the build command and cron.
+2. Add all env vars from `.env.example` (Supabase, Anthropic, Stripe, Google,
+   tool providers, `CRON_SECRET`, and `NEXT_PUBLIC_APP_URL` set to the
+   project's production URL).
+3. The `crons` entry runs `GET /api/cron/run-jobs` every minute to fire
+   scheduled reminders and prune old history. Vercel automatically sends
+   `Authorization: Bearer $CRON_SECRET`, which the route verifies. (Per-minute
+   crons require a Vercel Pro plan; on Hobby, use a coarser schedule or an
+   external scheduler.)
+4. Point your Stripe webhook at `/api/webhooks/stripe` and your Google OAuth
+   redirect at `/api/integrations/google/callback`.
+
 ## Provider-neutral tools
 
 Web search, image generation and voice (STT/TTS) call configurable endpoints
