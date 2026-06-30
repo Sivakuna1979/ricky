@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "check": "node scripts/preflight.mjs",
+    "setup": "bash scripts/setup.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
