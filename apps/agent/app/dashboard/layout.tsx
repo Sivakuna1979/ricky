@@ -9,6 +9,7 @@ import {
   Clock,
   CreditCard,
   Settings,
+  BarChart3,
 } from 'lucide-react'
 import { getCurrentContext } from '@/lib/workspace'
 import { getPlan } from '@/lib/plans'
@@ -18,6 +19,7 @@ const NAV = [
   { href: '/dashboard/agents', label: 'Agents', icon: Bot },
   { href: '/dashboard/channels', label: 'Channels', icon: Radio },
   { href: '/dashboard/conversations', label: 'Conversations', icon: MessagesSquare },
+  { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/dashboard/knowledge', label: 'Knowledge base', icon: BookOpen },
   { href: '/dashboard/schedules', label: 'Scheduled jobs', icon: Clock },
   { href: '/dashboard/billing', label: 'Billing', icon: CreditCard },

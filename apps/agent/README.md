@@ -1,5 +1,12 @@
 # AgentHub — Multi-tenant WhatsApp / Telegram AI Agent Platform
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FSivakuna1979%2Fricky&root-directory=apps%2Fagent&project-name=agenthub&repository-name=agenthub&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,CRON_SECRET)
+
+> One-click deploy sets the root directory to `apps/agent` and prompts for the
+> required env vars. After deploy, run the database migration (`supabase db push`)
+> and set `NEXT_PUBLIC_APP_URL` to your production URL. See `SETUP.md` for the
+> full walkthrough.
+
 A SaaS where each customer (workspace) gets their own AI agents connected to
 WhatsApp and Telegram. Built with Next.js 14 (App Router), Supabase (auth +
 Postgres + RLS), Anthropic Claude (tool-use agent loop) and Stripe (billing).
