@@ -12,7 +12,24 @@
     "ANTHROPIC_API_KEY",
     "RESEND_API_KEY",
     "NEXT_PUBLIC_APP_URL",
-    "NODE_ENV"
+    "NODE_ENV",
+    "CRON_SECRET",
+    "STRIPE_PRICE_STARTER",
+    "STRIPE_PRICE_PRO",
+    "STRIPE_PRICE_BUSINESS",
+    "SERPER_API_KEY",
+    "IMAGE_API_URL",
+    "IMAGE_API_KEY",
+    "IMAGE_MODEL",
+    "STT_API_URL",
+    "STT_API_KEY",
+    "STT_MODEL",
+    "TTS_API_URL",
+    "TTS_API_KEY",
+    "TTS_MODEL",
+    "TTS_VOICE",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET"
   ],
   "pipeline": {
     "build": {
