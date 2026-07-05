@@ -28,7 +28,7 @@ export async function GET() {
   // 3. Can the admin client read van_schedule?
   try {
     const { error, count } = await admin.from('van_schedule').select('id', { count: 'exact', head: true })
-    results.admin_read = error ? `FAIL: ${error.code ?? ''} ${error.message}` : `OK (${count} rows)`
+    results.admin_read = error ? `FAIL: ${JSON.stringify(error)}` : `OK (${count} rows)`
   } catch (e: any) {
     results.admin_read = `FAIL: ${e.message}`
   }
@@ -64,11 +64,37 @@ export async function GET() {
     results.signed_in_as = `FAIL: ${e.message}`
   }
 
-  results.verdict = !results.service_key_configured
-    ? 'SUPABASE_SERVICE_ROLE_KEY is missing or wrong in Vercel — saves fall back to the anon key.'
-    : String(results.admin_insert).startsWith('OK')
-      ? 'Database writes work — saving from the app should succeed.'
-      : 'Service key is set but the database rejected the write — see admin_insert error above.'
+  // 6. THE REAL TEST — insert a probe row exactly like the Save button does,
+  //    using the signed-in user's session. Deleted immediately after.
+  try {
+    const supabase = await createClient()
+    const { data: van, error: vanErr } = await supabase.from('vans').select('id').limit(1).single()
+    if (!van) {
+      results.user_insert = `SKIP: session sees no vans (${JSON.stringify(vanErr)})`
+    } else {
+      const { data: probe, error } = await supabase
+        .from('van_schedule')
+        .insert({ van_id: van.id, day_of_week: 0, location_name: '__DIAGNOSTIC_PROBE__', arrival_time: '00:00', departure_time: '00:01' })
+        .select('id')
+        .single()
+      if (error) {
+        results.user_insert = `FAIL: ${JSON.stringify(error)}`
+      } else {
+        await supabase.from('van_schedule').delete().eq('id', probe.id)
+        results.user_insert = 'OK — the Save button path works!'
+      }
+    }
+  } catch (e: any) {
+    results.user_insert = `FAIL: ${e.message}`
+  }
+
+  results.verdict = String(results.user_insert).startsWith('OK')
+    ? '✅ Saving from the app WILL work — go save your schedule.'
+    : !results.service_key_configured
+      ? 'SUPABASE_SERVICE_ROLE_KEY is missing in Vercel AND the user path failed — see user_insert error.'
+      : String(results.admin_insert).startsWith('OK')
+        ? 'Admin fallback works — saving from the app should succeed.'
+        : 'Both write paths failed — see user_insert and admin_insert errors above.'
 
   return NextResponse.json(results)
 }
