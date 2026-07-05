@@ -64,6 +64,20 @@ export async function GET() {
     results.signed_in_as = `FAIL: ${e.message}`
   }
 
+  // 5b. What does the database think this user owns?
+  try {
+    const supabase = await createClient()
+    const { data: myVans, error: rpcErr } = await supabase.rpc('my_van_ids')
+    results.my_van_ids = rpcErr ? `FAIL: ${JSON.stringify(rpcErr)}` : JSON.stringify(myVans)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: userRow } = await supabase.from('users').select('id, role').eq('auth_id', user.id).single()
+      results.users_row = userRow ? JSON.stringify(userRow) : 'MISSING — no users row for this login'
+    }
+  } catch (e: any) {
+    results.my_van_ids = `FAIL: ${e.message}`
+  }
+
   // 6. THE REAL TEST — insert a probe row exactly like the Save button does,
   //    using the signed-in user's session. Deleted immediately after.
   try {

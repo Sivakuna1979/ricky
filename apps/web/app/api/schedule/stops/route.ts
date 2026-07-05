@@ -15,17 +15,21 @@ async function authorizeVan(vanId: string) {
 
   if (user.email === SUPER_ADMIN_EMAIL) return { supabase }
 
-  // Confirm ownership: van -> business -> owner, matched to the users row.
+  // my_van_ids() is the database's own ownership function (SECURITY DEFINER):
+  // vans owned by my businesses + vans I'm active staff on. Same rule as RLS.
+  const { data: myVans, error: rpcErr } = await supabase.rpc('my_van_ids')
+  const ids = (myVans ?? []).map((v: any) => (typeof v === 'string' ? v : v.my_van_ids ?? v.id))
+  if (!rpcErr && ids.includes(vanId)) return { supabase }
+
+  // Fallback: direct ownership join (in case the RPC is unavailable).
   const { data: userRow } = await supabase
     .from('users').select('id').eq('auth_id', user.id).single()
   const { data: van } = await supabase
     .from('vans').select('id, businesses!inner(owner_id)').eq('id', vanId).single()
-
   const ownerId = (van as any)?.businesses?.owner_id
-  if (!van || !userRow || ownerId !== userRow.id) {
-    return { error: NextResponse.json({ error: 'You do not have permission to edit this van.' }, { status: 403 }) }
-  }
-  return { supabase }
+  if (van && userRow && ownerId === userRow.id) return { supabase }
+
+  return { error: NextResponse.json({ error: 'You do not have permission to edit this van.' }, { status: 403 }) }
 }
 
 // True when the failure is a table-grant / RLS problem that the service-role
