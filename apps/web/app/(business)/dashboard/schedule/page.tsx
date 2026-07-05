@@ -320,8 +320,10 @@ export default function SchedulePage() {
   created_at timestamptz default now()
 );
 alter table van_schedule enable row level security;
-create policy "public_read" on van_schedule for select using (true);
-create policy "auth_all" on van_schedule for all to authenticated using (true) with check (true);`}</pre>
+drop policy if exists "public_read" on van_schedule;
+drop policy if exists "auth_all" on van_schedule;
+drop policy if exists "public_all" on van_schedule;
+create policy "public_all" on van_schedule for all to anon, authenticated using (true) with check (true);`}</pre>
                             </div>
                           </div>
                         )}
