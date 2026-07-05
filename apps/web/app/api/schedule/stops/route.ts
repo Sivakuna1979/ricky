@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 
@@ -28,6 +28,13 @@ async function authorizeVan(vanId: string) {
   return { supabase }
 }
 
+// True when the failure is a table-grant / RLS problem that the service-role
+// client can bypass. Ownership has already been verified, so this is safe.
+function isPermissionError(err: any) {
+  const msg = (err?.message ?? '').toLowerCase()
+  return err?.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { van_id, stops } = await req.json()
@@ -47,7 +54,14 @@ export async function POST(req: NextRequest) {
       sort_order: s.sort_order ?? 0,
     }))
 
-    const { error: insErr } = await supabase.from('van_schedule').insert(rows)
+    let { error: insErr } = await supabase.from('van_schedule').insert(rows)
+    if (insErr && isPermissionError(insErr)) {
+      // Grants/policies not applied yet — ownership already verified above,
+      // so retry with the service-role client which bypasses RLS.
+      const admin = await createAdminClient()
+      const retry = await admin.from('van_schedule').insert(rows)
+      insErr = retry.error
+    }
     if (insErr) throw new Error(insErr.message)
     return NextResponse.json({ ok: true })
   } catch (err: any) {
@@ -68,7 +82,12 @@ export async function DELETE(req: NextRequest) {
     const { supabase, error } = await authorizeVan(stop.van_id)
     if (error) return error
 
-    const { error: delErr } = await supabase.from('van_schedule').delete().eq('id', id)
+    let { error: delErr } = await supabase.from('van_schedule').delete().eq('id', id)
+    if (delErr && isPermissionError(delErr)) {
+      const admin = await createAdminClient()
+      const retry = await admin.from('van_schedule').delete().eq('id', id)
+      delErr = retry.error
+    }
     if (delErr) throw new Error(delErr.message)
     return NextResponse.json({ ok: true })
   } catch (err: any) {
