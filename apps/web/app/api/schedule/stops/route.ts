@@ -73,6 +73,38 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function PUT(req: NextRequest) {
+  try {
+    const { id, ...fields } = await req.json()
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+    // Only these columns may be edited.
+    const updates: any = {}
+    for (const k of ['day_of_week', 'location_name', 'arrival_time', 'departure_time', 'notes', 'sort_order']) {
+      if (fields[k] !== undefined) updates[k] = fields[k]
+    }
+    if (!Object.keys(updates).length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+
+    const base = await createClient()
+    const { data: stop } = await base.from('van_schedule').select('van_id').eq('id', id).single()
+    if (!stop) return NextResponse.json({ error: 'Stop not found' }, { status: 404 })
+
+    const { supabase, error } = await authorizeVan(stop.van_id)
+    if (error) return error
+
+    let { error: updErr } = await supabase.from('van_schedule').update(updates).eq('id', id)
+    if (updErr && isPermissionError(updErr)) {
+      const admin = await createAdminClient()
+      const retry = await admin.from('van_schedule').update(updates).eq('id', id)
+      updErr = retry.error
+    }
+    if (updErr) throw new Error(updErr.message)
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? 'Failed to update' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   try {
     const { id } = await req.json()

@@ -14,6 +14,8 @@ export default function SchedulePage() {
   const [saving, setSaving]       = useState(false)
   const [editDay, setEditDay]     = useState<number|null>(null)
   const [form, setForm]           = useState({ location_name:'', arrival_time:'16:30', departure_time:'20:30', notes:'' })
+  const [editingStop, setEditingStop] = useState(null)   // stop id being edited
+  const [editForm, setEditForm]   = useState({ day_of_week:0, location_name:'', arrival_time:'16:30', departure_time:'20:30', notes:'' })
   const [aiText, setAiText]       = useState('')
   const [aiImage, setAiImage]     = useState<{data:string,mediaType:string,preview:string}|null>(null)
   const [aiLoading, setAiLoading] = useState(false)
@@ -74,6 +76,26 @@ export default function SchedulePage() {
     if (!res.ok || data.error) { alert(`Could not save: ${data.error ?? 'Unknown error'}`); setSaving(false); return }
     setForm({ location_name:'', arrival_time:'16:30', departure_time:'20:30', notes:'' })
     setEditDay(null)
+    await refresh()
+    setSaving(false)
+  }
+
+  const startEditStop = (stop: any) => {
+    setEditingStop(stop.id)
+    setEditForm({ day_of_week: stop.day_of_week, location_name: stop.location_name, arrival_time: stop.arrival_time, departure_time: stop.departure_time, notes: stop.notes ?? '' })
+  }
+
+  const updateStop = async () => {
+    if (!editingStop || !editForm.location_name) return
+    setSaving(true)
+    const res = await fetch('/api/schedule/stops', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editingStop, ...editForm }),
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) { alert(`Could not update: ${data.error ?? 'Unknown error'}`); setSaving(false); return }
+    setEditingStop(null)
     await refresh()
     setSaving(false)
   }
@@ -416,7 +438,7 @@ grant select, insert, update, delete on van_schedule to authenticated;`}</pre>
                 {/* Weekly schedule */}
                 <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                   {[0,1,2,3,4,5,6].map(day => {
-                    const dayStops = schedule.filter(s => s.day_of_week === day)
+                    const dayStops = schedule.filter(s => s.day_of_week === day).slice().sort((a, b) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
                     const isToday = day === todayIdx
                     return (
                       <div key={day} style={{ background:'#fff', borderRadius:14, padding:16, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', border: isToday ? '2px solid #f97316' : '2px solid transparent' }}>
@@ -431,14 +453,49 @@ grant select, insert, update, delete on van_schedule to authenticated;`}</pre>
                         </div>
 
                         {dayStops.map(stop => (
+                          editingStop === stop.id ? (
+                            <div key={stop.id} style={{ background:'#fff7ed', border:'1px solid #fdba74', borderRadius:10, padding:12, marginBottom:6, display:'flex', flexDirection:'column', gap:8 }}>
+                              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                                <span style={{ fontSize:11, fontWeight:700, color:'#888' }}>Day</span>
+                                <select value={editForm.day_of_week} onChange={e => setEditForm(f => ({...f, day_of_week: Number(e.target.value)}))}
+                                  style={{ ...inp, width:'auto', flex:1 }}>
+                                  {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                                </select>
+                              </div>
+                              <input value={editForm.location_name} onChange={e => setEditForm(f => ({...f, location_name: e.target.value}))} placeholder="Location" style={inp} />
+                              <div style={{ display:'flex', gap:8 }}>
+                                <div style={{ flex:1 }}>
+                                  <label style={{ fontSize:11, fontWeight:700, color:'#888', display:'block', marginBottom:4 }}>Arrival</label>
+                                  <input type="time" value={editForm.arrival_time} onChange={e => setEditForm(f => ({...f, arrival_time: e.target.value}))} style={inp} />
+                                </div>
+                                <div style={{ flex:1 }}>
+                                  <label style={{ fontSize:11, fontWeight:700, color:'#888', display:'block', marginBottom:4 }}>Departure</label>
+                                  <input type="time" value={editForm.departure_time} onChange={e => setEditForm(f => ({...f, departure_time: e.target.value}))} style={inp} />
+                                </div>
+                              </div>
+                              <input value={editForm.notes} onChange={e => setEditForm(f => ({...f, notes: e.target.value}))} placeholder="Notes (optional)" style={inp} />
+                              <div style={{ display:'flex', gap:8 }}>
+                                <button onClick={updateStop} disabled={saving || !editForm.location_name}
+                                  style={{ flex:1, padding:'10px', borderRadius:8, border:'none', background:'#f97316', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', opacity: saving ? 0.6 : 1 }}>
+                                  {saving ? 'Saving…' : '✓ Save Changes'}
+                                </button>
+                                <button onClick={() => setEditingStop(null)}
+                                  style={{ padding:'10px 16px', borderRadius:8, border:'1px solid #e5e7eb', background:'#fff', color:'#555', fontWeight:600, fontSize:14, cursor:'pointer' }}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
                           <div key={stop.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'#f9fafb', borderRadius:8, marginBottom:6 }}>
                             <div style={{ fontSize:16 }}>📍</div>
                             <div style={{ flex:1 }}>
                               <div style={{ fontWeight:700, fontSize:14, color:'#111' }}>{stop.location_name}</div>
                               <div style={{ fontSize:12, color:'#888' }}>{stop.arrival_time} – {stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</div>
                             </div>
+                            <button onClick={() => startEditStop(stop)} style={{ background:'none', border:'none', fontSize:15, cursor:'pointer', padding:'0 4px' }}>✏️</button>
                             <button onClick={() => deleteStop(stop.id)} style={{ background:'none', border:'none', color:'#ef4444', fontSize:18, cursor:'pointer', padding:'0 4px' }}>×</button>
                           </div>
+                          )
                         ))}
 
                         {editDay === day && (
