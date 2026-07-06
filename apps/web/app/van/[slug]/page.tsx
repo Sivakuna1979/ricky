@@ -46,6 +46,21 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       .catch(() => setLoading(false))
   }, [params.slug])
 
+  // Apply the van's own brand colours (captured by AI from their design).
+  // Falls back to FoodTaxi orange when no brand is set.
+  const brand = data?.vans?.[0]?.brand
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--brand', brand?.primary ?? '#f97316')
+    root.style.setProperty('--brand2', brand?.secondary ?? '#ea580c')
+    root.style.setProperty('--accent', brand?.accent ?? '#fdba74')
+    return () => {
+      root.style.removeProperty('--brand')
+      root.style.removeProperty('--brand2')
+      root.style.removeProperty('--accent')
+    }
+  }, [brand])
+
   const addToCart = (id: string) => setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
   const removeFromCart = (id: string) => setCart(c => {
     const next = { ...c }
@@ -99,7 +114,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
     <div style={{ background:'#080c18', minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'system-ui,sans-serif', gap:16 }}>
       <div style={{ fontSize:48 }}>🍽️</div>
       <div style={{ fontSize:20, fontWeight:800 }}>Business Not Found</div>
-      <a href="/" style={{ color:'#f97316', textDecoration:'none', fontWeight:600 }}>← Back to FoodTaxi</a>
+      <a href="/" style={{ color:'var(--brand, #f97316)', textDecoration:'none', fontWeight:600 }}>← Back to FoodTaxi</a>
     </div>
   )
 
@@ -125,16 +140,16 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       <div style={{ fontSize:72, marginBottom:16 }}>✅</div>
       <h1 style={{ fontSize:26, fontWeight:900, margin:'0 0 8px' }}>Order Placed!</h1>
       <div style={{ fontSize:14, color:'#9ca3af', marginBottom:8 }}>Order reference</div>
-      <div style={{ fontSize:28, fontWeight:900, color:'#f97316', marginBottom:24 }}>#{orderNum}</div>
+      <div style={{ fontSize:28, fontWeight:900, color:'var(--brand, #f97316)', marginBottom:24 }}>#{orderNum}</div>
       {pickupStop && (
-        <div style={{ background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.3)', borderRadius:12, padding:'12px 20px', marginBottom:16, textAlign:'center' }}>
-          <div style={{ fontSize:13, color:'#fdba74', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupDayOffset > 0 ? ` · ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}` : ''}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
+        <div style={{ background:'color-mix(in srgb, var(--brand, #f97316) 10%, transparent)', border:'1px solid color-mix(in srgb, var(--brand, #f97316) 30%, transparent)', borderRadius:12, padding:'12px 20px', marginBottom:16, textAlign:'center' }}>
+          <div style={{ fontSize:13, color:'var(--accent, #fdba74)', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupDayOffset > 0 ? ` · ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}` : ''}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
         </div>
       )}
       <p style={{ color:'#9ca3af', fontSize:14, maxWidth:300, lineHeight:1.6, marginBottom:32 }}>
         We've received your order at {business.name}. They'll contact you on {form.phone} when it's ready.
       </p>
-      <a href={`/van/${params.slug}`} style={{ padding:'14px 32px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:14, textDecoration:'none', fontWeight:800, fontSize:15 }}>
+      <a href={`/van/${params.slug}`} style={{ padding:'14px 32px', background:'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', borderRadius:14, textDecoration:'none', fontWeight:800, fontSize:15 }}>
         ← Back to Menu
       </a>
     </div>
@@ -143,7 +158,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   if (view === 'checkout') return (
     <div style={{ background:'#080c18', minHeight:'100vh', fontFamily:'system-ui,sans-serif', color:'#fff' }}>
       <div style={{ background:'#0d1427', borderBottom:'1px solid #1e2a45', padding:'12px 20px', display:'flex', alignItems:'center', gap:12 }}>
-        <button onClick={() => setView('menu')} style={{ background:'none', border:'none', color:'#f97316', fontSize:14, fontWeight:600, cursor:'pointer', padding:0 }}>← Back to Menu</button>
+        <button onClick={() => setView('menu')} style={{ background:'none', border:'none', color:'var(--brand, #f97316)', fontSize:14, fontWeight:600, cursor:'pointer', padding:0 }}>← Back to Menu</button>
       </div>
       <div style={{ padding:'24px 20px', maxWidth:480, margin:'0 auto' }}>
         <h2 style={{ fontSize:22, fontWeight:900, margin:'0 0 20px' }}>Your Order</h2>
@@ -156,11 +171,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <button onClick={() => removeFromCart(item.id)} style={{ width:28, height:28, borderRadius:'50%', border:'1px solid #374151', background:'#1e2a45', color:'#fff', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
               <span style={{ fontSize:14, fontWeight:700 }}>{cart[item.id]}</span>
-              <button onClick={() => addToCart(item.id)} style={{ width:28, height:28, borderRadius:'50%', border:'none', background:'#f97316', color:'#fff', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
+              <button onClick={() => addToCart(item.id)} style={{ width:28, height:28, borderRadius:'50%', border:'none', background:'var(--brand, #f97316)', color:'#fff', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
             </div>
           </div>
         ))}
-        <div style={{ display:'flex', justifyContent:'space-between', padding:'14px 0', fontSize:18, fontWeight:900, color:'#f97316', marginBottom:24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'14px 0', fontSize:18, fontWeight:900, color:'var(--brand, #f97316)', marginBottom:24 }}>
           <span>Total</span><span>£{cartTotal.toFixed(2)}</span>
         </div>
 
@@ -184,7 +199,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           }
           return (
             <div style={{ marginBottom:20 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:'#f97316', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>🗓️ Which day?</div>
+              <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>🗓️ Which day?</div>
               <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:8, marginBottom:12 }}>
                 {pickupDays.map(d => {
                   const hasStops = schedule.some((s: any) => s.day_of_week === d.dow)
@@ -193,9 +208,9 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
                     <button key={d.offset} disabled={!hasStops}
                       onClick={() => { setPickupDayOffset(d.offset); setPickupStop(null); setPickupTime('') }}
                       style={{ flexShrink:0, padding:'8px 12px', borderRadius:10, cursor: hasStops ? 'pointer' : 'default',
-                        border: sel ? '1px solid #f97316' : '1px solid #1e2a45',
-                        background: sel ? 'rgba(249,115,22,0.2)' : '#0d1427',
-                        color: !hasStops ? '#374151' : sel ? '#f97316' : '#9ca3af',
+                        border: sel ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45',
+                        background: sel ? 'color-mix(in srgb, var(--brand, #f97316) 20%, transparent)' : '#0d1427',
+                        color: !hasStops ? '#374151' : sel ? 'var(--brand, #f97316)' : '#9ca3af',
                         opacity: hasStops ? 1 : 0.5, textAlign:'center' }}>
                       <div style={{ fontSize:12, fontWeight:800 }}>{d.label}</div>
                       <div style={{ fontSize:10 }}>{d.dateLabel}</div>
@@ -207,16 +222,16 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
                 <div style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', marginBottom:12 }}>No stops on this day — pick another day above</div>
               )}
               {dayStops.length > 0 && (
-              <div style={{ fontSize:13, fontWeight:800, color:'#f97316', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>📍 Where to pick up?</div>
+              <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>📍 Where to pick up?</div>
               )}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {dayStops.map((stop: any) => {
                   const sel = pickupStop?.id === stop.id
                   const slots = sel ? genSlots(stop) : []
                   return (
-                    <div key={stop.id} style={{ border: sel ? '1px solid #f97316' : '1px solid #1e2a45', borderRadius:12, overflow:'hidden' }}>
-                      <button onClick={() => { setPickupStop(sel ? null : stop); setPickupTime('') }} style={{ width:'100%', padding:'12px 14px', background: sel ? 'rgba(249,115,22,0.12)' : '#0d1427', border:'none', color:'#fff', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
-                        <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${sel ? '#f97316' : '#374151'}`, background: sel ? '#f97316' : 'transparent', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <div key={stop.id} style={{ border: sel ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45', borderRadius:12, overflow:'hidden' }}>
+                      <button onClick={() => { setPickupStop(sel ? null : stop); setPickupTime('') }} style={{ width:'100%', padding:'12px 14px', background: sel ? 'color-mix(in srgb, var(--brand, #f97316) 12%, transparent)' : '#0d1427', border:'none', color:'#fff', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
+                        <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${sel ? 'var(--brand, #f97316)' : '#374151'}`, background: sel ? 'var(--brand, #f97316)' : 'transparent', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
                           {sel && <div style={{ width:8, height:8, borderRadius:'50%', background:'#fff' }} />}
                         </div>
                         <div style={{ flex:1 }}>
@@ -225,11 +240,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
                         </div>
                       </button>
                       {sel && slots.length > 0 && (
-                        <div style={{ padding:'10px 14px 12px', background:'rgba(249,115,22,0.05)', borderTop:'1px solid rgba(249,115,22,0.15)' }}>
+                        <div style={{ padding:'10px 14px 12px', background:'color-mix(in srgb, var(--brand, #f97316) 5%, transparent)', borderTop:'1px solid color-mix(in srgb, var(--brand, #f97316) 15%, transparent)' }}>
                           <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', marginBottom:8 }}>ROUGHLY WHAT TIME?</div>
                           <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                             {slots.map(slot => (
-                              <button key={slot} onClick={() => setPickupTime(pickupTime === slot ? '' : slot)} style={{ padding:'6px 12px', borderRadius:8, border: pickupTime === slot ? '1px solid #f97316' : '1px solid #1e2a45', background: pickupTime === slot ? 'rgba(249,115,22,0.2)' : '#0d1427', color: pickupTime === slot ? '#f97316' : '#9ca3af', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                              <button key={slot} onClick={() => setPickupTime(pickupTime === slot ? '' : slot)} style={{ padding:'6px 12px', borderRadius:8, border: pickupTime === slot ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45', background: pickupTime === slot ? 'color-mix(in srgb, var(--brand, #f97316) 20%, transparent)' : '#0d1427', color: pickupTime === slot ? 'var(--brand, #f97316)' : '#9ca3af', fontSize:12, fontWeight:700, cursor:'pointer' }}>
                                 {slot}
                               </button>
                             ))}
@@ -259,11 +274,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           </div>
         </div>
 
-        <div style={{ background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.2)', borderRadius:10, padding:12, fontSize:12, color:'#fdba74', margin:'16px 0' }}>
+        <div style={{ background:'color-mix(in srgb, var(--brand, #f97316) 10%, transparent)', border:'1px solid color-mix(in srgb, var(--brand, #f97316) 20%, transparent)', borderRadius:10, padding:12, fontSize:12, color:'var(--accent, #fdba74)', margin:'16px 0' }}>
           💵 Payment: Cash at van — pay when you collect your order
         </div>
 
-        <button onClick={placeOrder} disabled={placing || !form.name || !form.phone} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background: placing ? 'rgba(249,115,22,0.5)' : 'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:16, fontWeight:800, cursor: placing ? 'wait' : 'pointer' }}>
+        <button onClick={placeOrder} disabled={placing || !form.name || !form.phone} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background: placing ? 'color-mix(in srgb, var(--brand, #f97316) 50%, transparent)' : 'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', fontSize:16, fontWeight:800, cursor: placing ? 'wait' : 'pointer' }}>
           {placing ? 'Placing Order…' : `✅ Place Order · £${cartTotal.toFixed(2)}`}
         </button>
       </div>
@@ -275,10 +290,10 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       {/* Header */}
       <div style={{ background:'#0d1427', borderBottom:'1px solid #1e2a45', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <a href="/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
-          <div style={{ background:'linear-gradient(135deg,#f97316,#ea580c)', borderRadius:8, width:36, height:36, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:14, color:'#fff' }}>FT</div>
+          <div style={{ background:'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', borderRadius:8, width:36, height:36, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:14, color:'#fff' }}>FT</div>
           <span style={{ fontSize:18, fontWeight:800, color:'#fff' }}>FoodTaxi</span>
         </a>
-        <a href="/search" style={{ fontSize:13, color:'#f97316', textDecoration:'none', fontWeight:600 }}>← Search</a>
+        <a href="/search" style={{ fontSize:13, color:'var(--brand, #f97316)', textDecoration:'none', fontWeight:600 }}>← Search</a>
       </div>
 
       {/* Hero */}
@@ -301,7 +316,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
             📞 Call
           </a>
         )}
-        <a href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ padding:'12px 20px', background:'rgba(249,115,22,0.15)', border:'1px solid rgba(249,115,22,0.3)', color:'#fdba74', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
+        <a href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ padding:'12px 20px', background:'color-mix(in srgb, var(--brand, #f97316) 15%, transparent)', border:'1px solid color-mix(in srgb, var(--brand, #f97316) 30%, transparent)', color:'var(--accent, #fdba74)', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
           🗺 Directions
         </a>
       </div>
@@ -333,11 +348,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
             return (
               <button key={i} onClick={() => setSchedViewDay(i)}
                 style={{ flexShrink:0, padding:'8px 12px', borderRadius:10, cursor:'pointer', textAlign:'center',
-                  border: sel ? '1px solid #f97316' : '1px solid #1e2a45',
-                  background: sel ? 'rgba(249,115,22,0.15)' : '#0d1427',
-                  color: sel ? '#f97316' : hasStops ? '#e5e7eb' : '#374151' }}>
+                  border: sel ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45',
+                  background: sel ? 'color-mix(in srgb, var(--brand, #f97316) 15%, transparent)' : '#0d1427',
+                  color: sel ? 'var(--brand, #f97316)' : hasStops ? '#e5e7eb' : '#374151' }}>
                 <div style={{ fontSize:12, fontWeight:800 }}>{label}</div>
-                <div style={{ fontSize:10, color: sel ? '#fdba74' : '#6b7280' }}>{dateLabel}</div>
+                <div style={{ fontSize:10, color: sel ? 'var(--accent, #fdba74)' : '#6b7280' }}>{dateLabel}</div>
               </button>
             )
           })}
@@ -348,13 +363,13 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           const dow = (d.getDay() + 6) % 7
           const stops = schedule.filter(s => s.day_of_week === dow).slice().sort((a, b) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
           return (
-            <div style={{ background: schedViewDay === 0 ? 'rgba(249,115,22,0.08)' : '#0d1427', border: schedViewDay === 0 ? '1px solid rgba(249,115,22,0.35)' : '1px solid #1e2a45', borderRadius:12, padding:'12px 14px' }}>
+            <div style={{ background: schedViewDay === 0 ? 'color-mix(in srgb, var(--brand, #f97316) 8%, transparent)' : '#0d1427', border: schedViewDay === 0 ? '1px solid color-mix(in srgb, var(--brand, #f97316) 35%, transparent)' : '1px solid #1e2a45', borderRadius:12, padding:'12px 14px' }}>
               {stops.length === 0 && (
                 <div style={{ fontSize:13, color:'#6b7280', fontStyle:'italic' }}>Not out on this day 🛌</div>
               )}
               {stops.map((stop, i) => (
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom: i < stops.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                  <span style={{ fontSize:12, color:'#f97316', fontWeight:800, minWidth:42 }}>{stop.arrival_time}</span>
+                  <span style={{ fontSize:12, color:'var(--brand, #f97316)', fontWeight:800, minWidth:42 }}>{stop.arrival_time}</span>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:14, fontWeight:700, color:'#e5e7eb' }}>{stop.location_name}</div>
                     <div style={{ fontSize:11, color:'#6b7280' }}>until {stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</div>
@@ -369,7 +384,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       {/* Order Online banner */}
       {menuItems?.length > 0 && (
         <div style={{ padding:'0 16px 16px' }}>
-          <button onClick={() => { if (cartCount > 0) setView('checkout'); else document.getElementById('menu-top')?.scrollIntoView({ behavior:'smooth' }) }} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+          <button onClick={() => { if (cartCount > 0) setView('checkout'); else document.getElementById('menu-top')?.scrollIntoView({ behavior:'smooth' }) }} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background:'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
             🛒 {cartCount > 0 ? `Order Online · £${cartTotal.toFixed(2)} (${cartCount} items)` : 'Order Online — tap + to add items'}
           </button>
         </div>
@@ -381,14 +396,14 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           <h2 id="menu-top" style={{ fontSize:20, fontWeight:800, color:'#fff', margin:'0 0 16px', padding:'0 4px' }}>Our Menu</h2>
           {sortedCats.map(cat => (
             <div key={cat} style={{ marginBottom:24 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:'#f97316', letterSpacing:1, textTransform:'uppercase', marginBottom:10, padding:'0 4px' }}>{cat}</div>
+              <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', letterSpacing:1, textTransform:'uppercase', marginBottom:10, padding:'0 4px' }}>{cat}</div>
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
                 {byCategory[cat]?.map((item: any) => (
                   <div key={item.id} style={{ background:'#0d1427', borderRadius:10, padding:'12px 14px', display:'flex', alignItems:'center', gap:12 }}>
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:700, fontSize:14, color:'#fff' }}>{item.name}</div>
                       {item.description && <div style={{ fontSize:12, color:'#6b7280', marginTop:2 }}>{item.description}</div>}
-                      <div style={{ fontWeight:800, fontSize:15, color:'#f97316', marginTop:4 }}>£{Number(item.price).toFixed(2)}</div>
+                      <div style={{ fontWeight:800, fontSize:15, color:'var(--brand, #f97316)', marginTop:4 }}>£{Number(item.price).toFixed(2)}</div>
                     </div>
                     <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
                       {cart[item.id] ? (
@@ -397,7 +412,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
                           <span style={{ fontSize:14, fontWeight:700, minWidth:20, textAlign:'center' }}>{cart[item.id]}</span>
                         </>
                       ) : null}
-                      <button onClick={() => addToCart(item.id)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'#f97316', color:'#fff', fontSize:20, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>+</button>
+                      <button onClick={() => addToCart(item.id)} style={{ width:32, height:32, borderRadius:'50%', border:'none', background:'var(--brand, #f97316)', color:'#fff', fontSize:20, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>+</button>
                     </div>
                   </div>
                 ))}
@@ -415,7 +430,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       {/* Sticky cart bar */}
       {cartCount > 0 && (
         <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'16px 20px', background:'#0d1427', borderTop:'1px solid #1e2a45', zIndex:100 }}>
-          <button onClick={() => setView('checkout')} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <button onClick={() => setView('checkout')} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background:'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ background:'rgba(255,255,255,0.2)', borderRadius:8, padding:'2px 10px', fontSize:14 }}>{cartCount}</span>
             <span>Order Online</span>
             <span>£{cartTotal.toFixed(2)}</span>
@@ -425,7 +440,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
 
       {/* Footer */}
       <div style={{ padding:'20px', textAlign:'center', borderTop:'1px solid #1e2a45' }}>
-        <a href="/" style={{ display:'inline-block', padding:'10px 24px', background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:13 }}>
+        <a href="/" style={{ display:'inline-block', padding:'10px 24px', background:'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:13 }}>
           Powered by FoodTaxi
         </a>
       </div>
