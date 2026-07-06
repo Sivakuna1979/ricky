@@ -42,7 +42,7 @@ export default function SchedulePage() {
       setVans(vanList)
       const firstVan = vanList[0]
       setVanId(firstVan.id)
-      const { data: sched } = await supabase.from('van_schedule').select('*').eq('van_id', firstVan.id).order('day_of_week').order('sort_order')
+      const { data: sched } = await supabase.from('van_schedule').select('*').eq('van_id', firstVan.id).order('day_of_week').order('arrival_time')
       setSchedule(sched ?? [])
       setLoading(false)
     })
@@ -53,14 +53,14 @@ export default function SchedulePage() {
     setEditDay(null)
     setAiPreview(null)
     const supabase = createClient()
-    const { data } = await supabase.from('van_schedule').select('*').eq('van_id', id).order('day_of_week').order('sort_order')
+    const { data } = await supabase.from('van_schedule').select('*').eq('van_id', id).order('day_of_week').order('arrival_time')
     setSchedule(data ?? [])
   }
 
   const refresh = async () => {
     if (!vanId) return
     const supabase = createClient()
-    const { data } = await supabase.from('van_schedule').select('*').eq('van_id', vanId).order('day_of_week').order('sort_order')
+    const { data } = await supabase.from('van_schedule').select('*').eq('van_id', vanId).order('day_of_week').order('arrival_time')
     setSchedule(data ?? [])
   }
 

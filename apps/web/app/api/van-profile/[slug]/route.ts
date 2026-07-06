@@ -39,7 +39,7 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
     let schedule: any[] = []
     if (vanIds.length > 0) {
       schedule = await supabaseGet(
-        `van_schedule?van_id=eq.${vanIds[0]}&order=day_of_week,sort_order`
+        `van_schedule?van_id=eq.${vanIds[0]}&order=day_of_week,arrival_time`
       ) ?? []
     }
 

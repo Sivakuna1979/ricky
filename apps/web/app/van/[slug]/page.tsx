@@ -152,7 +152,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
 
         {/* Pickup location + time */}
         {(() => {
-          const todayStops = schedule.filter((s: any) => s.day_of_week === (new Date().getDay() + 6) % 7)
+          const todayStops = schedule.filter((s: any) => s.day_of_week === (new Date().getDay() + 6) % 7).slice().sort((a: any, b: any) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
           if (!todayStops.length) return null
           const genSlots = (stop: any) => {
             const slots: string[] = []
@@ -285,7 +285,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>📍 Where We'll Be This Week</h2>
         <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
           {[0,1,2,3,4,5,6].map(day => {
-            const stops = schedule.filter(s => s.day_of_week === day)
+            const stops = schedule.filter(s => s.day_of_week === day).slice().sort((a, b) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
             const isToday = day === todayIdx
             return (
               <div key={day} style={{ background: isToday ? 'rgba(249,115,22,0.1)' : '#0d1427', border: isToday ? '1px solid rgba(249,115,22,0.4)' : '1px solid #1e2a45', borderRadius:10, padding:'10px 14px' }}>
