@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { OrderManageRow } from '@/components/orders/OrderManageRow'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,7 @@ export default async function OrdersPage() {
   const vanMap = Object.fromEntries((vans ?? []).map(v => [v.id, v.name]))
 
   const { data: orders } = vanIds.length
-    ? await supabase.from('orders').select('*').in('van_id', vanIds).order('created_at', { ascending: false }).limit(100)
+    ? await supabase.from('orders').select('*, order_items(*)').in('van_id', vanIds).order('created_at', { ascending: false }).limit(100)
     : { data: [] }
 
   const groups = { Today: [], Yesterday: [], 'This Week': [], Older: [] }
@@ -104,21 +105,9 @@ export default async function OrdersPage() {
                 <div key={label} style={{ marginBottom:24 }}>
                   <h2 style={{ fontSize:13, fontWeight:700, color:'#888', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>{label}</h2>
                   <div style={{ background:'#fff', borderRadius:14, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', overflow:'hidden' }}>
-                    {grpOrders.map((o, i) => {
-                      const s = STATUS_COLORS[o.status] ?? { bg:'#f3f4f6', color:'#555' }
-                      return (
-                        <div key={o.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderBottom: i < grpOrders.length-1 ? '1px solid #f3f4f6' : 'none', flexWrap:'wrap', gap:10 }}>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontWeight:700, fontSize:14, color:'#111' }}>Order #{o.id?.slice(0,8).toUpperCase()}</div>
-                            <div style={{ fontSize:12, color:'#888', marginTop:2 }}>
-                              {vanMap[o.van_id] || 'Van'} · {new Date(o.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}
-                            </div>
-                          </div>
-                          <span style={{ padding:'3px 12px', borderRadius:20, fontSize:12, fontWeight:700, background:s.bg, color:s.color, flexShrink:0 }}>{o.status}</span>
-                          <span style={{ fontWeight:800, fontSize:16, color:'#111', flexShrink:0 }}>£{(o.total ?? 0).toFixed(2)}</span>
-                        </div>
-                      )
-                    })}
+                    {grpOrders.map((o, i) => (
+                      <OrderManageRow key={o.id} order={o} vanName={vanMap[o.van_id]} isLast={i === grpOrders.length - 1} />
+                    ))}
                   </div>
                 </div>
               ))
