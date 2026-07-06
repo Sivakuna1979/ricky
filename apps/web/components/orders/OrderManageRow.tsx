@@ -50,6 +50,15 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
   const items = order.order_items ?? []
   const active = status === 'pending' || status === 'ready'
 
+  // Free notification: open WhatsApp / Messages on the owner's phone with the
+  // message pre-written — sending costs nothing.
+  const ref = (order.order_number ?? order.id.slice(0, 8)).toUpperCase()
+  const firstName = (order.guest_name ?? '').split(' ')[0]
+  const readyMsg = `Hi${firstName ? ` ${firstName}` : ''}! Your order #${ref} is READY to collect${order.pickup_location ? ` at ${order.pickup_location}` : ''}. See you soon! 🍟`
+  const waPhone = (order.guest_phone ?? '').replace(/[^\d]/g, '').replace(/^0/, '44')
+  const waLink = `https://wa.me/${waPhone}?text=${encodeURIComponent(readyMsg)}`
+  const smsLink = `sms:${order.guest_phone}?&body=${encodeURIComponent(readyMsg)}`
+
   return (
     <div style={{ borderBottom: isLast ? 'none' : '1px solid #f3f4f6' }}>
       <div onClick={() => setOpen(o => !o)} style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 18px', cursor:'pointer', flexWrap:'wrap' }}>
@@ -129,6 +138,20 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
           )}
           {status === 'cancelled' && (
             <div style={{ fontSize:13, fontWeight:700, color:'#991b1b' }}>✕ Cancelled</div>
+          )}
+          {/* Free notify options — send from your own phone */}
+          {order.guest_phone && (status === 'ready' || status === 'pending') && (
+            <div style={{ display:'flex', gap:8, marginTop:10, alignItems:'center' }}>
+              <span style={{ fontSize:11, fontWeight:700, color:'#888' }}>NOTIFY FREE:</span>
+              <a href={waLink} target="_blank" rel="noopener noreferrer"
+                style={{ flex:1, textAlign:'center', padding:'9px', borderRadius:10, background:'#25d366', color:'#fff', fontWeight:800, fontSize:13, textDecoration:'none' }}>
+                💬 WhatsApp
+              </a>
+              <a href={smsLink}
+                style={{ flex:1, textAlign:'center', padding:'9px', borderRadius:10, background:'#0ea5e9', color:'#fff', fontWeight:800, fontSize:13, textDecoration:'none' }}>
+                💬 Text (SMS)
+              </a>
+            </div>
           )}
           {smsNote && <div style={{ fontSize:13, fontWeight:700, color: smsNote.startsWith('📱') ? '#059669' : '#b45309', marginTop:8 }}>{smsNote}</div>}
           {error && <div style={{ fontSize:13, fontWeight:700, color:'#ef4444', marginTop:8 }}>⚠️ {error}</div>}
