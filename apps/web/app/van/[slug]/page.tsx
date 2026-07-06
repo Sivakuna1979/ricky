@@ -20,6 +20,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const [pickupStop, setPickupStop] = useState<any>(null)
   const [pickupTime, setPickupTime] = useState('')
   const [pickupDayOffset, setPickupDayOffset] = useState(0) // 0=today, 1=tomorrow, ...
+  const [schedViewDay, setSchedViewDay] = useState(0)       // day offset shown in the public schedule
 
   // Next 7 days: label + weekday index (0=Mon..6=Sun) + date string
   const pickupDays = Array.from({ length: 7 }, (_, i) => {
@@ -317,30 +318,52 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         </a>
       </div>
 
-      {/* Weekly Schedule — all 7 days always shown */}
+      {/* Schedule — calendar day tabs, one day's stops at a time */}
       <div style={{ padding:'0 16px 20px' }}>
-        <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>📍 Where We'll Be This Week</h2>
-        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-          {[0,1,2,3,4,5,6].map(day => {
-            const stops = schedule.filter(s => s.day_of_week === day).slice().sort((a, b) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
-            const isToday = day === todayIdx
+        <h2 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:'0 0 12px' }}>📍 Where We'll Be</h2>
+        <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:10 }}>
+          {Array.from({ length: 7 }, (_, i) => {
+            const d = new Date()
+            d.setDate(d.getDate() + i)
+            const dow = (d.getDay() + 6) % 7
+            const hasStops = schedule.some(s => s.day_of_week === dow)
+            const sel = schedViewDay === i
+            const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'short' })
+            const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
             return (
-              <div key={day} style={{ background: isToday ? 'rgba(249,115,22,0.1)' : '#0d1427', border: isToday ? '1px solid rgba(249,115,22,0.4)' : '1px solid #1e2a45', borderRadius:10, padding:'10px 14px' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: stops.length > 0 ? 6 : 0 }}>
-                  <span style={{ fontWeight:800, fontSize:13, color: isToday ? '#f97316' : '#6b7280', minWidth:36 }}>{DAYS[day].slice(0,3)}</span>
-                  {isToday && <span style={{ background:'#f97316', color:'#fff', fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6 }}>TODAY</span>}
-                  {stops.length === 0 && <span style={{ fontSize:12, color:'#374151' }}>—</span>}
-                </div>
-                {stops.map((stop, i) => (
-                  <div key={i} style={{ fontSize:13, color:'#e5e7eb', paddingLeft:44, lineHeight:1.7 }}>
-                    <span style={{ fontWeight:700 }}>{stop.location_name}</span>
-                    <span style={{ color:'#6b7280' }}> · {stop.arrival_time}–{stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</span>
-                  </div>
-                ))}
-              </div>
+              <button key={i} onClick={() => setSchedViewDay(i)}
+                style={{ flexShrink:0, padding:'8px 12px', borderRadius:10, cursor:'pointer', textAlign:'center',
+                  border: sel ? '1px solid #f97316' : '1px solid #1e2a45',
+                  background: sel ? 'rgba(249,115,22,0.15)' : '#0d1427',
+                  color: sel ? '#f97316' : hasStops ? '#e5e7eb' : '#374151' }}>
+                <div style={{ fontSize:12, fontWeight:800 }}>{label}</div>
+                <div style={{ fontSize:10, color: sel ? '#fdba74' : '#6b7280' }}>{dateLabel}</div>
+              </button>
             )
           })}
         </div>
+        {(() => {
+          const d = new Date()
+          d.setDate(d.getDate() + schedViewDay)
+          const dow = (d.getDay() + 6) % 7
+          const stops = schedule.filter(s => s.day_of_week === dow).slice().sort((a, b) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
+          return (
+            <div style={{ background: schedViewDay === 0 ? 'rgba(249,115,22,0.08)' : '#0d1427', border: schedViewDay === 0 ? '1px solid rgba(249,115,22,0.35)' : '1px solid #1e2a45', borderRadius:12, padding:'12px 14px' }}>
+              {stops.length === 0 && (
+                <div style={{ fontSize:13, color:'#6b7280', fontStyle:'italic' }}>Not out on this day 🛌</div>
+              )}
+              {stops.map((stop, i) => (
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom: i < stops.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                  <span style={{ fontSize:12, color:'#f97316', fontWeight:800, minWidth:42 }}>{stop.arrival_time}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:700, color:'#e5e7eb' }}>{stop.location_name}</div>
+                    <div style={{ fontSize:11, color:'#6b7280' }}>until {stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Order Online banner */}
