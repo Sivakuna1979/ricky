@@ -29,12 +29,29 @@ export default function VansPage() {
     const reader = new FileReader()
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string
-      const [meta, data] = dataUrl.split(',')
-      const mediaType = meta.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
-      setDesignImage({ data, mediaType, preview: dataUrl })
-      setDesignError('')
+      // Downscale on-device so big phone photos don't exceed upload limits.
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 1400
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        const jpeg = canvas.toDataURL('image/jpeg', 0.85)
+        setDesignImage({ data: jpeg.split(',')[1], mediaType: 'image/jpeg', preview: jpeg })
+        setDesignError('')
+      }
+      img.onerror = () => setDesignError('Could not read that image — try a different photo.')
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
+  }
+
+  // Some failures (e.g. upload too large) return non-JSON — never crash on parse.
+  const safeJson = async (res: any) => {
+    try { return await res.json() }
+    catch { return { error: res.status === 413 ? 'Photo too large — try again, it will be resized now.' : `Server error (${res.status})` } }
   }
 
   const scanDesign = async () => {
@@ -47,7 +64,7 @@ export default function VansPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: { data: designImage.data, mediaType: designImage.mediaType } }),
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (!res.ok || data.error) { setDesignError(data.error ?? 'Scan failed'); setDesignLoading(false); return }
       setDesignBrand(data.brand)
     } catch (e: any) {
@@ -65,7 +82,7 @@ export default function VansPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ van_id: designVan, brand: designBrand }),
     })
-    const data = await res.json()
+    const data = await safeJson(res)
     if (!res.ok || data.error) { setDesignError(data.error ?? 'Save failed'); setDesignSaving(false); return }
     setVans(prev => prev.map(v => v.id === designVan ? { ...v, brand: designBrand } : v))
     setDesignSaved(true)
