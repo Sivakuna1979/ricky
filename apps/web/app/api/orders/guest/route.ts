@@ -2,22 +2,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const SB_URL = () => process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-const SB_KEY = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const ANON_KEY = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const SERVICE_KEY = () => process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
-async function sbPost(table: string, body: any) {
+async function sbPostWith(key: string, table: string, body: any) {
   const res = await fetch(`${SB_URL()}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
-      apikey: SB_KEY(),
-      Authorization: `Bearer ${SB_KEY()}`,
+      apikey: key,
+      Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
       Prefer: 'return=representation',
     },
     body: JSON.stringify(body),
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(Array.isArray(data) ? data[0]?.message : (data.message ?? JSON.stringify(data)))
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err: any = new Error(Array.isArray(data) ? data[0]?.message : (data.message ?? JSON.stringify(data)))
+    err.status = res.status
+    throw err
+  }
   return Array.isArray(data) ? data[0] : data
+}
+
+// Try the service key first (bypasses RLS); if it's missing or invalid,
+// fall back to the anon key (works via the orders_guest_insert policy).
+async function sbPost(table: string, body: any) {
+  const svc = SERVICE_KEY()
+  if (svc && svc !== ANON_KEY()) {
+    try {
+      return await sbPostWith(svc, table, body)
+    } catch (e: any) {
+      if (e.status !== 401 && e.status !== 403) throw e
+    }
+  }
+  return sbPostWith(ANON_KEY(), table, body)
 }
 
 export async function POST(req: NextRequest) {
