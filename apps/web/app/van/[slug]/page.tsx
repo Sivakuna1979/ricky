@@ -19,6 +19,18 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const [form, setForm]           = useState({ name:'', phone:'', notes:'' })
   const [pickupStop, setPickupStop] = useState<any>(null)
   const [pickupTime, setPickupTime] = useState('')
+  const [pickupDayOffset, setPickupDayOffset] = useState(0) // 0=today, 1=tomorrow, ...
+
+  // Next 7 days: label + weekday index (0=Mon..6=Sun) + date string
+  const pickupDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() + i)
+    const dow = (d.getDay() + 6) % 7
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'short' })
+    const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    return { offset: i, dow, label, dateLabel }
+  })
+  const selectedPickupDay = pickupDays[pickupDayOffset]
   const [placing, setPlacing]     = useState(false)
   const [orderNum, setOrderNum]   = useState('')
 
@@ -48,8 +60,9 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const placeOrder = async () => {
     if (!form.name || !form.phone) return
     setPlacing(true)
+    const pickupDayLabel = pickupDayOffset === 0 ? '' : ` on ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`
     const pickupNote = pickupStop
-      ? `Pickup: ${pickupStop.location_name}${pickupTime ? ` around ${pickupTime}` : ''}`
+      ? `Pickup: ${pickupStop.location_name}${pickupDayLabel}${pickupTime ? ` around ${pickupTime}` : ''}`
       : ''
     const combinedNotes = [pickupNote, form.notes].filter(Boolean).join(' — ')
     const res = await fetch('/api/orders/guest', {
@@ -62,7 +75,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         customer_phone: form.phone,
         notes: combinedNotes || null,
         pickup_location: pickupStop?.location_name ?? null,
-        pickup_time: pickupTime || null,
+        pickup_time: pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`),
         items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         subtotal: cartTotal,
         total: cartTotal,
@@ -114,7 +127,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       <div style={{ fontSize:28, fontWeight:900, color:'#f97316', marginBottom:24 }}>#{orderNum}</div>
       {pickupStop && (
         <div style={{ background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.3)', borderRadius:12, padding:'12px 20px', marginBottom:16, textAlign:'center' }}>
-          <div style={{ fontSize:13, color:'#fdba74', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
+          <div style={{ fontSize:13, color:'#fdba74', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupDayOffset > 0 ? ` · ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}` : ''}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
         </div>
       )}
       <p style={{ color:'#9ca3af', fontSize:14, maxWidth:300, lineHeight:1.6, marginBottom:32 }}>
@@ -150,10 +163,10 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           <span>Total</span><span>£{cartTotal.toFixed(2)}</span>
         </div>
 
-        {/* Pickup location + time */}
+        {/* Pickup day + location + time */}
         {(() => {
-          const todayStops = schedule.filter((s: any) => s.day_of_week === (new Date().getDay() + 6) % 7).slice().sort((a: any, b: any) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
-          if (!todayStops.length) return null
+          if (!schedule.length) return null
+          const dayStops = schedule.filter((s: any) => s.day_of_week === selectedPickupDay.dow).slice().sort((a: any, b: any) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
           const genSlots = (stop: any) => {
             const slots: string[] = []
             const [ah, am] = stop.arrival_time.split(':').map(Number)
@@ -170,9 +183,33 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           }
           return (
             <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:'#f97316', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>🗓️ Which day?</div>
+              <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:8, marginBottom:12 }}>
+                {pickupDays.map(d => {
+                  const hasStops = schedule.some((s: any) => s.day_of_week === d.dow)
+                  const sel = pickupDayOffset === d.offset
+                  return (
+                    <button key={d.offset} disabled={!hasStops}
+                      onClick={() => { setPickupDayOffset(d.offset); setPickupStop(null); setPickupTime('') }}
+                      style={{ flexShrink:0, padding:'8px 12px', borderRadius:10, cursor: hasStops ? 'pointer' : 'default',
+                        border: sel ? '1px solid #f97316' : '1px solid #1e2a45',
+                        background: sel ? 'rgba(249,115,22,0.2)' : '#0d1427',
+                        color: !hasStops ? '#374151' : sel ? '#f97316' : '#9ca3af',
+                        opacity: hasStops ? 1 : 0.5, textAlign:'center' }}>
+                      <div style={{ fontSize:12, fontWeight:800 }}>{d.label}</div>
+                      <div style={{ fontSize:10 }}>{d.dateLabel}</div>
+                    </button>
+                  )
+                })}
+              </div>
+              {dayStops.length === 0 && (
+                <div style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', marginBottom:12 }}>No stops on this day — pick another day above</div>
+              )}
+              {dayStops.length > 0 && (
               <div style={{ fontSize:13, fontWeight:800, color:'#f97316', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>📍 Where to pick up?</div>
+              )}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {todayStops.map((stop: any) => {
+                {dayStops.map((stop: any) => {
                   const sel = pickupStop?.id === stop.id
                   const slots = sel ? genSlots(stop) : []
                   return (
