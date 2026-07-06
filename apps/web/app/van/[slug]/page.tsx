@@ -298,7 +298,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
 
       {/* Hero */}
       <div style={{ padding:'36px 20px 20px', textAlign:'center' }}>
-        <div style={{ fontSize:64, marginBottom:12, lineHeight:1 }}>{emoji}</div>
+        {brand?.logo ? (
+          <img src={brand.logo} alt={business.name} style={{ width:96, height:96, borderRadius:20, objectFit:'cover', marginBottom:12, border:'2px solid rgba(255,255,255,0.15)', boxShadow:'0 4px 16px rgba(0,0,0,0.4)' }} />
+        ) : (
+          <div style={{ fontSize:64, marginBottom:12, lineHeight:1 }}>{emoji}</div>
+        )}
         <h1 style={{ fontSize:28, fontWeight:900, margin:'0 0 10px', letterSpacing:-0.5 }}>{business.name}</h1>
         <div style={{ display:'inline-flex', alignItems:'center', gap:6, background: anyLive ? 'rgba(16,185,129,0.15)' : 'rgba(107,114,128,0.15)', border:`1px solid ${anyLive ? 'rgba(16,185,129,0.4)' : 'rgba(107,114,128,0.3)'}`, borderRadius:20, padding:'4px 12px', fontSize:12, fontWeight:700, color: anyLive ? '#6ee7b7' : '#9ca3af', marginBottom:10 }}>
           <div style={{ width:7, height:7, borderRadius:'50%', background: anyLive ? '#10b981' : '#4b5563', boxShadow: anyLive ? '0 0 6px #10b981' : 'none' }} />

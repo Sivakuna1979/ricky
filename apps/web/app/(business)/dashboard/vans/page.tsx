@@ -48,6 +48,29 @@ export default function VansPage() {
     reader.readAsDataURL(file)
   }
 
+  const pickLogo = (e: any) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 256
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        const logo = canvas.toDataURL('image/png')
+        setDesignBrand(b => ({ ...(b ?? { primary:'#f97316', secondary:'#ea580c', accent:'#fdba74', bg:'dark', logo_text:'' }), logo }))
+        setDesignError('')
+      }
+      img.onerror = () => setDesignError('Could not read that logo image.')
+      img.src = ev.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+
   // Some failures (e.g. upload too large) return non-JSON — never crash on parse.
   const safeJson = async (res: any) => {
     try { return await res.json() }
@@ -66,7 +89,7 @@ export default function VansPage() {
       })
       const data = await safeJson(res)
       if (!res.ok || data.error) { setDesignError(data.error ?? 'Scan failed'); setDesignLoading(false); return }
-      setDesignBrand(data.brand)
+      setDesignBrand(b => ({ ...data.brand, ...(b?.logo ? { logo: b.logo } : {}) }))
     } catch (e: any) {
       setDesignError(e.message)
     }
@@ -234,6 +257,26 @@ export default function VansPage() {
                           </div>
                         )}
 
+                        {/* Logo upload — independent of colour capture */}
+                        <div style={{ background:'#fff', borderRadius:12, padding:14, marginBottom:12, border:'1px solid #ede9fe', display:'flex', alignItems:'center', gap:12 }}>
+                          {designBrand?.logo ? (
+                            <img src={designBrand.logo} alt="logo" style={{ width:56, height:56, borderRadius:12, objectFit:'cover', border:'1px solid #e5e7eb' }} />
+                          ) : (
+                            <div style={{ width:56, height:56, borderRadius:12, background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>🏷️</div>
+                          )}
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:13, fontWeight:800, color:'#111' }}>Your Logo</div>
+                            <div style={{ fontSize:11, color:'#888' }}>Shown at the top of your public page</div>
+                          </div>
+                          <label style={{ padding:'8px 14px', borderRadius:8, background:'#7c3aed', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                            {designBrand?.logo ? 'Change' : 'Upload'}
+                            <input type="file" accept="image/*" onChange={pickLogo} style={{ display:'none' }} />
+                          </label>
+                          {designBrand?.logo && (
+                            <button onClick={() => setDesignBrand(b => { const { logo, ...rest } = b; return rest })} style={{ background:'none', border:'none', color:'#ef4444', fontSize:18, cursor:'pointer', padding:'0 2px' }}>×</button>
+                          )}
+                        </div>
+
                         {designBrand && (
                           <div style={{ background:'#fff', borderRadius:12, padding:14, marginBottom:12, border:'1px solid #ede9fe' }}>
                             <div style={{ fontSize:12, fontWeight:700, color:'#888', marginBottom:8 }}>YOUR BRAND — tap a colour to tweak</div>
@@ -247,9 +290,12 @@ export default function VansPage() {
                               ))}
                             </div>
                             <div style={{ borderRadius:12, overflow:'hidden', border:'1px solid #ede9fe', marginBottom:12 }}>
-                              <div style={{ padding:'14px 16px', background: `linear-gradient(135deg, ${designBrand.primary}, ${designBrand.secondary})` }}>
-                                <div style={{ fontWeight:900, fontSize:16, color:'#fff' }}>{designBrand.logo_text || van.name}</div>
-                                <div style={{ fontSize:11, color:'rgba(255,255,255,0.85)' }}>Preview of your page header</div>
+                              <div style={{ padding:'14px 16px', background: `linear-gradient(135deg, ${designBrand.primary}, ${designBrand.secondary})`, display:'flex', alignItems:'center', gap:10 }}>
+                                {designBrand.logo && <img src={designBrand.logo} alt="logo" style={{ width:36, height:36, borderRadius:8, objectFit:'cover' }} />}
+                                <div>
+                                  <div style={{ fontWeight:900, fontSize:16, color:'#fff' }}>{designBrand.logo_text || van.name}</div>
+                                  <div style={{ fontSize:11, color:'rgba(255,255,255,0.85)' }}>Preview of your page header</div>
+                                </div>
                               </div>
                               <div style={{ padding:'10px 16px', background: designBrand.bg === 'light' ? '#ffffff' : '#0a0f1e', display:'flex', justifyContent:'space-between' }}>
                                 <span style={{ fontSize:13, fontWeight:700, color: designBrand.bg === 'light' ? '#111' : '#e5e7eb' }}>Cod & Chips</span>
