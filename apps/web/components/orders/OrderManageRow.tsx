@@ -15,6 +15,7 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
   const [payment, setPayment] = useState(order.payment_method ?? 'cash_at_van')
   const [busy, setBusy]       = useState(false)
   const [error, setError]     = useState('')
+  const [smsNote, setSmsNote] = useState('')
 
   const update = async (fields: any) => {
     setBusy(true)
@@ -26,6 +27,10 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
     })
     const data = await res.json().catch(() => ({ error: `Server error (${res.status})` }))
     if (!res.ok || data.error) { setError(data.error ?? 'Update failed'); setBusy(false); return false }
+    if (data.sms === 'sent') setSmsNote('📱 Text sent to customer')
+    else if (data.sms === 'not_configured') setSmsNote('ℹ️ SMS not set up yet — customer was not texted')
+    else if (String(data.sms ?? '').startsWith('sms_failed')) setSmsNote(`⚠️ Text failed: ${data.sms.replace('sms_failed: ', '')}`)
+    else setSmsNote('')
     setBusy(false)
     return true
   }
@@ -125,6 +130,7 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
           {status === 'cancelled' && (
             <div style={{ fontSize:13, fontWeight:700, color:'#991b1b' }}>✕ Cancelled</div>
           )}
+          {smsNote && <div style={{ fontSize:13, fontWeight:700, color: smsNote.startsWith('📱') ? '#059669' : '#b45309', marginTop:8 }}>{smsNote}</div>}
           {error && <div style={{ fontSize:13, fontWeight:700, color:'#ef4444', marginTop:8 }}>⚠️ {error}</div>}
         </div>
       )}
