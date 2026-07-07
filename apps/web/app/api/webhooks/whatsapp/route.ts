@@ -56,16 +56,19 @@ async function resolveChannel(admin: any, phoneNumberId: string) {
   return null
 }
 
-function buildPrompt({ menu, stops, pendingOrder, profileName, text }: any) {
-  const stopsList = stops.length
-    ? stops.map((s: any) => `- ${s.location_name} (${s.arrival_time}–${s.departure_time})`).join('\n')
-    : '(no stops scheduled today)'
+// weekSchedule: [{ dayLabel: 'Today (Tuesday 7 Jul)', stops: [...] }, ...]
+function buildPrompt({ menu, weekSchedule, pendingOrder, profileName, text }: any) {
+  const scheduleList = weekSchedule.length
+    ? weekSchedule.map((d: any) =>
+        `${d.dayLabel}:\n${d.stops.length ? d.stops.map((s: any) => `  - ${s.location_name} (${s.arrival_time}–${s.departure_time})`).join('\n') : '  (van not out)'}`
+      ).join('\n')
+    : '(no schedule available)'
   const missingName = pendingOrder && (!pendingOrder.guest_name || pendingOrder.guest_name === 'WhatsApp customer')
   const pendingBit = pendingOrder
-    ? `\nIMPORTANT CONTEXT: this customer has an open order #${pendingOrder.order_number} (£${Number(pendingOrder.total).toFixed(2)}) that is still missing ${[!pendingOrder.pickup_location && 'a pickup stop', !pendingOrder.pickup_time && 'a pickup time', missingName && 'their name'].filter(Boolean).join(' and ')}. If this message provides any of those details (a stop name, a time, and/or their name), use action "pickup_details".`
+    ? `\nIMPORTANT CONTEXT: this customer has an open order #${pendingOrder.order_number} (£${Number(pendingOrder.total).toFixed(2)}) that is still missing ${[!pendingOrder.pickup_location && 'a pickup stop', !pendingOrder.pickup_time && 'a pickup time', missingName && 'their name'].filter(Boolean).join(' and ')}. If this message provides any of those details (a day, a stop name, a time, and/or their name), use action "pickup_details".`
     : ''
-  return `You are the WhatsApp assistant for a food van. Today's stops:
-${stopsList}
+  return `You are the WhatsApp assistant for a food van. The van's stops for the next 7 days:
+${scheduleList}
 
 Menu (id | name | price):
 ${menu.map((m: any) => `${m.id} | ${m.name} | £${Number(m.price).toFixed(2)}`).join('\n')}
@@ -75,16 +78,19 @@ Return ONLY valid JSON:
 {
   "action": "order" | "pickup_details" | "chat",
   "items": [{"menu_item_id":"...or null","name":"...","quantity":1,"price":0.0}],
-  "pickup_location": "",   // match to one of today's stop names when possible
-  "pickup_time": "",       // e.g. "18:30" or "around 7pm"
+  "pickup_day": "",        // the day label EXACTLY as written above (e.g. "Wednesday 9 Jul") if the customer names or implies a day; "" otherwise
+  "pickup_location": "",   // exact stop name from the schedule above when possible
+  "pickup_time": "",       // e.g. "18:30" or "around 7pm"; if they pick a stop, default to that stop's arrival time
   "customer_name": "",     // if the customer states their name (e.g. "it's John", "name is Sarah")
   "notes": ""
 }
 Rules:
 - action "order": the message contains food items to order. Match items to the menu (use its id/name/price); unknown items get menu_item_id null and price 0; "two cod" means quantity 2.
-- action "pickup_details": no new food items, but the message gives a stop, a time and/or their name for the open order (e.g. "Tesco's at 7", "the 6:30 one", "Link Lane, John", "it's Sarah").
+- action "pickup_details": no new food items, but the message gives a day, a stop, a time and/or their name for the open order. Examples: "Tesco's at 7", "the 6:30 one", "I want Wednesday", "Wednesday 1st stop", "tomorrow", "it's Sarah".
 - action "chat": anything else (greeting, question).
-- If the customer names a place, match it to the closest of today's stops and put that exact stop name in pickup_location.
+- "Wednesday 1st stop" means the FIRST stop listed under Wednesday — set pickup_day, pickup_location and pickup_time from that stop.
+- "tomorrow" or a weekday name selects that day from the schedule. NEVER pick a stop from a different day than the customer asked for.
+- If they name a day with no stop yet, set pickup_day only and leave pickup_location "".
 - Keep special requests in notes.
 
 WhatsApp message from ${profileName || 'customer'}:
@@ -113,11 +119,12 @@ async function askClaude(prompt: string) {
 }
 
 // One short question covering everything missing — never an interrogation.
-function followUpQuestion(stops: any[], needs: { location: boolean, time: boolean, name: boolean }) {
+function followUpQuestion(stops: any[], needs: { location: boolean, time: boolean, name: boolean }, dayLabel = '') {
   const namePart = needs.name ? ' and your name' : ''
+  const dayWord = dayLabel && !String(dayLabel).startsWith('Today') ? `On ${dayLabel} we're` : `Today we're`
   if (needs.location && stops.length) {
     const list = stops.map((s: any) => `📍 ${s.location_name} (${s.arrival_time}–${s.departure_time})`).join('\n')
-    return `One last thing — where would you like to collect? Today we're at:\n${list}\nJust reply with the stop${needs.time ? ', a rough time' : ''}${namePart} 😊`
+    return `One last thing — where would you like to collect? ${dayWord} at:\n${list}\nJust reply with the stop${needs.time ? ', a rough time' : ''}${namePart} — or tell us another day 😊`
   }
   if (needs.time) return `One last thing — roughly what time would you like to collect${namePart}? 😊`
   return `One last thing — what name should we put on the order? 😊`
@@ -168,11 +175,25 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
     if (!van) return
     const vanId = van.id
 
-    const todayDow = (new Date().getDay() + 6) % 7
-    const [{ data: menu }, { data: stops }] = await Promise.all([
+    const [{ data: menu }, { data: allStops }] = await Promise.all([
       admin.from('menu_items').select('id, name, price').eq('van_id', vanId).limit(200),
-      admin.from('van_schedule').select('location_name, arrival_time, departure_time').eq('van_id', vanId).eq('day_of_week', todayDow).order('arrival_time'),
+      admin.from('van_schedule').select('location_name, arrival_time, departure_time, day_of_week').eq('van_id', vanId).order('day_of_week').order('arrival_time'),
     ])
+
+    // Next 7 days with their stops — so "Wednesday", "tomorrow" etc. work.
+    const weekSchedule = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date()
+      d.setDate(d.getDate() + i)
+      const dow = (d.getDay() + 6) % 7
+      const dateBit = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
+      const dayLabel = i === 0 ? `Today (${dateBit})` : i === 1 ? `Tomorrow (${dateBit})` : dateBit
+      return { dayLabel, stops: (allStops ?? []).filter((s: any) => s.day_of_week === dow) }
+    })
+    const todayStops = weekSchedule[0].stops
+    const stopsForDay = (dayLabel: string) =>
+      (weekSchedule.find(d => d.dayLabel === dayLabel) ?? weekSchedule.find(d => dayLabel && d.dayLabel.toLowerCase().includes(String(dayLabel).toLowerCase().split(' ')[0])))?.stops ?? todayStops
+    // Store the day inside pickup_time so the dashboard shows it: "Wednesday 9 Jul · 16:30"
+    const dayForRecord = (dayLabel: string) => !dayLabel || dayLabel.startsWith('Today') ? '' : dayLabel.replace(/^Tomorrow \((.+)\)$/, '$1')
 
     // Open order from this customer still missing details (last 3h)
     const { data: pendingOrder } = await admin
@@ -187,25 +208,28 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       .limit(1)
       .maybeSingle()
 
-    const parsed = await askClaude(buildPrompt({ menu: menu ?? [], stops: stops ?? [], pendingOrder, profileName, text }))
+    const parsed = await askClaude(buildPrompt({ menu: menu ?? [], weekSchedule, pendingOrder, profileName, text }))
     const knownName = parsed.customer_name?.trim() || (profileName && profileName !== 'WhatsApp customer' ? profileName : '')
     const firstName = knownName ? knownName.split(' ')[0] : ''
+    const dayBit = dayForRecord(parsed.pickup_day ?? '')
+    const composedTime = parsed.pickup_time ? `${dayBit ? `${dayBit} · ` : ''}${parsed.pickup_time}` : (dayBit || '')
 
     // ---- Customer is answering the follow-up question for an open order ----
     if (parsed.action === 'pickup_details' && pendingOrder) {
       const updates: any = {}
       if (parsed.pickup_location) updates.pickup_location = parsed.pickup_location
-      if (parsed.pickup_time) updates.pickup_time = parsed.pickup_time
+      if (composedTime) updates.pickup_time = composedTime
       if (parsed.customer_name?.trim()) updates.guest_name = parsed.customer_name.trim()
       if (Object.keys(updates).length) {
         await admin.from('orders').update(updates).eq('id', pendingOrder.id)
       }
+      const dayStops = stopsForDay(parsed.pickup_day ?? '')
       const loc = updates.pickup_location ?? pendingOrder.pickup_location
       const time = updates.pickup_time ?? pendingOrder.pickup_time
       const name = updates.guest_name ?? (pendingOrder.guest_name !== 'WhatsApp customer' ? pendingOrder.guest_name : '')
-      const stillNeeds = { location: !loc && (stops ?? []).length > 0, time: !time, name: !name }
+      const stillNeeds = { location: !loc && dayStops.length > 0, time: !time, name: !name }
       if (stillNeeds.location || stillNeeds.name) {
-        await sendWhatsApp(channel, from, followUpQuestion(stops ?? [], stillNeeds))
+        await sendWhatsApp(channel, from, followUpQuestion(dayStops, stillNeeds, parsed.pickup_day))
         return
       }
       await admin.from('whatsapp_messages').update({ outcome: 'pickup_updated', order_id: pendingOrder.id }).eq('id', msg.id)
@@ -231,7 +255,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         guest_phone: `+${from}`,
         notes: `[WhatsApp auto-order]${parsed.notes ? ' ' + parsed.notes : ''}`,
         pickup_location: parsed.pickup_location || null,
-        pickup_time: parsed.pickup_time || null,
+        pickup_time: composedTime || null,
         subtotal: total,
         total,
         payment_method: 'cash_at_van',
@@ -246,19 +270,20 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       await admin.from('whatsapp_messages').update({ outcome: 'ordered', order_id: order.id }).eq('id', msg.id)
 
       const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — £${(i.price * i.quantity).toFixed(2)}`).join('\n')
+      const dayStops = stopsForDay(parsed.pickup_day ?? '')
       const needs = {
-        location: !parsed.pickup_location && (stops ?? []).length > 0,
+        location: !parsed.pickup_location && dayStops.length > 0,
         time: !parsed.pickup_time,
         name: !knownName,
       }
 
       if (!needs.location && !needs.time && !needs.name) {
         await sendWhatsApp(channel, from,
-          `✅ Order received${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${parsed.pickup_time}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
+          `✅ Order received${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${composedTime}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       } else {
         // Order saved, but ask ONE simple question covering whatever is missing.
         await sendWhatsApp(channel, from,
-          `✅ Got your order${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${followUpQuestion(stops ?? [], needs)}`)
+          `✅ Got your order${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${followUpQuestion(dayStops, needs, parsed.pickup_day)}`)
       }
       return
     }
