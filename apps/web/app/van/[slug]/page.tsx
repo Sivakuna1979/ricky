@@ -73,6 +73,41 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const cartTotal = cartItems.reduce((s: number, i: any) => s + i.price * (cart[i.id] ?? 0), 0)
   const cartCount = Object.values(cart).reduce((s: number, n) => s + (n as number), 0)
 
+  // Order via WhatsApp: log the order in the dashboard, then open WhatsApp
+  // with the full order pre-written so the customer just taps send.
+  const orderViaWhatsApp = async () => {
+    const waNum = (data?.business?.phone || data?.vans?.[0]?.phone || '').replace(/[^\d]/g, '').replace(/^0/, '44')
+    if (!waNum) return
+    const dayBit = pickupDayOffset === 0 ? 'today' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`
+    const lines = [
+      `Hi ${data.business.name}! I'd like to order:`,
+      ...cartItems.map((i: any) => `• ${cart[i.id]}x ${i.name} — £${(i.price * cart[i.id]).toFixed(2)}`),
+      `Total: £${cartTotal.toFixed(2)}`,
+      pickupStop ? `Pickup: ${pickupStop.location_name} ${dayBit}${pickupTime ? ` around ${pickupTime}` : ''}` : '',
+      form.name ? `Name: ${form.name}` : '',
+      form.notes ? `Notes: ${form.notes}` : '',
+    ].filter(Boolean)
+    // Log it in the dashboard too (best effort — WhatsApp opens regardless)
+    fetch('/api/orders/guest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        van_id: data.vans?.[0]?.id,
+        business_id: data.business?.id,
+        customer_name: form.name || 'WhatsApp customer',
+        customer_phone: form.phone || 'via WhatsApp',
+        notes: `[WhatsApp order] ${form.notes ?? ''}`.trim(),
+        pickup_location: pickupStop?.location_name ?? null,
+        pickup_time: pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`),
+        items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
+        subtotal: cartTotal,
+        total: cartTotal,
+        payment_method: 'cash_at_van',
+      }),
+    }).catch(() => {})
+    window.open(`https://wa.me/${waNum}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
+  }
+
   const placeOrder = async () => {
     if (!form.name || !form.phone) return
     setPlacing(true)
@@ -132,6 +167,8 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const anyLive = vans?.some((v: any) => v.tracking_status === 'live')
   const mapsQuery = encodeURIComponent([business.name, business.city, business.postcode].filter(Boolean).join(' '))
   const phone = business.phone || vans?.[0]?.phone
+  // WhatsApp needs international digits: 07961... -> 447961...
+  const waNumber = phone ? String(phone).replace(/[^\d]/g, '').replace(/^0/, '44') : ''
   const todayIdx = (new Date().getDay() + 6) % 7
   const schedDays = [0,1,2,3,4,5,6].filter(d => schedule.some(s => s.day_of_week === d))
 
@@ -278,6 +315,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           💵 Payment: Cash at van — pay when you collect your order
         </div>
 
+        {(data?.business?.phone || data?.vans?.[0]?.phone) && (
+          <button onClick={orderViaWhatsApp} style={{ width:'100%', padding:'14px', borderRadius:14, border:'1px solid rgba(37,211,102,0.4)', background:'rgba(37,211,102,0.12)', color:'#4ade80', fontSize:15, fontWeight:800, cursor:'pointer', marginBottom:10 }}>
+            💬 Order via WhatsApp · £{cartTotal.toFixed(2)}
+          </button>
+        )}
         <button onClick={placeOrder} disabled={placing || !form.name || !form.phone} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background: placing ? 'color-mix(in srgb, var(--brand, #f97316) 50%, transparent)' : 'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', fontSize:16, fontWeight:800, cursor: placing ? 'wait' : 'pointer' }}>
           {placing ? 'Placing Order…' : `✅ Place Order · £${cartTotal.toFixed(2)}`}
         </button>
@@ -318,6 +360,12 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         {phone && (
           <a href={`tel:${phone}`} style={{ padding:'12px 20px', background:'rgba(16,185,129,0.15)', border:'1px solid rgba(16,185,129,0.3)', color:'#6ee7b7', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
             📞 Call
+          </a>
+        )}
+        {waNumber && (
+          <a href={`https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi ${business.name}! I'd like to place an order.`)}`} target="_blank" rel="noopener noreferrer"
+            style={{ padding:'12px 20px', background:'rgba(37,211,102,0.15)', border:'1px solid rgba(37,211,102,0.35)', color:'#4ade80', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
+            💬 WhatsApp
           </a>
         )}
         <a href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ padding:'12px 20px', background:'color-mix(in srgb, var(--brand, #f97316) 15%, transparent)', border:'1px solid color-mix(in srgb, var(--brand, #f97316) 30%, transparent)', color:'var(--accent, #fdba74)', borderRadius:12, textDecoration:'none', fontWeight:700, fontSize:14 }}>
