@@ -4,58 +4,70 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 
-async function getContext() {
+// GET — business owner sees only their connection STATUS (no credentials,
+// no technical ids). Setup itself is done by FoodTaxi staff via /api/admin.
+export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: 'Please sign in.' }, { status: 401 }) }
+  if (!user) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 })
+
   const { data: userRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
   const { data: biz } = userRow
     ? await supabase.from('businesses').select('id').eq('owner_id', userRow.id).maybeSingle()
     : { data: null }
-  if (!biz && user.email !== SUPER_ADMIN_EMAIL) {
-    return { error: NextResponse.json({ error: 'No business found for this account.' }, { status: 403 }) }
-  }
-  return { supabase, user, businessId: biz?.id }
+  if (!biz) return NextResponse.json({ channel: null, requested: false })
+
+  const admin = await createAdminClient()
+  const { data: ch } = await admin
+    .from('whatsapp_channels')
+    .select('display_number, is_active')
+    .eq('business_id', biz.id)
+    .eq('is_active', true)
+    .maybeSingle()
+  const { data: reqRow } = await admin
+    .from('whatsapp_requests')
+    .select('id')
+    .eq('business_id', biz.id)
+    .eq('status', 'pending')
+    .limit(1)
+    .maybeSingle()
+
+  return NextResponse.json({
+    channel: ch ? { display_number: ch.display_number } : null,
+    requested: Boolean(reqRow),
+  })
 }
 
-export async function GET() {
-  const ctx = await getContext()
-  if (ctx.error) return ctx.error
-  const admin = await createAdminClient()
-  const { data } = await admin
-    .from('whatsapp_channels')
-    .select('id, van_id, phone_number_id, display_number, is_active, created_at')
-    .eq('business_id', ctx.businessId)
-    .maybeSingle()
-  // access_token intentionally never returned
-  return NextResponse.json({ channel: data ?? null })
+// PUT/DELETE — FoodTaxi staff only.
+async function requireStaff() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+    return { error: NextResponse.json({ error: 'Not authorized.' }, { status: 403 }) }
+  }
+  return {}
 }
 
 export async function PUT(req: NextRequest) {
   try {
-    const ctx = await getContext()
-    if (ctx.error) return ctx.error
-    const { van_id, phone_number_id, access_token, display_number } = await req.json()
-    if (!van_id || !phone_number_id) return NextResponse.json({ error: 'van_id and phone_number_id are required' }, { status: 400 })
-
-    // The van must belong to this business.
-    const admin = await createAdminClient()
-    const { data: van } = await admin.from('vans').select('id, business_id').eq('id', van_id).single()
-    if (!van || van.business_id !== ctx.businessId) {
-      return NextResponse.json({ error: 'That van does not belong to your business.' }, { status: 403 })
+    const gate = await requireStaff()
+    if (gate.error) return gate.error
+    const { business_id, van_id, phone_number_id, access_token, display_number, is_active } = await req.json()
+    if (!business_id || !van_id || !phone_number_id) {
+      return NextResponse.json({ error: 'business_id, van_id and phone_number_id are required' }, { status: 400 })
     }
 
+    const admin = await createAdminClient()
     const { data: existing } = await admin
-      .from('whatsapp_channels').select('id, access_token').eq('business_id', ctx.businessId).maybeSingle()
+      .from('whatsapp_channels').select('id, access_token').eq('business_id', business_id).maybeSingle()
 
     const row: any = {
-      business_id: ctx.businessId,
+      business_id,
       van_id,
       phone_number_id: String(phone_number_id).trim(),
       display_number: display_number ?? '',
-      is_active: true,
+      is_active: is_active ?? true,
     }
-    // Only overwrite the token when a new one is provided.
     if (access_token?.trim()) row.access_token = access_token.trim()
     else if (existing?.access_token) row.access_token = existing.access_token
     else return NextResponse.json({ error: 'access_token is required the first time' }, { status: 400 })
@@ -64,16 +76,21 @@ export async function PUT(req: NextRequest) {
       ? await admin.from('whatsapp_channels').update(row).eq('id', existing.id)
       : await admin.from('whatsapp_channels').insert(row)
     if (error) throw new Error(error.message)
+
+    // Mark any pending request as done.
+    await admin.from('whatsapp_requests').update({ status: 'done' }).eq('business_id', business_id).eq('status', 'pending')
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Failed to save' }, { status: 500 })
   }
 }
 
-export async function DELETE() {
-  const ctx = await getContext()
-  if (ctx.error) return ctx.error
+export async function DELETE(req: NextRequest) {
+  const gate = await requireStaff()
+  if (gate.error) return gate.error
+  const { business_id } = await req.json().catch(() => ({}))
+  if (!business_id) return NextResponse.json({ error: 'business_id required' }, { status: 400 })
   const admin = await createAdminClient()
-  await admin.from('whatsapp_channels').delete().eq('business_id', ctx.businessId)
+  await admin.from('whatsapp_channels').delete().eq('business_id', business_id)
   return NextResponse.json({ ok: true })
 }
