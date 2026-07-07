@@ -156,6 +156,7 @@ export default function VansPage() {
     { icon: '📦', label: 'Orders',    href: '/dashboard/orders' },
     { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
     { icon: '💳', label: 'My Plan',   href: '/dashboard/billing' },
+  { icon: '💬', label: 'WhatsApp',  href: '/dashboard/whatsapp' },
     { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings' },
   ]
 
