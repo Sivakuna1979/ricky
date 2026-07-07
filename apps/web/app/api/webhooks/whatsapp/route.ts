@@ -60,8 +60,9 @@ function buildPrompt({ menu, stops, pendingOrder, profileName, text }: any) {
   const stopsList = stops.length
     ? stops.map((s: any) => `- ${s.location_name} (${s.arrival_time}–${s.departure_time})`).join('\n')
     : '(no stops scheduled today)'
+  const missingName = pendingOrder && (!pendingOrder.guest_name || pendingOrder.guest_name === 'WhatsApp customer')
   const pendingBit = pendingOrder
-    ? `\nIMPORTANT CONTEXT: this customer has an open order #${pendingOrder.order_number} (£${Number(pendingOrder.total).toFixed(2)}) that is still missing ${!pendingOrder.pickup_location ? 'a pickup stop' : ''}${!pendingOrder.pickup_location && !pendingOrder.pickup_time ? ' and ' : ''}${!pendingOrder.pickup_time ? 'a pickup time' : ''}. If this message provides those details (a stop name and/or a time), use action "pickup_details".`
+    ? `\nIMPORTANT CONTEXT: this customer has an open order #${pendingOrder.order_number} (£${Number(pendingOrder.total).toFixed(2)}) that is still missing ${[!pendingOrder.pickup_location && 'a pickup stop', !pendingOrder.pickup_time && 'a pickup time', missingName && 'their name'].filter(Boolean).join(' and ')}. If this message provides any of those details (a stop name, a time, and/or their name), use action "pickup_details".`
     : ''
   return `You are the WhatsApp assistant for a food van. Today's stops:
 ${stopsList}
@@ -76,11 +77,12 @@ Return ONLY valid JSON:
   "items": [{"menu_item_id":"...or null","name":"...","quantity":1,"price":0.0}],
   "pickup_location": "",   // match to one of today's stop names when possible
   "pickup_time": "",       // e.g. "18:30" or "around 7pm"
+  "customer_name": "",     // if the customer states their name (e.g. "it's John", "name is Sarah")
   "notes": ""
 }
 Rules:
 - action "order": the message contains food items to order. Match items to the menu (use its id/name/price); unknown items get menu_item_id null and price 0; "two cod" means quantity 2.
-- action "pickup_details": no new food items, but the message gives a stop and/or time for the open order (e.g. "Tesco's at 7", "the 6:30 one", "Link Lane").
+- action "pickup_details": no new food items, but the message gives a stop, a time and/or their name for the open order (e.g. "Tesco's at 7", "the 6:30 one", "Link Lane, John", "it's Sarah").
 - action "chat": anything else (greeting, question).
 - If the customer names a place, match it to the closest of today's stops and put that exact stop name in pickup_location.
 - Keep special requests in notes.
@@ -110,13 +112,15 @@ async function askClaude(prompt: string) {
   return JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
 }
 
-// One short question, never an interrogation.
-function pickupQuestion(stops: any[], missing: 'both' | 'location' | 'time') {
-  if (missing !== 'time' && stops.length) {
+// One short question covering everything missing — never an interrogation.
+function followUpQuestion(stops: any[], needs: { location: boolean, time: boolean, name: boolean }) {
+  const namePart = needs.name ? ' and your name' : ''
+  if (needs.location && stops.length) {
     const list = stops.map((s: any) => `📍 ${s.location_name} (${s.arrival_time}–${s.departure_time})`).join('\n')
-    return `One last thing — where would you like to collect? Today we're at:\n${list}\nJust reply with the stop${missing === 'both' ? ' and a rough time' : ''} 😊`
+    return `One last thing — where would you like to collect? Today we're at:\n${list}\nJust reply with the stop${needs.time ? ', a rough time' : ''}${namePart} 😊`
   }
-  return `One last thing — roughly what time would you like to collect? 😊`
+  if (needs.time) return `One last thing — roughly what time would you like to collect${namePart}? 😊`
+  return `One last thing — what name should we put on the order? 😊`
 }
 
 export async function POST(req: NextRequest) {
@@ -170,39 +174,43 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       admin.from('van_schedule').select('location_name, arrival_time, departure_time').eq('van_id', vanId).eq('day_of_week', todayDow).order('arrival_time'),
     ])
 
-    // Open order from this customer still missing pickup details (last 3h)
+    // Open order from this customer still missing details (last 3h)
     const { data: pendingOrder } = await admin
       .from('orders')
-      .select('id, order_number, total, pickup_location, pickup_time')
+      .select('id, order_number, total, pickup_location, pickup_time, guest_name')
       .eq('van_id', vanId)
       .eq('guest_phone', `+${from}`)
       .eq('status', 'pending')
-      .or('pickup_location.is.null,pickup_time.is.null')
+      .or('pickup_location.is.null,pickup_time.is.null,guest_name.eq.WhatsApp customer')
       .gte('created_at', new Date(Date.now() - 3 * 3600e3).toISOString())
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
     const parsed = await askClaude(buildPrompt({ menu: menu ?? [], stops: stops ?? [], pendingOrder, profileName, text }))
-    const firstName = profileName ? profileName.split(' ')[0] : ''
+    const knownName = parsed.customer_name?.trim() || (profileName && profileName !== 'WhatsApp customer' ? profileName : '')
+    const firstName = knownName ? knownName.split(' ')[0] : ''
 
-    // ---- Customer is answering the pickup question for an open order ----
+    // ---- Customer is answering the follow-up question for an open order ----
     if (parsed.action === 'pickup_details' && pendingOrder) {
       const updates: any = {}
       if (parsed.pickup_location) updates.pickup_location = parsed.pickup_location
       if (parsed.pickup_time) updates.pickup_time = parsed.pickup_time
+      if (parsed.customer_name?.trim()) updates.guest_name = parsed.customer_name.trim()
       if (Object.keys(updates).length) {
         await admin.from('orders').update(updates).eq('id', pendingOrder.id)
       }
       const loc = updates.pickup_location ?? pendingOrder.pickup_location
       const time = updates.pickup_time ?? pendingOrder.pickup_time
-      if (!loc && (stops ?? []).length) {
-        await sendWhatsApp(channel, from, pickupQuestion(stops ?? [], 'location'))
+      const name = updates.guest_name ?? (pendingOrder.guest_name !== 'WhatsApp customer' ? pendingOrder.guest_name : '')
+      const stillNeeds = { location: !loc && (stops ?? []).length > 0, time: !time, name: !name }
+      if (stillNeeds.location || stillNeeds.name) {
+        await sendWhatsApp(channel, from, followUpQuestion(stops ?? [], stillNeeds))
         return
       }
       await admin.from('whatsapp_messages').update({ outcome: 'pickup_updated', order_id: pendingOrder.id }).eq('id', msg.id)
       await sendWhatsApp(channel, from,
-        `Perfect${firstName ? `, ${firstName}` : ''}! ✅ Order #${pendingOrder.order_number} confirmed.\n📍 ${loc ?? 'the van'}${time ? ` · ${time}` : ''}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
+        `Perfect${name ? `, ${name.split(' ')[0]}` : ''}! ✅ Order #${pendingOrder.order_number} confirmed.\n📍 ${loc ?? 'the van'}${time ? ` · ${time}` : ''}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       return
     }
 
@@ -219,7 +227,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
 
       const { data: order, error } = await admin.from('orders').insert({
         van_id: vanId,
-        guest_name: profileName || 'WhatsApp customer',
+        guest_name: knownName || 'WhatsApp customer',
         guest_phone: `+${from}`,
         notes: `[WhatsApp auto-order]${parsed.notes ? ' ' + parsed.notes : ''}`,
         pickup_location: parsed.pickup_location || null,
@@ -238,17 +246,19 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       await admin.from('whatsapp_messages').update({ outcome: 'ordered', order_id: order.id }).eq('id', msg.id)
 
       const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — £${(i.price * i.quantity).toFixed(2)}`).join('\n')
-      const hasLoc = Boolean(parsed.pickup_location)
-      const hasTime = Boolean(parsed.pickup_time)
+      const needs = {
+        location: !parsed.pickup_location && (stops ?? []).length > 0,
+        time: !parsed.pickup_time,
+        name: !knownName,
+      }
 
-      if (hasLoc && hasTime) {
+      if (!needs.location && !needs.time && !needs.name) {
         await sendWhatsApp(channel, from,
           `✅ Order received${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${parsed.pickup_time}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       } else {
-        // Order saved, but ask ONE simple question for what's missing.
-        const missing = !hasLoc && !hasTime ? 'both' : !hasLoc ? 'location' : 'time'
+        // Order saved, but ask ONE simple question covering whatever is missing.
         await sendWhatsApp(channel, from,
-          `✅ Got your order${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${pickupQuestion(stops ?? [], missing)}`)
+          `✅ Got your order${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${followUpQuestion(stops ?? [], needs)}`)
       }
       return
     }
