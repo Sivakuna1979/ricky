@@ -98,7 +98,7 @@ export default function HygienePage() {
   // records
   const [recTemps, setRecTemps]   = useState<any[]>([])
   const [recChecks, setRecChecks] = useState<any[]>([])
-  const [recDays, setRecDays]     = useState(30)
+  const [recRange, setRecRange]   = useState<any>(null)
 
   const checklistFor = (type: string, businessType: string) => {
     const extras = TYPE_EXTRAS[businessType] ?? { opening: [], closing: [] }
@@ -151,19 +151,48 @@ export default function HygienePage() {
     setTodayChecks(today)
   }
 
-  const loadRecords = async (days: number) => {
-    setRecDays(days)
+  // Load records for an exact date range [start, end)
+  const loadRecords = async (range: any) => {
+    setRecRange(range)
+    const days = Math.max(1, Math.ceil((Date.now() - range.start.getTime()) / 86400000) + 1)
     const res = await fetch(`/api/hygiene/temperature?business_id=${biz.id}&days=${days}`)
     const data = await res.json().catch(() => [])
-    setRecTemps(Array.isArray(data) ? data : [])
+    const inRange = (d: string) => { const t = new Date(d).getTime(); return t >= range.start.getTime() && t < range.end.getTime() }
+    setRecTemps((Array.isArray(data) ? data : []).filter((t: any) => inRange(t.recorded_at)))
     const [op, cl] = await Promise.all([
       fetch(`/api/hygiene/checklist?business_id=${biz.id}&type=opening_checklist`).then(r => r.json()).catch(() => []),
       fetch(`/api/hygiene/checklist?business_id=${biz.id}&type=closing_checklist`).then(r => r.json()).catch(() => []),
     ])
-    const cutoff = Date.now() - days * 86400000
     setRecChecks([...(Array.isArray(op) ? op : []), ...(Array.isArray(cl) ? cl : [])]
-      .filter(l => new Date(l.recorded_at).getTime() >= cutoff)
+      .filter(l => inRange(l.recorded_at))
       .sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at)))
+  }
+
+  // Selectable weekly (Mon–Sun) and monthly periods
+  const weekOptions = Array.from({ length: 8 }, (_, i) => {
+    const now = new Date(); now.setHours(0,0,0,0)
+    const monday = new Date(now)
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) - i * 7)
+    const end = new Date(monday); end.setDate(monday.getDate() + 7)
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+    const label = i === 0 ? 'This week' : i === 1 ? 'Last week' : `${monday.toLocaleDateString('en-GB', { day:'numeric', month:'short' })} – ${sunday.toLocaleDateString('en-GB', { day:'numeric', month:'short' })}`
+    return { key: `w${i}`, mode: 'week', label, start: monday, end }
+  })
+  const monthOptions = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); d.setMonth(d.getMonth() - i)
+    const end = new Date(d); end.setMonth(d.getMonth() + 1)
+    return { key: `m${i}`, mode: 'month', label: d.toLocaleDateString('en-GB', { month:'long', year:'numeric' }), start: d, end }
+  })
+
+  // Per-day rollup for the calendar
+  const dayStatus = (d: Date) => {
+    const dayStart = d.getTime(), dayEnd = dayStart + 86400000
+    const temps = recTemps.filter((t: any) => { const x = new Date(t.recorded_at).getTime(); return x >= dayStart && x < dayEnd })
+    const checks = recChecks.filter((c: any) => { const x = new Date(c.recorded_at).getTime(); return x >= dayStart && x < dayEnd })
+    if (!temps.length && !checks.length) return { cls: 'none', temps, checks }
+    if (temps.some((t: any) => !t.is_within_range)) return { cls: 'alert', temps, checks }
+    if (temps.length && checks.length) return { cls: 'good', temps, checks }
+    return { cls: 'partial', temps, checks }
   }
 
   const saveTemp = async () => {
@@ -272,7 +301,7 @@ export default function HygienePage() {
             {/* Tabs */}
             <div className="no-print" style={{ display:'flex', gap:8, marginBottom:16 }}>
               {[{ k:'temps', l:'🌡️ Temperatures' }, { k:'checks', l:'✅ Daily Checks' }, { k:'records', l:'📋 Council Records' }].map(t => (
-                <button key={t.k} onClick={() => { setTab(t.k); if (t.k === 'records') loadRecords(recDays) }}
+                <button key={t.k} onClick={() => { setTab(t.k); if (t.k === 'records') loadRecords(recRange ?? weekOptions[0]) }}
                   style={{ flex:1, padding:'11px 6px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:800, fontSize:13,
                     background: tab === t.k ? '#0e7490' : '#fff', color: tab === t.k ? '#fff' : '#555', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
                   {t.l}
@@ -377,17 +406,78 @@ export default function HygienePage() {
               </div>
             ) : (
               <>
-                <div className="no-print" style={{ display:'flex', gap:8, marginBottom:14, alignItems:'center' }}>
-                  {[30, 60, 90].map(d => (
-                    <button key={d} onClick={() => loadRecords(d)} style={{ padding:'8px 14px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:700, fontSize:13, background: recDays === d ? '#0e7490' : '#fff', color: recDays === d ? '#fff' : '#555', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>{d} days</button>
-                  ))}
-                  <div style={{ flex:1 }} />
-                  <button onClick={() => window.print()} style={{ padding:'8px 16px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:800, fontSize:13, background:'#111', color:'#fff' }}>🖨️ Print for Inspector</button>
+                {/* Pick the report: weekly or monthly, then which one */}
+                <div className="no-print" style={{ display:'flex', gap:8, marginBottom:10, alignItems:'center', flexWrap:'wrap' }}>
+                  <button onClick={() => loadRecords(weekOptions[0])}
+                    style={{ padding:'9px 16px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:800, fontSize:13, background: (recRange?.mode ?? 'week') === 'week' ? '#0e7490' : '#fff', color: (recRange?.mode ?? 'week') === 'week' ? '#fff' : '#555', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
+                    📅 Weekly report
+                  </button>
+                  <button onClick={() => loadRecords(monthOptions[0])}
+                    style={{ padding:'9px 16px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:800, fontSize:13, background: recRange?.mode === 'month' ? '#0e7490' : '#fff', color: recRange?.mode === 'month' ? '#fff' : '#555', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
+                    🗓️ Monthly report
+                  </button>
+                  <select
+                    value={recRange?.key ?? 'w0'}
+                    onChange={e => {
+                      const all = [...weekOptions, ...monthOptions]
+                      const sel = all.find(o => o.key === e.target.value)
+                      if (sel) loadRecords(sel)
+                    }}
+                    style={{ flex:1, minWidth:150, padding:'9px 12px', borderRadius:10, border:'1px solid #e5e7eb', fontSize:13, fontWeight:700, color:'#0e7490', background:'#fff' }}>
+                    {((recRange?.mode ?? 'week') === 'week' ? weekOptions : monthOptions).map(o => (
+                      <option key={o.key} value={o.key}>{o.label}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => window.print()} style={{ padding:'9px 16px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:800, fontSize:13, background:'#111', color:'#fff' }}>🖨️ Print</button>
+                </div>
+
+                {/* Calendar view */}
+                <div style={{ background:'#fff', borderRadius:14, padding:16, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:16 }}>
+                  <div style={{ fontWeight:800, fontSize:14, color:'#111', marginBottom:10 }}>📅 {recRange?.label ?? 'This week'} — day by day</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:4 }}>
+                    {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => (
+                      <div key={d} style={{ textAlign:'center', fontSize:10, fontWeight:800, color:'#999', padding:'2px 0' }}>{d}</div>
+                    ))}
+                    {(() => {
+                      if (!recRange) return null
+                      const cells = []
+                      const first = new Date(recRange.start)
+                      const lead = (first.getDay() + 6) % 7
+                      for (let i = 0; i < lead; i++) cells.push(<div key={`pad${i}`} />)
+                      const today = new Date(); today.setHours(23,59,59,999)
+                      for (let d = new Date(first); d < recRange.end; d.setDate(d.getDate() + 1)) {
+                        const day = new Date(d)
+                        const future = day > today
+                        const s = dayStatus(day)
+                        const bg = future ? '#fafafa' : s.cls === 'good' ? '#d1fae5' : s.cls === 'alert' ? '#fee2e2' : s.cls === 'partial' ? '#fef3c7' : '#f3f4f6'
+                        const fg = future ? '#d1d5db' : s.cls === 'good' ? '#065f46' : s.cls === 'alert' ? '#991b1b' : s.cls === 'partial' ? '#92400e' : '#9ca3af'
+                        cells.push(
+                          <div key={day.toISOString()} style={{ background:bg, borderRadius:8, padding:'6px 2px', textAlign:'center', minHeight:44 }}>
+                            <div style={{ fontSize:12, fontWeight:800, color:fg }}>{day.getDate()}</div>
+                            {!future && (s.temps.length > 0 || s.checks.length > 0) && (
+                              <div style={{ fontSize:9, fontWeight:700, color:fg }}>
+                                {s.temps.length > 0 && `🌡️${s.temps.length}`}{s.checks.length > 0 && ` ✓${s.checks.length}`}
+                              </div>
+                            )}
+                            {!future && s.cls === 'alert' && <div style={{ fontSize:9 }}>⚠️</div>}
+                          </div>
+                        )
+                      }
+                      return cells
+                    })()}
+                  </div>
+                  <div style={{ display:'flex', gap:12, marginTop:10, flexWrap:'wrap' }}>
+                    {[['#d1fae5','All logged'], ['#fef3c7','Partly logged'], ['#fee2e2','Needs attention'], ['#f3f4f6','Nothing logged']].map(([c, l]) => (
+                      <span key={l} style={{ fontSize:10, fontWeight:700, color:'#666', display:'flex', alignItems:'center', gap:4 }}>
+                        <span style={{ width:12, height:12, borderRadius:4, background:c, display:'inline-block' }} />{l}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 <div style={{ background:'#fff', borderRadius:14, padding:18, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:16 }}>
                   <div style={{ fontWeight:900, fontSize:16, color:'#111' }}>{biz?.name} — Food Safety Records</div>
-                  <div style={{ fontSize:12, color:'#888', marginBottom:12 }}>Last {recDays} days · generated {new Date().toLocaleDateString('en-GB')}</div>
+                  <div style={{ fontSize:12, color:'#888', marginBottom:12 }}>{recRange?.label ?? ''} · generated {new Date().toLocaleDateString('en-GB')}</div>
                   <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
                     <div style={{ flex:1, minWidth:120, background:'#f9fafb', borderRadius:10, padding:'12px', textAlign:'center' }}>
                       <div style={{ fontSize:22, fontWeight:900, color:'#0e7490' }}>{recTemps.length}</div>
