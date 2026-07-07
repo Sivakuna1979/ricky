@@ -4,20 +4,19 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/server'
 
 // ============================================================================
-// WhatsApp Cloud API webhook — fully automatic ordering, MULTI-TENANT.
-// One shared webhook for every business on FoodTaxi. Incoming messages are
-// routed by the phone_number_id they were sent to (whatsapp_channels table),
-// and replies are sent with that business's own access token.
+// WhatsApp Cloud API webhook — fully automatic ordering, MULTI-TENANT and
+// CONVERSATIONAL. If a customer's order is missing pickup details, Claude
+// asks ONE simple follow-up (listing today's actual stops); their reply is
+// attached to the same order instead of creating a new one.
 //
-// Global env vars (platform level):
-//   WHATSAPP_VERIFY_TOKEN    shared verify token every business enters in Meta
-// Legacy single-tenant fallback (kept so existing setups keep working):
-//   WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_VAN_ID
+// Global env vars: WHATSAPP_VERIFY_TOKEN
+// Legacy single-tenant fallback: WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID,
+// WHATSAPP_VAN_ID
 // ============================================================================
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-// Meta webhook verification handshake
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams
   if (p.get('hub.mode') === 'subscribe' && p.get('hub.verify_token') === process.env.WHATSAPP_VERIFY_TOKEN) {
@@ -26,7 +25,6 @@ export async function GET(req: NextRequest) {
   return new Response('Forbidden', { status: 403 })
 }
 
-// channel = { phone_number_id, access_token, van_id }
 async function sendWhatsApp(channel: any, to: string, body: string) {
   const token = channel?.access_token ?? process.env.WHATSAPP_TOKEN
   const phoneId = channel?.phone_number_id ?? process.env.WHATSAPP_PHONE_NUMBER_ID
@@ -38,7 +36,6 @@ async function sendWhatsApp(channel: any, to: string, body: string) {
   }).catch(() => {})
 }
 
-// Find which business/van owns the number this message was sent TO.
 async function resolveChannel(admin: any, phoneNumberId: string) {
   if (phoneNumberId) {
     const { data } = await admin
@@ -49,7 +46,6 @@ async function resolveChannel(admin: any, phoneNumberId: string) {
       .maybeSingle()
     if (data) return data
   }
-  // Legacy env-var fallback (single-tenant installs / the platform test number)
   if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
     return {
       phone_number_id: process.env.WHATSAPP_PHONE_NUMBER_ID,
@@ -60,19 +56,70 @@ async function resolveChannel(admin: any, phoneNumberId: string) {
   return null
 }
 
-function parsePrompt(menu: any[]) {
-  return `You are taking a WhatsApp order for a food van. Menu (id | name | price):
-${menu.map(m => `${m.id} | ${m.name} | £${Number(m.price).toFixed(2)}`).join('\n')}
+function buildPrompt({ menu, stops, pendingOrder, profileName, text }: any) {
+  const stopsList = stops.length
+    ? stops.map((s: any) => `- ${s.location_name} (${s.arrival_time}–${s.departure_time})`).join('\n')
+    : '(no stops scheduled today)'
+  const pendingBit = pendingOrder
+    ? `\nIMPORTANT CONTEXT: this customer has an open order #${pendingOrder.order_number} (£${Number(pendingOrder.total).toFixed(2)}) that is still missing ${!pendingOrder.pickup_location ? 'a pickup stop' : ''}${!pendingOrder.pickup_location && !pendingOrder.pickup_time ? ' and ' : ''}${!pendingOrder.pickup_time ? 'a pickup time' : ''}. If this message provides those details (a stop name and/or a time), use action "pickup_details".`
+    : ''
+  return `You are the WhatsApp assistant for a food van. Today's stops:
+${stopsList}
+
+Menu (id | name | price):
+${menu.map((m: any) => `${m.id} | ${m.name} | £${Number(m.price).toFixed(2)}`).join('\n')}
+${pendingBit}
 
 Return ONLY valid JSON:
-{"items":[{"menu_item_id":"...or null","name":"...","quantity":1,"price":0.0}],"pickup_location":"","pickup_time":"","notes":""}
-Rules: match items to the menu (use its id/name/price); unknown items get menu_item_id null and price 0;
-"two cod" means quantity 2; keep special requests in notes.
-If the message is NOT a food order (a question, greeting, etc) return {"items":[]}.`
+{
+  "action": "order" | "pickup_details" | "chat",
+  "items": [{"menu_item_id":"...or null","name":"...","quantity":1,"price":0.0}],
+  "pickup_location": "",   // match to one of today's stop names when possible
+  "pickup_time": "",       // e.g. "18:30" or "around 7pm"
+  "notes": ""
+}
+Rules:
+- action "order": the message contains food items to order. Match items to the menu (use its id/name/price); unknown items get menu_item_id null and price 0; "two cod" means quantity 2.
+- action "pickup_details": no new food items, but the message gives a stop and/or time for the open order (e.g. "Tesco's at 7", "the 6:30 one", "Link Lane").
+- action "chat": anything else (greeting, question).
+- If the customer names a place, match it to the closest of today's stops and put that exact stop name in pickup_location.
+- Keep special requests in notes.
+
+WhatsApp message from ${profileName || 'customer'}:
+${text}`
+}
+
+async function askClaude(prompt: string) {
+  let message
+  try {
+    message = await client.beta.messages.create({
+      model: 'claude-fable-5',
+      max_tokens: 1536,
+      messages: [{ role: 'user', content: prompt }],
+      betas: ['server-side-fallback-2026-06-01'],
+      fallbacks: [{ model: 'claude-opus-4-8' }],
+    })
+  } catch {
+    message = await client.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: 1536,
+      messages: [{ role: 'user', content: prompt }],
+    })
+  }
+  const raw = message.content?.find((b: any) => b.type === 'text')?.text?.trim() ?? '{}'
+  return JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
+}
+
+// One short question, never an interrogation.
+function pickupQuestion(stops: any[], missing: 'both' | 'location' | 'time') {
+  if (missing !== 'time' && stops.length) {
+    const list = stops.map((s: any) => `📍 ${s.location_name} (${s.arrival_time}–${s.departure_time})`).join('\n')
+    return `One last thing — where would you like to collect? Today we're at:\n${list}\nJust reply with the stop${missing === 'both' ? ' and a rough time' : ''} 😊`
+  }
+  return `One last thing — roughly what time would you like to collect? 😊`
 }
 
 export async function POST(req: NextRequest) {
-  // Always 200 fast — Meta retries aggressively on non-200.
   try {
     const payload = await req.json()
     const admin = await createAdminClient()
@@ -82,103 +129,134 @@ export async function POST(req: NextRequest) {
         const phoneNumberId = change.value?.metadata?.phone_number_id ?? ''
         for (const msg of change.value?.messages ?? []) {
           const channel = await resolveChannel(admin, phoneNumberId)
-          if (!channel) continue // number not registered with any business
+          if (!channel) continue
 
           if (msg.type !== 'text') {
             if (msg.from) await sendWhatsApp(channel, msg.from, 'Thanks! Please send your order as a text message, e.g. "2 cod and chips, pickup at 7pm" 🍟')
             continue
           }
 
-          // Dedupe — Meta redelivers
           const { error: dupErr } = await admin.from('whatsapp_messages').insert({ id: msg.id, from_phone: msg.from, body: msg.text.body })
-          if (dupErr) continue // already processed (or table missing — fail safe, no double orders)
+          if (dupErr) continue
 
           const profileName = change.value?.contacts?.[0]?.profile?.name ?? ''
-          await handleOrder(admin, channel, msg, profileName)
+          await handleMessage(admin, channel, msg, profileName)
         }
       }
     }
-  } catch { /* swallow — must still 200 */ }
+  } catch { /* must still 200 */ }
   return NextResponse.json({ ok: true })
 }
 
-async function handleOrder(admin: any, channel: any, msg: any, profileName: string) {
+async function handleMessage(admin: any, channel: any, msg: any, profileName: string) {
   const from = msg.from
   const text = msg.text.body
   try {
-    // Which van takes this channel's orders
+    // Van + menu + today's stops
     let van: any = null
     if (channel.van_id) {
-      const { data } = await admin.from('vans').select('id, name, business_id').eq('id', channel.van_id).single()
+      const { data } = await admin.from('vans').select('id, name').eq('id', channel.van_id).single()
       van = data
     } else {
-      const { data } = await admin.from('vans').select('id, name, business_id').eq('is_active', true).limit(1).single()
+      const { data } = await admin.from('vans').select('id, name').eq('is_active', true).limit(1).single()
       van = data
     }
     if (!van) return
     const vanId = van.id
 
-    const { data: menu } = await admin.from('menu_items').select('id, name, price').eq('van_id', vanId).limit(200)
+    const todayDow = (new Date().getDay() + 6) % 7
+    const [{ data: menu }, { data: stops }] = await Promise.all([
+      admin.from('menu_items').select('id, name, price').eq('van_id', vanId).limit(200),
+      admin.from('van_schedule').select('location_name, arrival_time, departure_time').eq('van_id', vanId).eq('day_of_week', todayDow).order('arrival_time'),
+    ])
 
-    let message
-    try {
-      message = await client.beta.messages.create({
-        model: 'claude-fable-5',
-        max_tokens: 1536,
-        messages: [{ role: 'user', content: `${parsePrompt(menu ?? [])}\n\nWhatsApp message from ${profileName || 'customer'}:\n${text}` }],
-        betas: ['server-side-fallback-2026-06-01'],
-        fallbacks: [{ model: 'claude-opus-4-8' }],
-      })
-    } catch {
-      message = await client.messages.create({
-        model: 'claude-opus-4-8',
-        max_tokens: 1536,
-        messages: [{ role: 'user', content: `${parsePrompt(menu ?? [])}\n\nWhatsApp message from ${profileName || 'customer'}:\n${text}` }],
-      })
-    }
+    // Open order from this customer still missing pickup details (last 3h)
+    const { data: pendingOrder } = await admin
+      .from('orders')
+      .select('id, order_number, total, pickup_location, pickup_time')
+      .eq('van_id', vanId)
+      .eq('guest_phone', `+${from}`)
+      .eq('status', 'pending')
+      .or('pickup_location.is.null,pickup_time.is.null')
+      .gte('created_at', new Date(Date.now() - 3 * 3600e3).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    const raw = message.content?.find((b: any) => b.type === 'text')?.text?.trim() ?? '{}'
-    const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
+    const parsed = await askClaude(buildPrompt({ menu: menu ?? [], stops: stops ?? [], pendingOrder, profileName, text }))
+    const firstName = profileName ? profileName.split(' ')[0] : ''
 
-    if (!parsed.items?.length) {
-      await admin.from('whatsapp_messages').update({ outcome: 'no_items' }).eq('id', msg.id)
-      await sendWhatsApp(channel, from, `Hi${profileName ? ` ${profileName.split(' ')[0]}` : ''}! Thanks for your message — ${van.name ?? 'the van'} will get back to you shortly. To order instantly, just text what you'd like, e.g. "2 cod and chips" 🍟`)
+    // ---- Customer is answering the pickup question for an open order ----
+    if (parsed.action === 'pickup_details' && pendingOrder) {
+      const updates: any = {}
+      if (parsed.pickup_location) updates.pickup_location = parsed.pickup_location
+      if (parsed.pickup_time) updates.pickup_time = parsed.pickup_time
+      if (Object.keys(updates).length) {
+        await admin.from('orders').update(updates).eq('id', pendingOrder.id)
+      }
+      const loc = updates.pickup_location ?? pendingOrder.pickup_location
+      const time = updates.pickup_time ?? pendingOrder.pickup_time
+      if (!loc && (stops ?? []).length) {
+        await sendWhatsApp(channel, from, pickupQuestion(stops ?? [], 'location'))
+        return
+      }
+      await admin.from('whatsapp_messages').update({ outcome: 'pickup_updated', order_id: pendingOrder.id }).eq('id', msg.id)
+      await sendWhatsApp(channel, from,
+        `Perfect${firstName ? `, ${firstName}` : ''}! ✅ Order #${pendingOrder.order_number} confirmed.\n📍 ${loc ?? 'the van'}${time ? ` · ${time}` : ''}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       return
     }
 
-    const items = parsed.items.map((i: any) => ({
-      menu_item_id: i.menu_item_id ?? null,
-      name: String(i.name ?? 'Item'),
-      quantity: Math.max(1, Number(i.quantity) || 1),
-      price: Number(i.price) || 0,
-    }))
-    const total = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0)
-    const order_number = 'FT' + Date.now().toString().slice(-6)
+    // ---- New order ----
+    if (parsed.action === 'order' && parsed.items?.length) {
+      const items = parsed.items.map((i: any) => ({
+        menu_item_id: i.menu_item_id ?? null,
+        name: String(i.name ?? 'Item'),
+        quantity: Math.max(1, Number(i.quantity) || 1),
+        price: Number(i.price) || 0,
+      }))
+      const total = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0)
+      const order_number = 'FT' + Date.now().toString().slice(-6)
 
-    const { data: order, error } = await admin.from('orders').insert({
-      van_id: vanId,
-      guest_name: profileName || 'WhatsApp customer',
-      guest_phone: `+${from}`,
-      notes: `[WhatsApp auto-order]${parsed.notes ? ' ' + parsed.notes : ''}`,
-      pickup_location: parsed.pickup_location || null,
-      pickup_time: parsed.pickup_time || null,
-      subtotal: total,
-      total,
-      payment_method: 'cash_at_van',
-      status: 'pending',
-      order_number,
-    }).select('id').single()
-    if (error) throw new Error(error.message)
+      const { data: order, error } = await admin.from('orders').insert({
+        van_id: vanId,
+        guest_name: profileName || 'WhatsApp customer',
+        guest_phone: `+${from}`,
+        notes: `[WhatsApp auto-order]${parsed.notes ? ' ' + parsed.notes : ''}`,
+        pickup_location: parsed.pickup_location || null,
+        pickup_time: parsed.pickup_time || null,
+        subtotal: total,
+        total,
+        payment_method: 'cash_at_van',
+        status: 'pending',
+        order_number,
+      }).select('id').single()
+      if (error) throw new Error(error.message)
 
-    await admin.from('order_items').insert(items.map((i: any) => ({
-      order_id: order.id, menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity, item_total: i.price * i.quantity,
-    })))
+      await admin.from('order_items').insert(items.map((i: any) => ({
+        order_id: order.id, menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity, item_total: i.price * i.quantity,
+      })))
+      await admin.from('whatsapp_messages').update({ outcome: 'ordered', order_id: order.id }).eq('id', msg.id)
 
-    await admin.from('whatsapp_messages').update({ outcome: 'ordered', order_id: order.id }).eq('id', msg.id)
+      const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — £${(i.price * i.quantity).toFixed(2)}`).join('\n')
+      const hasLoc = Boolean(parsed.pickup_location)
+      const hasTime = Boolean(parsed.pickup_time)
 
-    const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — £${(i.price * i.quantity).toFixed(2)}`).join('\n')
+      if (hasLoc && hasTime) {
+        await sendWhatsApp(channel, from,
+          `✅ Order received${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${parsed.pickup_time}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
+      } else {
+        // Order saved, but ask ONE simple question for what's missing.
+        const missing = !hasLoc && !hasTime ? 'both' : !hasLoc ? 'location' : 'time'
+        await sendWhatsApp(channel, from,
+          `✅ Got your order${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${pickupQuestion(stops ?? [], missing)}`)
+      }
+      return
+    }
+
+    // ---- Anything else ----
+    await admin.from('whatsapp_messages').update({ outcome: 'chat' }).eq('id', msg.id)
     await sendWhatsApp(channel, from,
-      `✅ Order received${profileName ? `, ${profileName.split(' ')[0]}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n${parsed.pickup_location ? `Pickup: ${parsed.pickup_location}${parsed.pickup_time ? ` ~${parsed.pickup_time}` : ''}\n` : ''}Pay cash or card at the van. We'll message you when it's ready! 🍟`)
+      `Hi${firstName ? ` ${firstName}` : ''}! 👋 To order, just text what you'd like, e.g. "2 cod and chips". ${van.name ? `${van.name} will` : "We'll"} reply if you need anything else!`)
   } catch (e: any) {
     await admin.from('whatsapp_messages').update({ outcome: `error: ${e.message}`.slice(0, 200) }).eq('id', msg.id).catch(() => {})
     await sendWhatsApp(channel, from, 'Sorry, something went wrong taking your order automatically — the van will reply personally shortly!')
