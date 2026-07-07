@@ -3,13 +3,21 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-// Temperature types with UK-safe ranges (matches /api/hygiene/temperature)
+// Temperature types with UK-safe ranges (matches /api/hygiene/temperature).
+// pick: scroll-wheel range and a sensible default so logging is one scroll.
 const TEMP_TYPES = [
-  { key: 'fridge_temp',      label: 'Fridge',      icon: '🧊', hint: '0°C to 8°C',    unit: '°C' },
-  { key: 'freezer_temp',     label: 'Freezer',     icon: '❄️', hint: '-25°C to -18°C', unit: '°C' },
-  { key: 'hot_holding_temp', label: 'Hot Holding', icon: '♨️', hint: '63°C or above', unit: '°C' },
-  { key: 'cooking_temp',     label: 'Cooking',     icon: '🍳', hint: '75°C or above', unit: '°C' },
+  { key: 'fridge_temp',      label: 'Fridge',      icon: '🧊', hint: '0°C to 8°C',     pick: { from: -5,  to: 15,  def: 4 } },
+  { key: 'freezer_temp',     label: 'Freezer',     icon: '❄️', hint: '-25°C to -18°C', pick: { from: -30, to: 5,   def: -18 } },
+  { key: 'hot_holding_temp', label: 'Hot Holding', icon: '♨️', hint: '63°C or above',  pick: { from: 40,  to: 100, def: 70 } },
+  { key: 'cooking_temp',     label: 'Cooking',     icon: '🍳', hint: '75°C or above',  pick: { from: 50,  to: 110, def: 80 } },
 ]
+
+// 0.5° steps for the scroll picker
+function tempOptions(pick: any) {
+  const opts = []
+  for (let v = pick.to; v >= pick.from; v -= 0.5) opts.push(v)
+  return opts
+}
 
 // Simple daily tasks, tailored by business type. Presented as routine jobs —
 // plain language, no inspection jargon.
@@ -72,12 +80,13 @@ export default function HygienePage() {
 
   // temperature entry
   const [tempType, setTempType]   = useState('fridge_temp')
-  const [tempValue, setTempValue] = useState('')
+  const [tempValue, setTempValue] = useState('4') // fridge default
   const [equipment, setEquipment] = useState('')
   const [action, setAction]       = useState('')
   const [tempSaving, setTempSaving] = useState(false)
   const [tempMsg, setTempMsg]     = useState<any>(null)
   const [todayTemps, setTodayTemps] = useState<any[]>([])
+  const [units, setUnits]         = useState<any>({}) // { fridge_temp: ['Fridge 1', ...], ... }
 
   // checklist
   const [checkType, setCheckType] = useState('opening_checklist')
@@ -115,6 +124,15 @@ export default function HygienePage() {
       const { data: vans } = await supabase.from('vans').select('id').eq('business_id', b.id).limit(1)
       setVanId(vans?.[0]?.id ?? null)
       setItems(checklistFor('opening_checklist', b.business_type ?? 'other'))
+      // Remember this business's fridges/freezers from past readings
+      const hist = await fetch(`/api/hygiene/temperature?business_id=${b.id}&days=365`).then(r => r.json()).catch(() => [])
+      const u: any = {}
+      for (const t of Array.isArray(hist) ? hist : []) {
+        if (!t.equipment_name) continue
+        u[t.log_type] = u[t.log_type] ?? []
+        if (!u[t.log_type].includes(t.equipment_name)) u[t.log_type].push(t.equipment_name)
+      }
+      setUnits(u)
       await refreshToday(b.id)
       setLoading(false)
     })
@@ -167,11 +185,21 @@ export default function HygienePage() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) { setTempMsg({ ok: false, text: data.error?.formErrors?.join?.(', ') ?? data.error ?? 'Could not save' }); setTempSaving(false); return }
     setTempMsg({ ok: true, inRange: data.is_within_range, text: data.is_within_range ? '✅ Recorded — within safe range' : '⚠️ Recorded — OUT of safe range. Add what you did about it below and log again if needed.' })
-    setTempValue('')
+    if (equipment && !(units[tempType] ?? []).includes(equipment)) {
+      setUnits((u: any) => ({ ...u, [tempType]: [...(u[tempType] ?? []), equipment] }))
+    }
     setAction('')
     await refreshToday(biz.id)
     setTempSaving(false)
   }
+
+  const addUnit = () => {
+    const name = prompt(`Name this ${selTypeLabel()} (e.g. "${selTypeLabel()} 2", "Chest freezer")`)
+    if (!name?.trim()) return
+    setUnits((u: any) => ({ ...u, [tempType]: [...(u[tempType] ?? []), name.trim()] }))
+    setEquipment(name.trim())
+  }
+  const selTypeLabel = () => TEMP_TYPES.find(t => t.key === tempType)?.label ?? 'unit'
 
   const saveChecklist = async () => {
     setCheckSaving(true)
@@ -260,7 +288,7 @@ export default function HygienePage() {
                   <div style={{ fontWeight:800, fontSize:15, color:'#111', marginBottom:12 }}>Record a temperature</div>
                   <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
                     {TEMP_TYPES.map(t => (
-                      <button key={t.key} onClick={() => { setTempType(t.key); setTempMsg(null) }}
+                      <button key={t.key} onClick={() => { setTempType(t.key); setTempMsg(null); setTempValue(String(t.pick.def)); setEquipment((units[t.key] ?? [])[0] ?? '') }}
                         style={{ flex:'1 1 40%', padding:'12px 8px', borderRadius:12, cursor:'pointer', textAlign:'center',
                           border: tempType === t.key ? '2px solid #0e7490' : '1px solid #e5e7eb',
                           background: tempType === t.key ? '#ecfeff' : '#fff' }}>
@@ -270,12 +298,34 @@ export default function HygienePage() {
                       </button>
                     ))}
                   </div>
-                  <div style={{ display:'flex', gap:8 }}>
-                    <input type="number" step="0.1" inputMode="decimal" value={tempValue} onChange={e => setTempValue(e.target.value)}
-                      placeholder={`${selType?.label} temp ${selType?.unit}`} style={{ ...inp, flex:1, fontSize:18, fontWeight:700 }} />
-                    <input value={equipment} onChange={e => setEquipment(e.target.value)} placeholder="Which unit? (optional)" style={{ ...inp, flex:1 }} />
+
+                  {/* Which unit? Only shows when they have more than one, plus "+ Add" */}
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10 }}>
+                    {(units[tempType] ?? []).map((u: string) => (
+                      <button key={u} onClick={() => setEquipment(equipment === u ? '' : u)}
+                        style={{ padding:'8px 14px', borderRadius:18, cursor:'pointer', fontSize:13, fontWeight:700,
+                          border: equipment === u ? '2px solid #0e7490' : '1px solid #e5e7eb',
+                          background: equipment === u ? '#ecfeff' : '#fff', color: equipment === u ? '#0e7490' : '#555' }}>
+                        {u}
+                      </button>
+                    ))}
+                    <button onClick={addUnit}
+                      style={{ padding:'8px 14px', borderRadius:18, cursor:'pointer', fontSize:13, fontWeight:700, border:'1px dashed #cbd5e1', background:'#f9fafb', color:'#888' }}>
+                      + Add {selType?.label.toLowerCase()}
+                    </button>
                   </div>
-                  {tempMsg && !tempMsg.ok === false ? null : null}
+
+                  {/* Scroll & choose the temperature — no typing */}
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <select value={tempValue} onChange={e => setTempValue(e.target.value)}
+                      style={{ ...inp, flex:1, fontSize:20, fontWeight:800, textAlign:'center', color:'#0e7490', height:54 }}>
+                      {tempValue === '' && <option value="">Choose temperature…</option>}
+                      {tempOptions(selType?.pick ?? { from:-30, to:110 }).map(v => (
+                        <option key={v} value={v}>{v > 0 ? v.toFixed(1) : v.toFixed(1)} °C</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ fontSize:11, color:'#999', marginTop:4, textAlign:'center' }}>Tap and scroll to your thermometer reading</div>
                   {tempMsg && tempMsg.ok && !tempMsg.inRange && (
                     <input value={action} onChange={e => setAction(e.target.value)} placeholder="What did you do about it? (e.g. moved food, called engineer)" style={{ ...inp, marginTop:8, border:'1px solid #fca5a5' }} />
                   )}
