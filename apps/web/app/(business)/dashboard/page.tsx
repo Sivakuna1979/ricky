@@ -112,14 +112,14 @@ export default async function BusinessDashboardPage() {
 
   const NAV = [
     { icon: '📊', label: 'Dashboard',    href: '/dashboard',          active: true  },
-    { icon: '🚐', label: 'My Vans',      href: '/dashboard/vans',     active: false },
     { icon: '📦', label: 'Orders',       href: '/dashboard/orders',   active: false },
+    { icon: '🧼', label: 'Hygiene',      href: '/dashboard/hygiene',  active: false },
     { icon: '🗓️', label: 'Schedule',     href: '/dashboard/schedule', active: false },
     { icon: '📋', label: 'Menu',         href: '/dashboard/menu',     active: false },
+    { icon: '🚐', label: 'My Vans',      href: '/dashboard/vans',     active: false },
     { icon: '💳', label: 'My Plan',      href: '/dashboard/billing',  active: false },
     { icon: '🗺️', label: 'Tracking',     href: '/dashboard/tracking', active: false },
     { icon: '🎪', label: 'Events',       href: '/van/events',         active: false },
-    { icon: '🧼', label: 'Hygiene',      href: '/dashboard/hygiene',  active: false },
     { icon: '💬', label: 'WhatsApp',     href: '/dashboard/whatsapp', active: false },
     { icon: '⚙️', label: 'Settings',     href: '/dashboard/settings', active: false },
   ]
