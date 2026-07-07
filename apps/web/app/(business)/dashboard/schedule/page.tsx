@@ -192,6 +192,7 @@ export default function SchedulePage() {
     { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
     { icon: '🗓️', label: 'Schedule',  href: '/dashboard/schedule', active: true },
     { icon: '💳', label: 'My Plan',   href: '/dashboard/billing' },
+  { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene' },
   { icon: '💬', label: 'WhatsApp',  href: '/dashboard/whatsapp' },
     { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings' },
   ]

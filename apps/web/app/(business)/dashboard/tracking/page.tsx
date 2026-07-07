@@ -33,6 +33,7 @@ export default async function TrackingPage() {
     { icon: '🗺️', label: 'Tracking',  href: '/dashboard/tracking', active: true },
     { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
     { icon: '💳', label: 'My Plan',   href: '/dashboard/billing' },
+  { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene' },
   { icon: '💬', label: 'WhatsApp',  href: '/dashboard/whatsapp' },
     { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings' },
   ]

@@ -52,6 +52,7 @@ export default function WhatsAppPage() {
     { icon: '🚐', label: 'My Vans',   href: '/dashboard/vans' },
     { icon: '📦', label: 'Orders',    href: '/dashboard/orders' },
     { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
+  { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene' },
     { icon: '💬', label: 'WhatsApp',  href: '/dashboard/whatsapp', active: true },
     { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings' },
   ]

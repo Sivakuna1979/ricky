@@ -40,6 +40,7 @@ export default async function BillingPage() {
     { icon: '📋', label: 'Menu',       href: '/dashboard/menu',     active: false },
     { icon: '💳', label: 'My Plan',    href: '/dashboard/billing',  active: true  },
     { icon: '🎪', label: 'Events',     href: '/van/events',         active: false },
+    { icon: '🧼', label: 'Hygiene',    href: '/dashboard/hygiene',  active: false },
     { icon: '💬', label: 'WhatsApp',   href: '/dashboard/whatsapp', active: false },
     { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings', active: false },
   ]
