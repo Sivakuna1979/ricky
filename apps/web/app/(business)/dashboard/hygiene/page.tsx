@@ -98,7 +98,73 @@ export default function HygienePage() {
   // records
   const [recTemps, setRecTemps]   = useState<any[]>([])
   const [recChecks, setRecChecks] = useState<any[]>([])
+  const [recOther, setRecOther]   = useState<any[]>([])
   const [recRange, setRecRange]   = useState<any>(null)
+
+  // extra checks (deliveries, probe calibration, weekly review)
+  const [moreLogs, setMoreLogs]   = useState<any[]>([])
+  const [delivery, setDelivery]   = useState({ supplier:'', kind:'chilled', temp:'3', packagingOk:true, inDate:true })
+  const [delSaving, setDelSaving] = useState(false)
+  const [delMsg, setDelMsg]       = useState('')
+  const [probe, setProbe]         = useState({ ice:'0', boil:'100' })
+  const [probeSaving, setProbeSaving] = useState(false)
+  const [probeMsg, setProbeMsg]   = useState('')
+  const [reviewNote, setReviewNote] = useState('')
+  const [revSaving, setRevSaving] = useState(false)
+  const [revMsg, setRevMsg]       = useState('')
+
+  const refreshMore = async (businessId: string) => {
+    const data = await fetch(`/api/hygiene/log?business_id=${businessId}&types=supplier,maintenance,haccp&days=120`).then(r => r.json()).catch(() => [])
+    setMoreLogs(Array.isArray(data) ? data : [])
+  }
+  const lastOf = (type: string) => moreLogs.find((l: any) => l.log_type === type)
+  const daysSince = (d: string) => Math.floor((Date.now() - new Date(d).getTime()) / 86400000)
+
+  const postLog = async (log_type: string, data: any, is_compliant: boolean, notes = '') => {
+    const res = await fetch('/api/hygiene/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ business_id: biz.id, van_id: vanId ?? undefined, log_type, data, is_compliant, notes, digital_signature: userName }),
+    })
+    const out = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(out.error ?? 'Could not save')
+    await refreshMore(biz.id)
+  }
+
+  const saveDelivery = async () => {
+    if (!delivery.supplier.trim()) { setDelMsg('⚠️ Enter the supplier name'); return }
+    setDelSaving(true); setDelMsg('')
+    try {
+      const t = Number(delivery.temp)
+      const tempOk = delivery.kind === 'ambient' ? true : delivery.kind === 'chilled' ? t <= 8 : t <= -15
+      const ok = tempOk && delivery.packagingOk && delivery.inDate
+      await postLog('supplier', { ...delivery, temp: delivery.kind === 'ambient' ? null : t, accepted: ok }, ok)
+      setDelMsg(ok ? '✅ Delivery recorded — accepted' : '⚠️ Recorded as REJECTED / needs action — noted for your records')
+      setDelivery({ supplier:'', kind: delivery.kind, temp: delivery.kind === 'frozen' ? '-18' : '3', packagingOk:true, inDate:true })
+    } catch (e: any) { setDelMsg(`⚠️ ${e.message}`) }
+    setDelSaving(false)
+  }
+
+  const saveProbe = async () => {
+    setProbeSaving(true); setProbeMsg('')
+    try {
+      const ice = Number(probe.ice), boil = Number(probe.boil)
+      const pass = ice >= -1 && ice <= 1 && boil >= 99 && boil <= 101
+      await postLog('maintenance', { check: 'probe_calibration', ice, boil, pass }, pass)
+      setProbeMsg(pass ? '✅ Probe calibration PASSED — recorded' : '⚠️ Probe out of tolerance — recorded. Replace or recalibrate your thermometer.')
+    } catch (e: any) { setProbeMsg(`⚠️ ${e.message}`) }
+    setProbeSaving(false)
+  }
+
+  const saveReview = async () => {
+    setRevSaving(true); setRevMsg('')
+    try {
+      await postLog('haccp', { check: 'weekly_review', note: reviewNote }, true, reviewNote)
+      setRevMsg('✅ Weekly review signed and recorded')
+      setReviewNote('')
+    } catch (e: any) { setRevMsg(`⚠️ ${e.message}`) }
+    setRevSaving(false)
+  }
 
   const checklistFor = (type: string, businessType: string) => {
     const extras = TYPE_EXTRAS[businessType] ?? { opening: [], closing: [] }
@@ -134,6 +200,7 @@ export default function HygienePage() {
       }
       setUnits(u)
       await refreshToday(b.id)
+      await refreshMore(b.id)
       setLoading(false)
     })
   }, [])
@@ -166,6 +233,8 @@ export default function HygienePage() {
     setRecChecks([...(Array.isArray(op) ? op : []), ...(Array.isArray(cl) ? cl : [])]
       .filter(l => inRange(l.recorded_at))
       .sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at)))
+    const other = await fetch(`/api/hygiene/log?business_id=${biz.id}&types=supplier,maintenance,haccp&days=${days}`).then(r => r.json()).catch(() => [])
+    setRecOther((Array.isArray(other) ? other : []).filter((l: any) => inRange(l.recorded_at)))
   }
 
   // Selectable weekly (Mon–Sun) and monthly periods
@@ -300,7 +369,7 @@ export default function HygienePage() {
 
             {/* Tabs */}
             <div className="no-print" style={{ display:'flex', gap:8, marginBottom:16 }}>
-              {[{ k:'temps', l:'🌡️ Temperatures' }, { k:'checks', l:'✅ Daily Checks' }, { k:'records', l:'📋 Council Records' }].map(t => (
+              {[{ k:'temps', l:'🌡️ Temps' }, { k:'checks', l:'✅ Checks' }, { k:'more', l:'🚚 More' }, { k:'records', l:'📋 Records' }].map(t => (
                 <button key={t.k} onClick={() => { setTab(t.k); if (t.k === 'records') loadRecords(recRange ?? weekOptions[0]) }}
                   style={{ flex:1, padding:'11px 6px', borderRadius:10, border:'none', cursor:'pointer', fontWeight:800, fontSize:13,
                     background: tab === t.k ? '#0e7490' : '#fff', color: tab === t.k ? '#fff' : '#555', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
@@ -404,6 +473,91 @@ export default function HygienePage() {
                 </button>
                 {checkMsg && <div style={{ marginTop:10, fontSize:13, fontWeight:700, color: checkMsg.startsWith('✅') ? '#059669' : '#ef4444' }}>{checkMsg}</div>}
               </div>
+            ) : tab === 'more' ? (
+              <>
+                {/* Delivery / goods-in check */}
+                <div style={{ background:'#fff', borderRadius:14, padding:18, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:16 }}>
+                  <div style={{ fontWeight:800, fontSize:15, color:'#111', marginBottom:4 }}>🚚 Delivery check</div>
+                  <div style={{ fontSize:12, color:'#888', marginBottom:12 }}>Do this when stock arrives — takes 20 seconds.</div>
+                  <input value={delivery.supplier} onChange={e => setDelivery(d => ({ ...d, supplier: e.target.value }))} placeholder="Supplier name (e.g. Smales, Booker)" style={{ ...inp, marginBottom:8 }} />
+                  <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                    {[['chilled','🧊 Chilled'], ['frozen','❄️ Frozen'], ['ambient','📦 Dry/Ambient']].map(([k, l]) => (
+                      <button key={k} onClick={() => setDelivery(d => ({ ...d, kind: k, temp: k === 'frozen' ? '-18' : '3' }))}
+                        style={{ flex:1, padding:'9px 4px', borderRadius:10, cursor:'pointer', fontSize:12, fontWeight:700, border: delivery.kind === k ? '2px solid #0e7490' : '1px solid #e5e7eb', background: delivery.kind === k ? '#ecfeff' : '#fff', color: delivery.kind === k ? '#0e7490' : '#555' }}>{l}</button>
+                    ))}
+                  </div>
+                  {delivery.kind !== 'ambient' && (
+                    <select value={delivery.temp} onChange={e => setDelivery(d => ({ ...d, temp: e.target.value }))}
+                      style={{ ...inp, fontWeight:800, textAlign:'center', color:'#0e7490', marginBottom:8 }}>
+                      {tempOptions(delivery.kind === 'frozen' ? { from:-30, to:5 } : { from:-5, to:15 }).map(v => (
+                        <option key={v} value={v}>{v.toFixed(1)} °C on arrival</option>
+                      ))}
+                    </select>
+                  )}
+                  {[['packagingOk','Packaging clean and undamaged'], ['inDate','All items within date']].map(([k, l]) => (
+                    <label key={k} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px', borderRadius:10, marginBottom:6, cursor:'pointer', background: delivery[k] ? '#f0fdf4' : '#fef2f2', border: delivery[k] ? '1px solid #bbf7d0' : '1px solid #fecaca' }}>
+                      <input type="checkbox" checked={delivery[k]} onChange={() => setDelivery(d => ({ ...d, [k]: !d[k] }))} style={{ width:20, height:20, accentColor:'#059669' }} />
+                      <span style={{ fontSize:13, fontWeight:600, color:'#333' }}>{l}</span>
+                    </label>
+                  ))}
+                  <button onClick={saveDelivery} disabled={delSaving} style={{ width:'100%', marginTop:6, padding:'12px', borderRadius:10, border:'none', background:'#0e7490', color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer', opacity: delSaving ? 0.6 : 1 }}>
+                    {delSaving ? 'Saving…' : '✓ Record Delivery'}
+                  </button>
+                  {delMsg && <div style={{ marginTop:8, fontSize:13, fontWeight:700, color: delMsg.startsWith('✅') ? '#059669' : '#b45309' }}>{delMsg}</div>}
+                </div>
+
+                {/* Probe calibration */}
+                <div style={{ background:'#fff', borderRadius:14, padding:18, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:16 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <div style={{ fontWeight:800, fontSize:15, color:'#111' }}>🌡️ Probe check (monthly)</div>
+                    {(() => {
+                      const last = moreLogs.find((l: any) => l.log_type === 'maintenance')
+                      if (!last) return <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:12, background:'#fee2e2', color:'#991b1b' }}>NEVER DONE</span>
+                      const d = daysSince(last.recorded_at)
+                      return <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:12, background: d > 30 ? '#fee2e2' : '#d1fae5', color: d > 30 ? '#991b1b' : '#065f46' }}>{d > 30 ? `OVERDUE (${d}d ago)` : `Done ${d}d ago ✓`}</span>
+                    })()}
+                  </div>
+                  <div style={{ fontSize:12, color:'#888', margin:'4px 0 12px' }}>Proves your thermometer reads correctly. Put the probe in iced water, then in boiling water, and record what it shows.</div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:'#666', marginBottom:4 }}>🧊 In iced water (should be ~0°C)</div>
+                      <select value={probe.ice} onChange={e => setProbe(p => ({ ...p, ice: e.target.value }))} style={{ ...inp, fontWeight:800, textAlign:'center', color:'#0e7490' }}>
+                        {tempOptions({ from:-5, to:5 }).map(v => <option key={v} value={v}>{v.toFixed(1)} °C</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:'#666', marginBottom:4 }}>♨️ In boiling water (should be ~100°C)</div>
+                      <select value={probe.boil} onChange={e => setProbe(p => ({ ...p, boil: e.target.value }))} style={{ ...inp, fontWeight:800, textAlign:'center', color:'#0e7490' }}>
+                        {tempOptions({ from:95, to:105 }).map(v => <option key={v} value={v}>{v.toFixed(1)} °C</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <button onClick={saveProbe} disabled={probeSaving} style={{ width:'100%', marginTop:10, padding:'12px', borderRadius:10, border:'none', background:'#0e7490', color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer', opacity: probeSaving ? 0.6 : 1 }}>
+                    {probeSaving ? 'Saving…' : '✓ Record Probe Check'}
+                  </button>
+                  {probeMsg && <div style={{ marginTop:8, fontSize:13, fontWeight:700, color: probeMsg.startsWith('✅') ? '#059669' : '#b45309' }}>{probeMsg}</div>}
+                </div>
+
+                {/* Weekly review sign-off */}
+                <div style={{ background:'#fff', borderRadius:14, padding:18, boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <div style={{ fontWeight:800, fontSize:15, color:'#111' }}>✍️ Weekly review</div>
+                    {(() => {
+                      const last = moreLogs.find((l: any) => l.log_type === 'haccp')
+                      if (!last) return <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:12, background:'#fee2e2', color:'#991b1b' }}>NEVER DONE</span>
+                      const d = daysSince(last.recorded_at)
+                      return <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:12, background: d > 7 ? '#fee2e2' : '#d1fae5', color: d > 7 ? '#991b1b' : '#065f46' }}>{d > 7 ? `DUE (${d}d ago)` : `Signed ${d}d ago ✓`}</span>
+                    })()}
+                  </div>
+                  <div style={{ fontSize:12, color:'#888', margin:'4px 0 12px' }}>Once a week: look over your records and sign that you've reviewed them. Note anything that went wrong and what you did.</div>
+                  <textarea value={reviewNote} onChange={e => setReviewNote(e.target.value)} rows={2} placeholder="Any problems this week and what you did (or leave blank if all fine)" style={{ ...inp, resize:'vertical', marginBottom:8 }} />
+                  <div style={{ fontSize:12, color:'#888', marginBottom:8 }}>Signing as <b>{userName}</b> · {new Date().toLocaleDateString('en-GB')}</div>
+                  <button onClick={saveReview} disabled={revSaving} style={{ width:'100%', padding:'12px', borderRadius:10, border:'none', background:'#059669', color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer', opacity: revSaving ? 0.6 : 1 }}>
+                    {revSaving ? 'Saving…' : '✍️ Sign This Week\'s Review'}
+                  </button>
+                  {revMsg && <div style={{ marginTop:8, fontSize:13, fontWeight:700, color: revMsg.startsWith('✅') ? '#059669' : '#b45309' }}>{revMsg}</div>}
+                </div>
+              </>
             ) : (
               <>
                 {/* Pick the report: weekly or monthly, then which one */}
@@ -519,6 +673,25 @@ export default function HygienePage() {
                         <span style={{ padding:'1px 8px', borderRadius:10, fontSize:10, fontWeight:800, background: c.is_compliant ? '#d1fae5' : '#fef3c7', color: c.is_compliant ? '#065f46' : '#92400e' }}>{c.is_compliant ? 'ALL DONE' : 'PARTIAL'}</span>
                       </div>
                       <div style={{ color:'#888', fontSize:11, marginTop:2 }}>Signed: {c.digital_signature ?? c.users?.full_name ?? '—'} · {(c.data?.items ?? []).filter((i: any) => i.completed).length}/{(c.data?.items ?? []).length} items</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ background:'#fff', borderRadius:14, padding:18, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginTop:16 }}>
+                  <div style={{ fontWeight:800, fontSize:14, color:'#111', marginBottom:10 }}>🚚 Deliveries, probe checks & reviews</div>
+                  {recOther.length === 0 && <div style={{ fontSize:13, color:'#999', fontStyle:'italic' }}>None in this period</div>}
+                  {recOther.map((l: any) => (
+                    <div key={l.id} style={{ padding:'8px 0', borderBottom:'1px solid #f3f4f6', fontSize:12 }}>
+                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                        <span style={{ minWidth:96, color:'#666' }}>{new Date(l.recorded_at).toLocaleDateString('en-GB')} {new Date(l.recorded_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}</span>
+                        <span style={{ flex:1, fontWeight:700, color:'#333' }}>
+                          {l.log_type === 'supplier' ? `🚚 Delivery — ${l.data?.supplier ?? ''}${l.data?.temp != null ? ` (${Number(l.data.temp).toFixed(1)}°C ${l.data?.kind})` : ''}`
+                            : l.log_type === 'maintenance' ? `🌡️ Probe check — ice ${Number(l.data?.ice ?? 0).toFixed(1)}°C / boil ${Number(l.data?.boil ?? 0).toFixed(1)}°C`
+                            : `✍️ Weekly review${l.notes ? ` — ${l.notes}` : ''}`}
+                        </span>
+                        <span style={{ padding:'1px 8px', borderRadius:10, fontSize:10, fontWeight:800, background: l.is_compliant ? '#d1fae5' : '#fee2e2', color: l.is_compliant ? '#065f46' : '#991b1b' }}>{l.is_compliant ? 'OK' : 'ACTION'}</span>
+                      </div>
+                      <div style={{ color:'#888', fontSize:11, marginTop:2 }}>Signed: {l.digital_signature ?? l.users?.full_name ?? '—'}</div>
                     </div>
                   ))}
                 </div>
