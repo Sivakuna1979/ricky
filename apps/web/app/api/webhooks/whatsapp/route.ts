@@ -4,17 +4,15 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/server'
 
 // ============================================================================
-// WhatsApp Cloud API webhook — fully automatic ordering.
-// Customer texts the WhatsApp number -> Meta calls this endpoint -> Claude
-// reads the message against the van's menu -> order is created -> customer
-// gets an instant WhatsApp confirmation. No copy-paste, no screenshots.
+// WhatsApp Cloud API webhook — fully automatic ordering, MULTI-TENANT.
+// One shared webhook for every business on FoodTaxi. Incoming messages are
+// routed by the phone_number_id they were sent to (whatsapp_channels table),
+// and replies are sent with that business's own access token.
 //
-// Required Vercel env vars:
-//   WHATSAPP_VERIFY_TOKEN    any secret string, same one you enter in Meta
-//   WHATSAPP_TOKEN           permanent access token from Meta app
-//   WHATSAPP_PHONE_NUMBER_ID the Cloud API phone number id (for replies)
-//   WHATSAPP_VAN_ID          (optional) which van receives the orders;
-//                            defaults to the first active van
+// Global env vars (platform level):
+//   WHATSAPP_VERIFY_TOKEN    shared verify token every business enters in Meta
+// Legacy single-tenant fallback (kept so existing setups keep working):
+//   WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_VAN_ID
 // ============================================================================
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -28,15 +26,38 @@ export async function GET(req: NextRequest) {
   return new Response('Forbidden', { status: 403 })
 }
 
-async function sendWhatsApp(to: string, body: string) {
-  const token = process.env.WHATSAPP_TOKEN
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
+// channel = { phone_number_id, access_token, van_id }
+async function sendWhatsApp(channel: any, to: string, body: string) {
+  const token = channel?.access_token ?? process.env.WHATSAPP_TOKEN
+  const phoneId = channel?.phone_number_id ?? process.env.WHATSAPP_PHONE_NUMBER_ID
   if (!token || !phoneId) return
   await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
   }).catch(() => {})
+}
+
+// Find which business/van owns the number this message was sent TO.
+async function resolveChannel(admin: any, phoneNumberId: string) {
+  if (phoneNumberId) {
+    const { data } = await admin
+      .from('whatsapp_channels')
+      .select('phone_number_id, access_token, van_id')
+      .eq('phone_number_id', phoneNumberId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (data) return data
+  }
+  // Legacy env-var fallback (single-tenant installs / the platform test number)
+  if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
+    return {
+      phone_number_id: process.env.WHATSAPP_PHONE_NUMBER_ID,
+      access_token: process.env.WHATSAPP_TOKEN,
+      van_id: process.env.WHATSAPP_VAN_ID ?? null,
+    }
+  }
+  return null
 }
 
 function parsePrompt(menu: any[]) {
@@ -58,9 +79,13 @@ export async function POST(req: NextRequest) {
 
     for (const entry of payload.entry ?? []) {
       for (const change of entry.changes ?? []) {
+        const phoneNumberId = change.value?.metadata?.phone_number_id ?? ''
         for (const msg of change.value?.messages ?? []) {
+          const channel = await resolveChannel(admin, phoneNumberId)
+          if (!channel) continue // number not registered with any business
+
           if (msg.type !== 'text') {
-            if (msg.from) await sendWhatsApp(msg.from, 'Thanks! Please send your order as a text message, e.g. "2 cod and chips, pickup at 7pm" 🍟')
+            if (msg.from) await sendWhatsApp(channel, msg.from, 'Thanks! Please send your order as a text message, e.g. "2 cod and chips, pickup at 7pm" 🍟')
             continue
           }
 
@@ -69,7 +94,7 @@ export async function POST(req: NextRequest) {
           if (dupErr) continue // already processed (or table missing — fail safe, no double orders)
 
           const profileName = change.value?.contacts?.[0]?.profile?.name ?? ''
-          await handleOrder(admin, msg, profileName)
+          await handleOrder(admin, channel, msg, profileName)
         }
       }
     }
@@ -77,22 +102,21 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true })
 }
 
-async function handleOrder(admin: any, msg: any, profileName: string) {
+async function handleOrder(admin: any, channel: any, msg: any, profileName: string) {
   const from = msg.from
   const text = msg.text.body
   try {
-    // Which van takes WhatsApp orders
-    let vanId = process.env.WHATSAPP_VAN_ID
+    // Which van takes this channel's orders
     let van: any = null
-    if (vanId) {
-      const { data } = await admin.from('vans').select('id, name, business_id').eq('id', vanId).single()
+    if (channel.van_id) {
+      const { data } = await admin.from('vans').select('id, name, business_id').eq('id', channel.van_id).single()
       van = data
     } else {
       const { data } = await admin.from('vans').select('id, name, business_id').eq('is_active', true).limit(1).single()
       van = data
-      vanId = van?.id
     }
     if (!van) return
+    const vanId = van.id
 
     const { data: menu } = await admin.from('menu_items').select('id, name, price').eq('van_id', vanId).limit(200)
 
@@ -118,7 +142,7 @@ async function handleOrder(admin: any, msg: any, profileName: string) {
 
     if (!parsed.items?.length) {
       await admin.from('whatsapp_messages').update({ outcome: 'no_items' }).eq('id', msg.id)
-      await sendWhatsApp(from, `Hi${profileName ? ` ${profileName.split(' ')[0]}` : ''}! Thanks for your message — the van will get back to you shortly. To order instantly, just text what you'd like, e.g. "2 cod and chips" 🍟`)
+      await sendWhatsApp(channel, from, `Hi${profileName ? ` ${profileName.split(' ')[0]}` : ''}! Thanks for your message — ${van.name ?? 'the van'} will get back to you shortly. To order instantly, just text what you'd like, e.g. "2 cod and chips" 🍟`)
       return
     }
 
@@ -153,10 +177,10 @@ async function handleOrder(admin: any, msg: any, profileName: string) {
     await admin.from('whatsapp_messages').update({ outcome: 'ordered', order_id: order.id }).eq('id', msg.id)
 
     const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — £${(i.price * i.quantity).toFixed(2)}`).join('\n')
-    await sendWhatsApp(from,
+    await sendWhatsApp(channel, from,
       `✅ Order received${profileName ? `, ${profileName.split(' ')[0]}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n${parsed.pickup_location ? `Pickup: ${parsed.pickup_location}${parsed.pickup_time ? ` ~${parsed.pickup_time}` : ''}\n` : ''}Pay cash or card at the van. We'll message you when it's ready! 🍟`)
   } catch (e: any) {
     await admin.from('whatsapp_messages').update({ outcome: `error: ${e.message}`.slice(0, 200) }).eq('id', msg.id).catch(() => {})
-    await sendWhatsApp(from, 'Sorry, something went wrong taking your order automatically — the van will reply personally shortly!')
+    await sendWhatsApp(channel, from, 'Sorry, something went wrong taking your order automatically — the van will reply personally shortly!')
   }
 }
