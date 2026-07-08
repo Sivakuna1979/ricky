@@ -304,17 +304,34 @@ export default function AdminEventsPage() {
 
   const runFinder = async () => {
     setFinding(true)
-    setFindMsg('')
+    setFindMsg('🤖 Starting the search…')
     setFound(null)
     const res = await fetch('/api/events/discover', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ area: findArea, months: parseInt(findMonths), types: findTypes }),
     })
     const d = await res.json().catch(() => ({ error: `Server error (${res.status})` }))
-    if (d.error && !d.events?.length) { setFindMsg(`⚠️ ${d.error}`); setFinding(false); return }
-    setFound((d.events ?? []).map(e => ({ ...e, selected: true })))
-    setFindMsg(`🤖 Fable found ${d.events?.length ?? 0} events — untick any you don't want, then publish`)
-    setFinding(false)
+    if (!res.ok || d.error) { setFindMsg(`⚠️ ${d.error ?? 'Could not start the search'}`); setFinding(false); return }
+
+    // Poll every 5s for up to 4 minutes — the search runs on the server
+    const started = Date.now()
+    const poll = async () => {
+      const secs = Math.round((Date.now() - started) / 1000)
+      setFindMsg(`🔎 Fable is searching the web… ${secs}s`)
+      const s = await fetch(`/api/events/discover?id=${d.id}`).then(r => r.json()).catch(() => null)
+      if (s?.status === 'done') {
+        const events = s.events ?? []
+        if (!events.length) { setFindMsg(`⚠️ ${s.error ?? 'No events found — try a bigger area.'}`); setFinding(false); return }
+        setFound(events.map(e => ({ ...e, selected: true })))
+        setFindMsg(`🤖 Fable found ${events.length} events — untick any you don't want, then publish`)
+        setFinding(false)
+        return
+      }
+      if (s?.status === 'error') { setFindMsg(`⚠️ ${s.error ?? 'Search failed'}`); setFinding(false); return }
+      if (Date.now() - started > 240000) { setFindMsg('⚠️ Search took too long — try a smaller area or fewer months.'); setFinding(false); return }
+      setTimeout(poll, 5000)
+    }
+    setTimeout(poll, 5000)
   }
 
   const publishFound = async () => {
