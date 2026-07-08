@@ -113,13 +113,13 @@ export default async function BusinessDashboardPage() {
   const NAV = [
     { icon: '📊', label: 'Dashboard',    href: '/dashboard',          active: true  },
     { icon: '📦', label: 'Orders',       href: '/dashboard/orders',   active: false },
+    { icon: '🎪', label: 'Events',       href: '/van/events',         active: false },
     { icon: '🧼', label: 'Hygiene',      href: '/dashboard/hygiene',  active: false },
     { icon: '🗓️', label: 'Schedule',     href: '/dashboard/schedule', active: false },
     { icon: '📋', label: 'Menu',         href: '/dashboard/menu',     active: false },
     { icon: '🚐', label: 'My Vans',      href: '/dashboard/vans',     active: false },
     { icon: '💳', label: 'My Plan',      href: '/dashboard/billing',  active: false },
     { icon: '🗺️', label: 'Tracking',     href: '/dashboard/tracking', active: false },
-    { icon: '🎪', label: 'Events',       href: '/van/events',         active: false },
     { icon: '💬', label: 'WhatsApp',     href: '/dashboard/whatsapp', active: false },
     { icon: '⚙️', label: 'Settings',     href: '/dashboard/settings', active: false },
   ]
@@ -228,6 +228,16 @@ export default async function BusinessDashboardPage() {
                 ))}
               </div>
             </div>
+
+            {/* Events banner */}
+            <a href="/van/events" style={{ display:'flex', alignItems:'center', gap:14, background:'linear-gradient(135deg,#312e81,#4c1d95)', borderRadius:14, padding:'18px 20px', marginBottom:20, textDecoration:'none', boxShadow:'0 2px 8px rgba(49,46,129,0.3)' }}>
+              <span style={{ fontSize:34 }}>🎪</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:800, fontSize:15, color:'#fff' }}>Event Opportunities Across the UK</div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,0.7)', marginTop:2 }}>Festivals, markets & private events looking for food vans — browse and book your pitch</div>
+              </div>
+              <span style={{ color:'#fff', fontSize:20 }}>→</span>
+            </a>
 
             {/* My Vans */}
             <div style={{ background:'#fff', borderRadius:14, padding:'20px 22px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:20 }}>
