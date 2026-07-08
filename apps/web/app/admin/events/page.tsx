@@ -49,6 +49,55 @@ function StatCard({ label, value, color, onClick }) {
   )
 }
 
+// In-app chat with a van about their application (staff side)
+function AdminChat({ appId }) {
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [body, setBody] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const load = async () => {
+    const d = await fetch(`/api/events/messages?application_id=${appId}`).then(r => r.json()).catch(() => ({}))
+    setMessages(d.messages ?? [])
+  }
+  const toggle = async () => { const next = !open; setOpen(next); if (next) await load() }
+  const send = async () => {
+    if (!body.trim()) return
+    setSending(true)
+    await fetch('/api/events/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: appId, body }) })
+    setBody('')
+    await load()
+    setSending(false)
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button onClick={toggle} style={{ padding: '4px 12px', borderRadius: 8, border: 'none', background: '#312e81', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+        💬 {open ? 'Hide messages' : 'Message van'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: 10 }}>
+          <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
+            {messages.length === 0 && <div style={{ fontSize: 11, color: '#aaa', fontStyle: 'italic' }}>No messages yet</div>}
+            {messages.map(m => (
+              <div key={m.id} style={{ alignSelf: m.sender === 'foodtaxi' ? 'flex-end' : 'flex-start', maxWidth: '80%', padding: '6px 10px', borderRadius: 10, fontSize: 12,
+                background: m.sender === 'foodtaxi' ? '#312e81' : '#f3f4f6', color: m.sender === 'foodtaxi' ? '#fff' : '#333' }}>
+                {m.body}
+                <div style={{ fontSize: 9, opacity: 0.6, marginTop: 2 }}>{new Date(m.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input value={body} onChange={e => setBody(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Reply to the van…"
+              style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, outline: 'none' }} />
+            <button onClick={send} disabled={sending || !body.trim()} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#25d366', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', opacity: (sending || !body.trim()) ? 0.6 : 1 }}>Send</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DetailPanel({ b, onUpdate, onDelete, saving, applications, loadApps }) {
   const [notes, setNotes] = useState(b.admin_notes ?? '')
   const [fees, setFees] = useState({
@@ -203,6 +252,7 @@ function DetailPanel({ b, onUpdate, onDelete, saving, applications, loadApps }) 
                 </button>
               )}
             </div>
+            <AdminChat appId={app.id} />
           </div>
         ))}
       </div>
@@ -243,7 +293,7 @@ export default function AdminEventsPage() {
   const [exportMsg, setExportMsg] = useState('')
   const [applications, setApplications] = useState([])
   const [showAddEvent, setShowAddEvent] = useState(false)
-  const [addForm, setAddForm] = useState({ event_date:'', event_time:'', event_type:'festival', food_type:'any', event_location:'', region:'South East', num_guests:'', budget:'', notes:'', foodtaxi_fee:'29.99', urgent:false })
+  const [addForm, setAddForm] = useState({ event_date:'', event_time:'', event_type:'festival', food_type:'any', event_location:'', region:'South East', postcode:'', num_guests:'', budget:'', notes:'', foodtaxi_fee:'29.99', urgent:false })
   const [addSaving, setAddSaving] = useState(false)
   const [addMsg, setAddMsg] = useState('')
 
@@ -413,6 +463,7 @@ export default function AdminEventsPage() {
               <select value={addForm.region} onChange={e => setAddForm(f => ({ ...f, region: e.target.value }))} style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }}>
                 {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
+              <input value={addForm.postcode} onChange={e => setAddForm(f => ({ ...f, postcode: e.target.value }))} placeholder="Postcode (for distance search)" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, textTransform: 'uppercase' }} />
               <input value={addForm.num_guests} onChange={e => setAddForm(f => ({ ...f, num_guests: e.target.value }))} placeholder="Est. footfall" type="number" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
               <input value={addForm.budget} onChange={e => setAddForm(f => ({ ...f, budget: e.target.value }))} placeholder="Pitch cost / budget" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
               <input value={addForm.foodtaxi_fee} onChange={e => setAddForm(f => ({ ...f, foodtaxi_fee: e.target.value }))} placeholder="Booking fee £" type="number" step="0.01" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />

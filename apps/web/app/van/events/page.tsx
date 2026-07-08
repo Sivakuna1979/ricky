@@ -113,13 +113,61 @@ export default function VanEventsPage() {
   const [filterFood, setFilterFood] = useState('all')
   const [filterRegion, setFilterRegion] = useState('all')
   const [search, setSearch] = useState('')
+  const [postcode, setPostcode] = useState('')
+  const [radius, setRadius] = useState('50')
+  const [pcSearching, setPcSearching] = useState(false)
+  // My applications + in-app messages
+  const [myEmail, setMyEmail] = useState('')
+  const [myApps, setMyApps] = useState(null)
+  const [myLoading, setMyLoading] = useState(false)
+  const [thread, setThread] = useState(null)     // application being chatted on
+  const [messages, setMessages] = useState([])
+  const [msgBody, setMsgBody] = useState('')
+  const [msgSending, setMsgSending] = useState(false)
 
-  useEffect(() => {
-    fetch('/api/events/opportunities').then(r => r.json()).then(d => {
+  const loadOpps = (params = '') => {
+    setLoading(true)
+    fetch(`/api/events/opportunities${params}`).then(r => r.json()).then(d => {
       setOpps(d.opportunities ?? [])
       setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [])
+      setPcSearching(false)
+    }).catch(() => { setLoading(false); setPcSearching(false) })
+  }
+  useEffect(() => { loadOpps() }, [])
+
+  const searchByPostcode = () => {
+    if (!postcode.trim()) { loadOpps(); return }
+    setPcSearching(true)
+    loadOpps(`?postcode=${encodeURIComponent(postcode.trim())}&radius=${radius}`)
+  }
+
+  const loadMine = async () => {
+    if (!myEmail.trim()) return
+    setMyLoading(true)
+    const d = await fetch(`/api/events/mine?email=${encodeURIComponent(myEmail.trim())}`).then(r => r.json()).catch(() => ({}))
+    setMyApps(d.applications ?? [])
+    setMyLoading(false)
+  }
+
+  const openThread = async (app) => {
+    setThread(app)
+    setMessages([])
+    const d = await fetch(`/api/events/messages?application_id=${app.id}&email=${encodeURIComponent(myEmail.trim())}`).then(r => r.json()).catch(() => ({}))
+    setMessages(d.messages ?? [])
+  }
+
+  const sendMessage = async () => {
+    if (!msgBody.trim() || !thread) return
+    setMsgSending(true)
+    await fetch('/api/events/messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ application_id: thread.id, email: myEmail.trim(), body: msgBody }),
+    })
+    setMsgBody('')
+    const d = await fetch(`/api/events/messages?application_id=${thread.id}&email=${encodeURIComponent(myEmail.trim())}`).then(r => r.json()).catch(() => ({}))
+    setMessages(d.messages ?? [])
+    setMsgSending(false)
+  }
 
   const handleApply = async (eventId, data) => {
     const res = await fetch('/api/events/applications', {
@@ -174,6 +222,23 @@ export default function VanEventsPage() {
       </div>
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px' }}>
+
+        {/* Postcode / distance search */}
+        <div style={{ background: '#fff', borderRadius: 14, padding: 14, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#312e81', marginBottom: 8 }}>📍 Find events near you</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input value={postcode} onChange={e => setPostcode(e.target.value)} placeholder="Your postcode (e.g. RH20 1AB)"
+              style={{ flex: '2 1 150px', padding: '11px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none', textTransform: 'uppercase' }} />
+            <select value={radius} onChange={e => setRadius(e.target.value)}
+              style={{ flex: '1 1 110px', padding: '11px 10px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 700, color: '#312e81' }}>
+              {[['10','Within 10 miles'], ['25','Within 25 miles'], ['50','Within 50 miles'], ['100','Within 100 miles'], ['0','Anywhere (nearest first)']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <button onClick={searchByPostcode} disabled={pcSearching}
+              style={{ padding: '11px 20px', borderRadius: 10, border: 'none', background: '#312e81', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: pcSearching ? 0.6 : 1 }}>
+              {pcSearching ? 'Searching…' : '🔍 Search'}
+            </button>
+          </div>
+        </div>
 
         {/* UK-wide search + region filter */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -241,6 +306,7 @@ export default function VanEventsPage() {
                     <div>📅 <b>{opp.event_date}</b> {daysUntil > 0 ? `(${daysUntil}d away)` : ''}</div>
                     {opp.event_time && <div>🕐 {opp.event_time}</div>}
                     {opp.event_location && <div>📍 {opp.event_location}</div>}
+                    {opp.distance_miles != null && <div style={{ color: '#312e81', fontWeight: 700 }}>🚐 {opp.distance_miles} miles away</div>}
                     {opp.region && <div>🗺️ {opp.region}</div>}
                     {opp.num_guests && <div>👥 ~{opp.num_guests} guests</div>}
                     {opp.food_type && <div>{FOOD_LABELS[opp.food_type] ?? opp.food_type}</div>}
@@ -281,6 +347,60 @@ export default function VanEventsPage() {
             </div>
           )
         })}
+
+        {/* My applications + in-app messages */}
+        <div style={{ marginTop: 24, background: '#fff', borderRadius: 16, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: '#111', marginBottom: 4 }}>📨 My Applications & Messages</div>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>All event communication happens here on FoodTaxi. Enter the email you applied with.</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input value={myEmail} onChange={e => setMyEmail(e.target.value)} placeholder="your@email.com" type="email"
+              style={{ flex: '2 1 180px', padding: '11px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none' }} />
+            <button onClick={loadMine} disabled={myLoading || !myEmail.trim()}
+              style={{ padding: '11px 20px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: (myLoading || !myEmail.trim()) ? 0.6 : 1 }}>
+              {myLoading ? 'Loading…' : 'Show my applications'}
+            </button>
+          </div>
+
+          {myApps && myApps.length === 0 && <div style={{ marginTop: 12, fontSize: 13, color: '#999', fontStyle: 'italic' }}>No applications found for that email.</div>}
+          {myApps?.map(app => (
+            <div key={app.id} style={{ marginTop: 10, padding: '12px 14px', borderRadius: 12, background: '#f9fafb', border: '1px solid #eef0f3' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#111' }}>{app.event?.event_location ?? 'Event'} · {app.event?.event_date ?? ''}</div>
+                  <div style={{ fontSize: 12, color: '#888' }}>{app.event?.event_type ?? ''}{app.event?.region ? ` · ${app.event.region}` : ''}</div>
+                </div>
+                <StatusPill status={app.status} />
+                {app.paid_at && <span style={{ padding: '2px 10px', borderRadius: 10, background: '#d1fae5', color: '#065f46', fontSize: 10, fontWeight: 800 }}>💳 PAID</span>}
+                <button onClick={() => openThread(app)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#312e81', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>💬 Messages</button>
+              </div>
+
+              {thread?.id === app.id && (
+                <div style={{ marginTop: 10, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+                  <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                    {messages.length === 0 && <div style={{ fontSize: 12, color: '#aaa', fontStyle: 'italic' }}>No messages yet — ask FoodTaxi anything about this event.</div>}
+                    {messages.map(m => (
+                      <div key={m.id} style={{ alignSelf: m.sender === 'van' ? 'flex-end' : 'flex-start', maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
+                        background: m.sender === 'van' ? '#312e81' : '#fff', color: m.sender === 'van' ? '#fff' : '#333',
+                        border: m.sender === 'van' ? 'none' : '1px solid #e5e7eb', fontSize: 13 }}>
+                        {m.sender === 'foodtaxi' && <div style={{ fontSize: 10, fontWeight: 800, color: '#f97316', marginBottom: 2 }}>FOODTAXI</div>}
+                        {m.body}
+                        <div style={{ fontSize: 9, opacity: 0.6, marginTop: 3 }}>{new Date(m.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input value={msgBody} onChange={e => setMsgBody(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Type a message…"
+                      style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13, outline: 'none' }} />
+                    <button onClick={sendMessage} disabled={msgSending || !msgBody.trim()}
+                      style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: '#25d366', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', opacity: (msgSending || !msgBody.trim()) ? 0.6 : 1 }}>
+                      Send
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
 
         {/* CTA for non-registered vans */}
         <div style={{ marginTop: 24, background: 'linear-gradient(135deg,#1e1b4b,#312e81)', borderRadius: 16, padding: '24px 20px', textAlign: 'center', color: '#fff' }}>

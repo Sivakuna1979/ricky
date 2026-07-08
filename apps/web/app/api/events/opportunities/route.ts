@@ -23,10 +23,16 @@ function getAdmin() {
 // Fields safe to expose to van owners before contact release
 const PUBLIC_FIELDS = [
   'id', 'event_date', 'event_time', 'event_type', 'food_type',
-  'event_location', 'region', 'num_guests', 'admin_status', 'foodtaxi_fee',
+  'event_location', 'region', 'postcode', 'lat', 'lng', 'num_guests', 'admin_status', 'foodtaxi_fee',
   'commission_pct', 'deposit_required', 'payment_required', 'urgent',
   'budget', 'notes', 'created_at',
 ]
+
+const milesBetween = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+  const toRad = (d: number) => d * Math.PI / 180
+  const a = Math.sin(toRad(lat2 - lat1) / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lng2 - lng1) / 2) ** 2
+  return 3959 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 export async function GET(req: NextRequest) {
   const db = getAdmin()
@@ -68,7 +74,27 @@ export async function GET(req: NextRequest) {
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ opportunities: data ?? [] })
+  // Postcode proximity: geocode the searcher's postcode and sort by distance
+  let opportunities = data ?? []
+  const searchPc = p.get('postcode')?.trim()
+  if (searchPc) {
+    try {
+      const geo = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(searchPc)}`).then(r => r.json())
+      if (geo?.result) {
+        const { latitude, longitude } = geo.result
+        const radius = Number(p.get('radius')) || 0 // 0 = anywhere, still sorted by distance
+        opportunities = opportunities
+          .map((o: any) => ({
+            ...o,
+            distance_miles: o.lat != null && o.lng != null ? Math.round(milesBetween(latitude, longitude, o.lat, o.lng) * 10) / 10 : null,
+          }))
+          .filter((o: any) => !radius || (o.distance_miles != null && o.distance_miles <= radius))
+          .sort((a: any, b: any) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || (a.distance_miles ?? 1e9) - (b.distance_miles ?? 1e9))
+      }
+    } catch {}
+  }
+
+  return NextResponse.json({ opportunities })
 }
 
 export async function POST(req: NextRequest) {
