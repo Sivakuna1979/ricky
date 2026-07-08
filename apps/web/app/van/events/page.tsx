@@ -332,9 +332,15 @@ export default function VanEventsPage() {
                         <button onClick={() => setApplying(opp)} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                           ✋ I'm Interested
                         </button>
-                        <button onClick={() => setApplying({ ...opp, _quickAccept: true })} style={{ padding: '9px 20px', borderRadius: 10, border: '2px solid #10b981', background: '#fff', color: '#10b981', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                          ✅ Accept Event
-                        </button>
+                        {opp.organiser_approved !== false ? (
+                          <button onClick={() => setApplying({ ...opp, _quickAccept: true })} style={{ padding: '9px 20px', borderRadius: 10, border: '2px solid #10b981', background: '#fff', color: '#10b981', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                            ✅ Accept Event
+                          </button>
+                        ) : (
+                          <span style={{ padding: '9px 16px', borderRadius: 10, background: '#fef3c7', color: '#92400e', fontSize: 12, fontWeight: 700, alignSelf: 'center' }}>
+                            ⏳ FoodTaxi is confirming this event with the organiser — register interest to be first in line
+                          </span>
+                        )}
                       </>
                     ) : (
                       <div style={{ padding: '9px 16px', borderRadius: 10, background: '#f0fdf4', color: '#059669', fontSize: 13, fontWeight: 700 }}>

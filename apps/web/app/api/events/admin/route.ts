@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const { event_date, event_time, event_type, food_type, event_location, region, postcode, num_guests, budget, notes, foodtaxi_fee, urgent } = body
+  const { event_date, event_time, event_type, food_type, event_location, region, postcode, num_guests, budget, notes, foodtaxi_fee, urgent, organiser_approved } = body
   if (!event_date || !event_location) {
     return NextResponse.json({ error: 'event_date and event_location are required' }, { status: 400 })
   }
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
     notes: notes || null,
     foodtaxi_fee: foodtaxi_fee ?? 29.99,
     urgent: !!urgent,
+    organiser_approved: !!organiser_approved, // sourced events need securing first
     source: 'foodtaxi',
     admin_status: 'published',
     marketplace_visible: true,

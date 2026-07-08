@@ -147,6 +147,22 @@ function DetailPanel({ b, onUpdate, onDelete, saving, applications, loadApps }) 
         </button>
       </div>
 
+      {/* Organiser approval gate */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, marginTop: 8, background: b.organiser_approved === false ? '#fffbeb' : '#ecfdf5', border: `1px solid ${b.organiser_approved === false ? '#fde68a' : '#6ee7b7'}` }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#111' }}>
+            {b.organiser_approved === false ? '⏳ Organiser NOT yet confirmed' : '🤝 Organiser confirmed'}
+          </div>
+          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+            {b.organiser_approved === false ? 'Vans can only register interest. Contact the organiser, then approve to unlock Accept.' : 'Vans can Accept this event and pay the booking fee.'}
+          </div>
+        </div>
+        <button onClick={() => onUpdate(b.id, { organiser_approved: b.organiser_approved === false })}
+          style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: b.organiser_approved === false ? '#10b981' : '#f59e0b', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          {b.organiser_approved === false ? '✓ Mark Confirmed' : 'Revoke'}
+        </button>
+      </div>
+
       {/* Customer */}
       <div style={{ background: '#f9fafb', borderRadius: 10, padding: 14 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 8 }}>Customer</div>
@@ -353,6 +369,7 @@ export default function AdminEventsPage() {
           num_guests: e.footfall || null,
           notes: `${e.notes ?? ''}${e.source_url ? ` | Source: ${e.source_url}` : ''}`.trim(),
           foodtaxi_fee: 29.99,
+          organiser_approved: false, // AI-sourced: secure with the organiser before vans can Accept
         }),
       })
       if (res.ok) ok++
@@ -362,7 +379,7 @@ export default function AdminEventsPage() {
     setPublishing(false)
     load()
   }
-  const [addForm, setAddForm] = useState({ event_date:'', event_time:'', event_type:'festival', food_type:'any', event_location:'', region:'South East', postcode:'', num_guests:'', budget:'', notes:'', foodtaxi_fee:'29.99', urgent:false })
+  const [addForm, setAddForm] = useState({ event_date:'', event_time:'', event_type:'festival', food_type:'any', event_location:'', region:'South East', postcode:'', num_guests:'', budget:'', notes:'', foodtaxi_fee:'29.99', urgent:false, organiser_approved:false })
   const [addSaving, setAddSaving] = useState(false)
   const [addMsg, setAddMsg] = useState('')
 
@@ -585,6 +602,9 @@ export default function AdminEventsPage() {
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#991b1b', cursor: 'pointer' }}>
                 <input type="checkbox" checked={addForm.urgent} onChange={e => setAddForm(f => ({ ...f, urgent: e.target.checked }))} /> 🔴 Priority event
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#065f46', cursor: 'pointer' }}>
+                <input type="checkbox" checked={addForm.organiser_approved} onChange={e => setAddForm(f => ({ ...f, organiser_approved: e.target.checked }))} /> 🤝 Organiser already confirmed
               </label>
               <button onClick={submitAddEvent} disabled={addSaving} style={{ padding: '10px 22px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: addSaving ? 0.6 : 1 }}>
                 {addSaving ? 'Publishing…' : '🚀 Publish to Van Board'}

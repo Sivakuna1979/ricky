@@ -23,7 +23,7 @@ function getAdmin() {
 // Fields safe to expose to van owners before contact release
 const PUBLIC_FIELDS = [
   'id', 'event_date', 'event_time', 'event_type', 'food_type',
-  'event_location', 'region', 'postcode', 'lat', 'lng', 'num_guests', 'admin_status', 'foodtaxi_fee',
+  'event_location', 'region', 'postcode', 'lat', 'lng', 'organiser_approved', 'num_guests', 'admin_status', 'foodtaxi_fee',
   'commission_pct', 'deposit_required', 'payment_required', 'urgent',
   'budget', 'notes', 'created_at',
 ]
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
 
   // New columns not migrated yet — retry without them so the board still works
   if (error && /(region|postcode|lat|lng|column)/i.test(error.message ?? '')) {
-    const NEW_COLS = ['region', 'postcode', 'lat', 'lng']
+    const NEW_COLS = ['region', 'postcode', 'lat', 'lng', 'organiser_approved']
     const retry = await db
       .from('event_requests')
       .select(PUBLIC_FIELDS.filter(f => !NEW_COLS.includes(f)).join(', '))
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   // Verify event is still visible
   const { data: evt } = await db
     .from('event_requests')
-    .select('id, admin_status, marketplace_visible')
+    .select('id, admin_status, marketplace_visible, organiser_approved')
     .eq('id', event_id)
     .single()
 
@@ -120,7 +120,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'This opportunity is no longer available.' }, { status: 404 })
   }
 
-  const status = action === 'accept' ? 'accepted_pending_payment' : action === 'decline' ? 'declined' : 'interested'
+  // Accepting is only possible once FoodTaxi has secured the event with the
+  // organiser — until then, applications are recorded as interest.
+  let status = action === 'accept' ? 'accepted_pending_payment' : action === 'decline' ? 'declined' : 'interested'
+  if (status === 'accepted_pending_payment' && evt.organiser_approved === false) {
+    status = 'interested'
+  }
 
   // Upsert application (one per van email per event)
   const { error } = await db
