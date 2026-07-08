@@ -59,13 +59,15 @@ export async function GET(req: NextRequest) {
     .order('event_date', { ascending: true })
     .limit(200)
 
-  // Region column not migrated yet — retry without it so the board still works
-  if (error && /region/.test(error.message ?? '')) {
+  // New columns not migrated yet — retry without them so the board still works
+  if (error && /(region|postcode|lat|lng|column)/i.test(error.message ?? '')) {
+    const NEW_COLS = ['region', 'postcode', 'lat', 'lng']
     const retry = await db
       .from('event_requests')
-      .select(PUBLIC_FIELDS.filter(f => f !== 'region').join(', '))
+      .select(PUBLIC_FIELDS.filter(f => !NEW_COLS.includes(f)).join(', '))
       .eq('marketplace_visible', true)
       .not('admin_status', 'in', '("completed","cancelled")')
+      .gte('event_date', new Date().toISOString().slice(0, 10))
       .order('urgent', { ascending: false })
       .order('event_date', { ascending: true })
       .limit(200)
