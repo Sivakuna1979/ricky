@@ -57,6 +57,8 @@ function inferType(name: string, types: string[]): string {
   return 'fast_food'
 }
 
+const googleErrors: string[] = []
+
 async function searchRadius(apiKey: string, lat: number, lng: number, radius: number): Promise<Map<string, any>> {
   const seen = new Map<string, any>()
   await Promise.allSettled(
@@ -73,6 +75,9 @@ async function searchRadius(apiKey: string, lat: number, lng: number, radius: nu
           for (const place of data.results ?? []) {
             if (!seen.has(place.place_id)) seen.set(place.place_id, place)
           }
+        } else {
+          // REQUEST_DENIED / OVER_QUERY_LIMIT / INVALID_REQUEST — record it
+          googleErrors.push(`${data.status}: ${data.error_message ?? ''}`.trim())
         }
       } catch {}
     })
@@ -98,6 +103,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'lat and lng required', results: [] }, { status: 400 })
   }
 
+  googleErrors.length = 0
   let seen = new Map<string, any>()
   let usedRadius = forceRadius ?? RADII[0]
 
@@ -190,6 +196,14 @@ export async function GET(req: NextRequest) {
     .upsert(rows, { onConflict: 'google_place_id', ignoreDuplicates: false })
     .then(() => {})
     .catch(() => {})
+
+  // If Google rejected every request, tell the user instead of showing nothing.
+  if (!enriched.length && googleErrors.length) {
+    return NextResponse.json({
+      error: `Google Places error — ${googleErrors[0]}`,
+      results: [],
+    }, { status: 502 })
+  }
 
   return NextResponse.json({
     results: enriched,
