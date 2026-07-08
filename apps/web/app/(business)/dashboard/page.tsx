@@ -134,7 +134,7 @@ export default async function BusinessDashboardPage() {
         .biz-main{flex:1;padding:24px;overflow-x:hidden;max-width:900px}
         .biz-body{display:flex;flex:1}
         .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
-        .biz-bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:6px 0 18px}
+        .biz-bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:6px 8px 18px;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px}
         .pub-site-link{display:inline-block}
         @media(max-width:700px){
           .biz-sidebar{display:none}
@@ -308,7 +308,7 @@ export default async function BusinessDashboardPage() {
 
         {/* Mobile bottom nav */}
         <nav className="biz-bottom">
-          {NAV.slice(0, 6).map(n => (
+          {NAV.map(n => (
             <a key={n.href} href={n.href} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, textDecoration:'none', color: n.active ? '#f97316' : '#9ca3af', fontSize:10, fontWeight:600, minWidth:48 }}>
               <span style={{ fontSize:20 }}>{n.icon}</span>
               {n.label}

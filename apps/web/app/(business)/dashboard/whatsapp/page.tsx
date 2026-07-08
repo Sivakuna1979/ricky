@@ -51,6 +51,7 @@ export default function WhatsAppPage() {
     { icon: '📊', label: 'Dashboard', href: '/dashboard' },
     { icon: '🚐', label: 'My Vans',   href: '/dashboard/vans' },
     { icon: '📦', label: 'Orders',    href: '/dashboard/orders' },
+  { icon: '🎪', label: 'Events',    href: '/van/events' },
     { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
   { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene' },
     { icon: '💬', label: 'WhatsApp',  href: '/dashboard/whatsapp', active: true },
@@ -68,7 +69,7 @@ export default function WhatsAppPage() {
         .sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e5e7eb;padding:16px 10px;min-height:calc(100vh - 56px)}
         .main{flex:1;padding:24px;max-width:640px}
         .body{display:flex;flex:1}
-        .bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:6px 0 18px}
+        .bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:6px 8px 18px;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px}
         @media(max-width:700px){.sidebar{display:none}.main{padding:16px 14px 90px}.bottom{display:flex;justify-content:space-around}}
       `}</style>
       <div className="wrap">

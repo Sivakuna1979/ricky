@@ -154,6 +154,7 @@ export default function VansPage() {
     { icon: '📊', label: 'Dashboard', href: '/dashboard' },
     { icon: '🚐', label: 'My Vans',   href: '/dashboard/vans',    active: true },
     { icon: '📦', label: 'Orders',    href: '/dashboard/orders' },
+  { icon: '🎪', label: 'Events',    href: '/van/events' },
     { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
     { icon: '💳', label: 'My Plan',   href: '/dashboard/billing' },
   { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene' },
@@ -170,7 +171,8 @@ export default function VansPage() {
         .sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e5e7eb;padding:16px 10px;min-height:calc(100vh - 56px)}
         .main{flex:1;padding:24px;overflow-x:hidden;max-width:900px}
         .body{display:flex;flex:1}
-        @media(max-width:700px){.sidebar{display:none}.main{padding:16px 14px 90px}}
+        .bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:6px 8px 18px;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px}
+        @media(max-width:700px){.sidebar{display:none}.main{padding:16px 14px 90px}.bottom{display:flex;justify-content:space-around}}
       `}</style>
       <div className="wrap">
         <div className="topbar">
@@ -326,6 +328,13 @@ export default function VansPage() {
             )}
           </div>
         </div>
+        <nav className="bottom">
+          {NAV.map(n => (
+            <a key={n.href} href={n.href} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, textDecoration:'none', color: n.active ? '#f97316' : '#9ca3af', fontSize:10, fontWeight:600, minWidth:48, flexShrink:0 }}>
+              <span style={{ fontSize:20 }}>{n.icon}</span>{n.label}
+            </a>
+          ))}
+        </nav>
       </div>
     </>
   )
