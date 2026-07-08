@@ -226,6 +226,29 @@ export default function AdminEventsPage() {
   })
   const [exportMsg, setExportMsg] = useState('')
   const [applications, setApplications] = useState([])
+  const [showAddEvent, setShowAddEvent] = useState(false)
+  const [addForm, setAddForm] = useState({ event_date:'', event_time:'', event_type:'festival', food_type:'any', event_location:'', region:'South East', num_guests:'', budget:'', notes:'', foodtaxi_fee:'29.99', urgent:false })
+  const [addSaving, setAddSaving] = useState(false)
+  const [addMsg, setAddMsg] = useState('')
+
+  const UK_REGIONS = ['London','South East','South West','East of England','East Midlands','West Midlands','Yorkshire','North West','North East','Wales','Scotland','Northern Ireland']
+
+  const submitAddEvent = async () => {
+    if (!addForm.event_date || !addForm.event_location) { setAddMsg('⚠️ Date and location are required'); return }
+    setAddSaving(true)
+    setAddMsg('')
+    const res = await fetch('/api/events/admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...addForm, foodtaxi_fee: parseFloat(addForm.foodtaxi_fee) || 29.99 }),
+    })
+    const d = await res.json().catch(() => ({ error: `Server error (${res.status})` }))
+    if (!res.ok || d.error) { setAddMsg(`⚠️ ${d.error ?? 'Failed'}`); setAddSaving(false); return }
+    setAddMsg('✅ Published to the van board')
+    setAddForm(f => ({ ...f, event_date:'', event_time:'', event_location:'', num_guests:'', budget:'', notes:'', urgent:false }))
+    setAddSaving(false)
+    load()
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -339,6 +362,7 @@ export default function AdminEventsPage() {
         <a href="/admin/dashboard" style={{ color: '#6366f1', fontWeight: 900, textDecoration: 'none', fontSize: 22 }}>🍟</a>
         <span style={{ fontWeight: 800, fontSize: 17, color: '#111' }}>Event Marketplace</span>
         <div style={{ flex: 1 }} />
+        <button onClick={() => setShowAddEvent(v => !v)} style={{ padding: '5px 14px', borderRadius: 8, border: 'none', background: '#10b981', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 800 }}>➕ Add UK Event</button>
         <a href="/van/events" target="_blank" style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}>Van Board ↗</a>
         <button onClick={load} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', color: '#555' }}>↻</button>
       </div>
@@ -354,6 +378,42 @@ export default function AdminEventsPage() {
           }}>{t.label}</button>
         ))}
       </div>
+
+      {/* Add UK Event (staff) */}
+      {showAddEvent && (
+        <div style={{ background: '#ecfdf5', borderBottom: '1px solid #a7f3d0', padding: '16px 20px' }}>
+          <div style={{ maxWidth: 900, margin: '0 auto' }}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: '#065f46', marginBottom: 10 }}>➕ Add an event you've sourced — publishes straight to the van board</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px,1fr))', gap: 8 }}>
+              <input type="date" value={addForm.event_date} onChange={e => setAddForm(f => ({ ...f, event_date: e.target.value }))} style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+              <input value={addForm.event_time} onChange={e => setAddForm(f => ({ ...f, event_time: e.target.value }))} placeholder="Time (e.g. 10:00–18:00)" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+              <select value={addForm.event_type} onChange={e => setAddForm(f => ({ ...f, event_type: e.target.value }))} style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }}>
+                {['festival','market','sports','corporate','wedding','birthday','private','graduation','other'].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <select value={addForm.food_type} onChange={e => setAddForm(f => ({ ...f, food_type: e.target.value }))} style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }}>
+                {['any','fish_and_chips','burger','pizza','coffee','ice_cream','street_food','bbq','dessert'].map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+              </select>
+              <input value={addForm.event_location} onChange={e => setAddForm(f => ({ ...f, event_location: e.target.value }))} placeholder="Location / venue *" style={{ gridColumn: 'span 2', padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+              <select value={addForm.region} onChange={e => setAddForm(f => ({ ...f, region: e.target.value }))} style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }}>
+                {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <input value={addForm.num_guests} onChange={e => setAddForm(f => ({ ...f, num_guests: e.target.value }))} placeholder="Est. footfall" type="number" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+              <input value={addForm.budget} onChange={e => setAddForm(f => ({ ...f, budget: e.target.value }))} placeholder="Pitch cost / budget" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+              <input value={addForm.foodtaxi_fee} onChange={e => setAddForm(f => ({ ...f, foodtaxi_fee: e.target.value }))} placeholder="Booking fee £" type="number" step="0.01" style={{ padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+              <input value={addForm.notes} onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes for vans (organiser, power, pitch size…)" style={{ gridColumn: '1/-1', padding: '9px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#991b1b', cursor: 'pointer' }}>
+                <input type="checkbox" checked={addForm.urgent} onChange={e => setAddForm(f => ({ ...f, urgent: e.target.checked }))} /> 🔴 Priority event
+              </label>
+              <button onClick={submitAddEvent} disabled={addSaving} style={{ padding: '10px 22px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: addSaving ? 0.6 : 1 }}>
+                {addSaving ? 'Publishing…' : '🚀 Publish to Van Board'}
+              </button>
+              {addMsg && <span style={{ fontSize: 13, fontWeight: 700, color: addMsg.startsWith('✅') ? '#059669' : '#b45309' }}>{addMsg}</span>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ padding: 80, textAlign: 'center', color: '#aaa', fontSize: 15 }}>Loading…</div>

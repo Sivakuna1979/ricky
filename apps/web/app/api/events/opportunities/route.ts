@@ -23,20 +23,49 @@ function getAdmin() {
 // Fields safe to expose to van owners before contact release
 const PUBLIC_FIELDS = [
   'id', 'event_date', 'event_time', 'event_type', 'food_type',
-  'event_location', 'num_guests', 'admin_status', 'foodtaxi_fee',
+  'event_location', 'region', 'num_guests', 'admin_status', 'foodtaxi_fee',
   'commission_pct', 'deposit_required', 'payment_required', 'urgent',
   'budget', 'notes', 'created_at',
 ]
 
 export async function GET(req: NextRequest) {
   const db = getAdmin()
-  const { data, error } = await db
+  const p = req.nextUrl.searchParams
+
+  let query = db
     .from('event_requests')
     .select(PUBLIC_FIELDS.join(', '))
     .eq('marketplace_visible', true)
     .not('admin_status', 'in', '("completed","cancelled")')
-    .order('event_date', { ascending: true })
+    .gte('event_date', new Date().toISOString().slice(0, 10))
 
+  // UK-wide filters for the van board
+  if (p.get('region')) query = query.eq('region', p.get('region'))
+  if (p.get('food_type')) query = query.in('food_type', [p.get('food_type'), 'any'])
+  if (p.get('type')) query = query.eq('event_type', p.get('type'))
+  if (p.get('q')) query = query.ilike('event_location', `%${p.get('q')}%`)
+  if (p.get('from')) query = query.gte('event_date', p.get('from'))
+  if (p.get('to')) query = query.lte('event_date', p.get('to'))
+
+  // Priority events first, then soonest
+  let { data, error } = await query
+    .order('urgent', { ascending: false })
+    .order('event_date', { ascending: true })
+    .limit(200)
+
+  // Region column not migrated yet — retry without it so the board still works
+  if (error && /region/.test(error.message ?? '')) {
+    const retry = await db
+      .from('event_requests')
+      .select(PUBLIC_FIELDS.filter(f => f !== 'region').join(', '))
+      .eq('marketplace_visible', true)
+      .not('admin_status', 'in', '("completed","cancelled")')
+      .order('urgent', { ascending: false })
+      .order('event_date', { ascending: true })
+      .limit(200)
+    data = retry.data
+    error = retry.error
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ opportunities: data ?? [] })

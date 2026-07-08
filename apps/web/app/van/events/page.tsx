@@ -111,6 +111,8 @@ export default function VanEventsPage() {
   const [applying, setApplying] = useState(null)
   const [successId, setSuccessId] = useState(null)
   const [filterFood, setFilterFood] = useState('all')
+  const [filterRegion, setFilterRegion] = useState('all')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetch('/api/events/opportunities').then(r => r.json()).then(d => {
@@ -132,7 +134,12 @@ export default function VanEventsPage() {
   }
 
   const foodTypes = [...new Set(opps.map(o => o.food_type).filter(Boolean))]
-  const filtered = opps.filter(o => filterFood === 'all' || o.food_type === filterFood)
+  const regions = [...new Set(opps.map(o => o.region).filter(Boolean))].sort()
+  const filtered = opps.filter(o =>
+    (filterFood === 'all' || o.food_type === filterFood) &&
+    (filterRegion === 'all' || o.region === filterRegion) &&
+    (!search.trim() || `${o.event_location ?? ''} ${o.region ?? ''} ${o.notes ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+  )
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -167,6 +174,19 @@ export default function VanEventsPage() {
       </div>
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px' }}>
+
+        {/* UK-wide search + region filter */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search events anywhere in the UK (town, venue…)"
+            style={{ flex: '2 1 220px', padding: '11px 14px', borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none', background: '#fff' }} />
+          {regions.length > 0 && (
+            <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)}
+              style={{ flex: '1 1 140px', padding: '11px 12px', borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 700, color: '#4c1d95', background: '#fff' }}>
+              <option value="all">🗺️ All UK regions</option>
+              {regions.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+        </div>
 
         {/* Filters */}
         {foodTypes.length > 0 && (
@@ -221,19 +241,18 @@ export default function VanEventsPage() {
                     <div>📅 <b>{opp.event_date}</b> {daysUntil > 0 ? `(${daysUntil}d away)` : ''}</div>
                     {opp.event_time && <div>🕐 {opp.event_time}</div>}
                     {opp.event_location && <div>📍 {opp.event_location}</div>}
+                    {opp.region && <div>🗺️ {opp.region}</div>}
                     {opp.num_guests && <div>👥 ~{opp.num_guests} guests</div>}
                     {opp.food_type && <div>{FOOD_LABELS[opp.food_type] ?? opp.food_type}</div>}
                     {opp.budget && <div>💰 Budget: {opp.budget}</div>}
                   </div>
 
-                  {(opp.foodtaxi_fee || opp.commission_pct || opp.deposit_required) && (
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                      {opp.foodtaxi_fee && <span style={{ padding: '4px 12px', borderRadius: 8, background: '#fff7ed', color: '#f97316', fontSize: 12, fontWeight: 700 }}>Lead Fee: £{opp.foodtaxi_fee}</span>}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                      <span style={{ padding: '4px 12px', borderRadius: 8, background: '#fff7ed', color: '#f97316', fontSize: 12, fontWeight: 700 }}>Booking fee: £{Number(opp.foodtaxi_fee ?? 29.99).toFixed(2)} — only if you're confirmed</span>
                       {opp.commission_pct && <span style={{ padding: '4px 12px', borderRadius: 8, background: '#eff6ff', color: '#3b82f6', fontSize: 12, fontWeight: 700 }}>Commission: {opp.commission_pct}%</span>}
                       {opp.deposit_required && <span style={{ padding: '4px 12px', borderRadius: 8, background: '#f0fdf4', color: '#059669', fontSize: 12, fontWeight: 700 }}>Deposit: £{opp.deposit_required}</span>}
                       {opp.payment_required && <span style={{ padding: '4px 12px', borderRadius: 8, background: '#fef9c3', color: '#854d0e', fontSize: 12, fontWeight: 700 }}>⚠ Fee required before accept</span>}
                     </div>
-                  )}
 
                   {opp.notes && (
                     <div style={{ padding: '8px 12px', borderRadius: 8, background: '#f9fafb', fontSize: 13, color: '#555', marginBottom: 12, fontStyle: 'italic' }}>
