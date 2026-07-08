@@ -293,6 +293,58 @@ export default function AdminEventsPage() {
   const [exportMsg, setExportMsg] = useState('')
   const [applications, setApplications] = useState([])
   const [showAddEvent, setShowAddEvent] = useState(false)
+  const [showFinder, setShowFinder] = useState(false)
+  const [findArea, setFindArea] = useState('')
+  const [findMonths, setFindMonths] = useState('12')
+  const [findTypes, setFindTypes] = useState('')
+  const [finding, setFinding] = useState(false)
+  const [found, setFound] = useState(null)
+  const [findMsg, setFindMsg] = useState('')
+  const [publishing, setPublishing] = useState(false)
+
+  const runFinder = async () => {
+    setFinding(true)
+    setFindMsg('')
+    setFound(null)
+    const res = await fetch('/api/events/discover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ area: findArea, months: parseInt(findMonths), types: findTypes }),
+    })
+    const d = await res.json().catch(() => ({ error: `Server error (${res.status})` }))
+    if (d.error && !d.events?.length) { setFindMsg(`⚠️ ${d.error}`); setFinding(false); return }
+    setFound((d.events ?? []).map(e => ({ ...e, selected: true })))
+    setFindMsg(`🤖 Fable found ${d.events?.length ?? 0} events — untick any you don't want, then publish`)
+    setFinding(false)
+  }
+
+  const publishFound = async () => {
+    const selected = (found ?? []).filter(e => e.selected)
+    if (!selected.length) return
+    setPublishing(true)
+    let ok = 0
+    for (const e of selected) {
+      const res = await fetch('/api/events/admin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_date: e.date,
+          event_time: e.event_time || null,
+          event_type: e.event_type,
+          food_type: 'any',
+          event_location: `${e.name} — ${e.location}`,
+          region: e.region || null,
+          postcode: e.postcode || null,
+          num_guests: e.footfall || null,
+          notes: `${e.notes ?? ''}${e.source_url ? ` | Source: ${e.source_url}` : ''}`.trim(),
+          foodtaxi_fee: 29.99,
+        }),
+      })
+      if (res.ok) ok++
+    }
+    setFindMsg(`✅ Published ${ok}/${selected.length} events to the van board`)
+    setFound(prev => (prev ?? []).filter(e => !e.selected))
+    setPublishing(false)
+    load()
+  }
   const [addForm, setAddForm] = useState({ event_date:'', event_time:'', event_type:'festival', food_type:'any', event_location:'', region:'South East', postcode:'', num_guests:'', budget:'', notes:'', foodtaxi_fee:'29.99', urgent:false })
   const [addSaving, setAddSaving] = useState(false)
   const [addMsg, setAddMsg] = useState('')
@@ -428,6 +480,7 @@ export default function AdminEventsPage() {
         <a href="/admin/dashboard" style={{ color: '#6366f1', fontWeight: 900, textDecoration: 'none', fontSize: 22 }}>🍟</a>
         <span style={{ fontWeight: 800, fontSize: 17, color: '#111' }}>Event Marketplace</span>
         <div style={{ flex: 1 }} />
+        <button onClick={() => setShowFinder(v => !v)} style={{ padding: '5px 14px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 800 }}>🤖 AI Find Events</button>
         <button onClick={() => setShowAddEvent(v => !v)} style={{ padding: '5px 14px', borderRadius: 8, border: 'none', background: '#10b981', fontSize: 12, cursor: 'pointer', color: '#fff', fontWeight: 800 }}>➕ Add UK Event</button>
         <a href="/van/events" target="_blank" style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}>Van Board ↗</a>
         <button onClick={load} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', color: '#555' }}>↻</button>
@@ -444,6 +497,49 @@ export default function AdminEventsPage() {
           }}>{t.label}</button>
         ))}
       </div>
+
+      {/* AI Event Finder (staff) — Fable searches the live web */}
+      {showFinder && (
+        <div style={{ background: '#faf5ff', borderBottom: '1px solid #e9d5ff', padding: '16px 20px' }}>
+          <div style={{ maxWidth: 900, margin: '0 auto' }}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: '#6b21a8', marginBottom: 4 }}>🤖 AI Event Finder — Fable searches the web for real upcoming events</div>
+            <div style={{ fontSize: 12, color: '#7e22ce', marginBottom: 10 }}>Tell it where to look. Review what it finds, untick anything, publish the rest to your customers in one tap.</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input value={findArea} onChange={e => setFindArea(e.target.value)} placeholder="Area — e.g. West Sussex, Brighton, Surrey…"
+                style={{ flex: '2 1 200px', padding: '10px 12px', borderRadius: 10, border: '1px solid #d8b4fe', fontSize: 14, outline: 'none' }} />
+              <select value={findMonths} onChange={e => setFindMonths(e.target.value)} style={{ flex: '1 1 120px', padding: '10px', borderRadius: 10, border: '1px solid #d8b4fe', fontSize: 13, fontWeight: 700, color: '#6b21a8' }}>
+                {[['3','Next 3 months'], ['6','Next 6 months'], ['12','Next 12 months'], ['24','Next 2 years']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <input value={findTypes} onChange={e => setFindTypes(e.target.value)} placeholder="Types (optional) — e.g. food festivals, county shows"
+                style={{ flex: '2 1 180px', padding: '10px 12px', borderRadius: 10, border: '1px solid #d8b4fe', fontSize: 13, outline: 'none' }} />
+              <button onClick={runFinder} disabled={finding || !findArea.trim()}
+                style={{ padding: '10px 22px', borderRadius: 10, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: (finding || !findArea.trim()) ? 0.6 : 1 }}>
+                {finding ? '🔎 Fable is searching…' : '✨ Find Events'}
+              </button>
+            </div>
+            {findMsg && <div style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: findMsg.startsWith('✅') ? '#059669' : findMsg.startsWith('⚠️') ? '#b45309' : '#6b21a8' }}>{findMsg}</div>}
+
+            {found?.map((e, i) => (
+              <div key={i} style={{ marginTop: 8, display: 'flex', gap: 10, alignItems: 'flex-start', background: '#fff', borderRadius: 10, padding: '10px 12px', border: '1px solid #e9d5ff' }}>
+                <input type="checkbox" checked={e.selected} onChange={() => setFound(prev => prev.map((x, j) => j === i ? { ...x, selected: !x.selected } : x))}
+                  style={{ width: 20, height: 20, marginTop: 2, accentColor: '#7c3aed' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>{e.name}</div>
+                  <div style={{ fontSize: 12, color: '#555' }}>📅 {e.date}{e.event_time ? ` · ${e.event_time}` : ''} · 📍 {e.location}{e.postcode ? ` (${e.postcode})` : ''}{e.region ? ` · ${e.region}` : ''}{e.footfall ? ` · 👥 ~${e.footfall}` : ''}</div>
+                  {e.notes && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{e.notes}</div>}
+                  {e.source_url && <a href={e.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700, textDecoration: 'none' }}>🔗 Check source</a>}
+                </div>
+              </div>
+            ))}
+            {found && found.some(e => e.selected) && (
+              <button onClick={publishFound} disabled={publishing}
+                style={{ marginTop: 12, width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: publishing ? 0.6 : 1 }}>
+                {publishing ? 'Publishing…' : `🚀 Publish ${found.filter(e => e.selected).length} events to the Van Board`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add UK Event (staff) */}
       {showAddEvent && (
