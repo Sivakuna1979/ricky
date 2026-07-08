@@ -33,39 +33,57 @@ Rules:
 - UK only.`
 }
 
+// Extract a JSON array even if the output got cut off mid-array.
+function extractEvents(raw: string) {
+  const full = raw.match(/\[[\s\S]*\]/)
+  if (full) { try { return JSON.parse(full[0]) } catch {} }
+  // Truncated: salvage complete objects up to the last '}'
+  const start = raw.indexOf('[')
+  if (start === -1) return []
+  const lastBrace = raw.lastIndexOf('}')
+  if (lastBrace <= start) return []
+  try { return JSON.parse(raw.slice(start, lastBrace + 1) + ']') } catch { return [] }
+}
+
 async function runDiscovery(id: string, area: string, months: number, types: string) {
   const admin = await createAdminClient()
   try {
     const tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }]
-    const messages = [{ role: 'user', content: prompt(area, months, types) }]
+    const messages: any[] = [{ role: 'user', content: prompt(area, months, types) }]
+
+    const call = async (model: string, useBeta: boolean, toolset: any[]) => {
+      // Web search turns can pause mid-run — continue until the model finishes.
+      let msgs = [...messages]
+      let message: any
+      for (let i = 0; i < 4; i++) {
+        const params: any = { model, max_tokens: 8192, tools: toolset, messages: msgs }
+        if (useBeta) {
+          params.output_config = { effort: 'low' }
+          params.betas = ['server-side-fallback-2026-06-01']
+          params.fallbacks = [{ model: 'claude-opus-4-8' }]
+          message = await client.beta.messages.create(params)
+        } else {
+          message = await client.messages.create(params)
+        }
+        if (message.stop_reason !== 'pause_turn') break
+        msgs = [...msgs, { role: 'assistant', content: message.content }]
+      }
+      return message
+    }
 
     let message
     try {
-      message = await client.beta.messages.create({
-        model: 'claude-fable-5',
-        max_tokens: 4096,
-        output_config: { effort: 'low' },
-        tools,
-        messages,
-        betas: ['server-side-fallback-2026-06-01'],
-        fallbacks: [{ model: 'claude-opus-4-8' }],
-      })
+      message = await call('claude-fable-5', true, tools)
     } catch {
       try {
-        message = await client.messages.create({ model: 'claude-opus-4-8', max_tokens: 4096, tools, messages })
+        message = await call('claude-opus-4-8', false, tools)
       } catch {
-        message = await client.messages.create({
-          model: 'claude-opus-4-8',
-          max_tokens: 4096,
-          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
-          messages,
-        })
+        message = await call('claude-opus-4-8', false, [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }])
       }
     }
 
     const raw = (message.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
-    const jsonMatch = raw.match(/\[[\s\S]*\]/)
-    const events = jsonMatch ? JSON.parse(jsonMatch[0]) : []
+    const events = extractEvents(raw)
 
     const clean = (Array.isArray(events) ? events : [])
       .filter((e: any) => e?.name && e?.date)
@@ -86,7 +104,8 @@ async function runDiscovery(id: string, area: string, months: number, types: str
     await admin.from('ai_event_discoveries').update({
       status: 'done',
       events: clean,
-      error: clean.length ? null : 'No events found for that area — try a bigger area or different wording.',
+      // When empty, keep a snippet of what the AI actually said so we can diagnose.
+      error: clean.length ? null : `No events extracted. AI said: ${raw.slice(0, 300) || '(no text output)'}`,
     }).eq('id', id)
   } catch (err: any) {
     await admin.from('ai_event_discoveries').update({ status: 'error', error: (err.message ?? 'Search failed').slice(0, 400) }).eq('id', id)
