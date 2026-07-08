@@ -186,7 +186,23 @@ function DetailPanel({ b, onUpdate, onDelete, saving, applications, loadApps }) 
                 color: app.status === 'confirmed' ? '#059669' : app.status === 'declined' ? '#ef4444' : '#3b82f6',
               }}>{app.status?.replace(/_/g, ' ')}</span>
             </div>
-            <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>{new Date(app.created_at).toLocaleDateString('en-GB')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: '#aaa' }}>{new Date(app.created_at).toLocaleDateString('en-GB')}</span>
+              {app.paid_at ? (
+                <span style={{ padding: '2px 10px', borderRadius: 8, fontSize: 10, fontWeight: 800, background: '#d1fae5', color: '#065f46' }}>💳 FEE PAID £{Number(app.fee ?? 29.99).toFixed(2)}</span>
+              ) : (
+                <button onClick={async () => {
+                  const res = await fetch('/api/events/pay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ application_id: app.id }) })
+                  const d = await res.json().catch(() => ({}))
+                  if (d.url) {
+                    try { await navigator.clipboard.writeText(d.url) } catch {}
+                    prompt('Payment link (copied) — send it to the van via WhatsApp/email:', d.url)
+                  } else alert(d.error ?? 'Could not create payment link')
+                }} style={{ padding: '4px 12px', borderRadius: 8, border: 'none', background: '#635bff', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+                  💳 Get £{Number(b.foodtaxi_fee ?? 29.99).toFixed(2)} payment link
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

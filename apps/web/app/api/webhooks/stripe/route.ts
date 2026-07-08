@@ -38,6 +38,22 @@ export async function POST(req: NextRequest) {
       break
     }
 
+    case 'checkout.session.completed': {
+      const session = event.data.object as Stripe.Checkout.Session
+      if (session.metadata?.kind === 'event_booking_fee' && session.metadata?.application_id) {
+        // Booking fee paid — confirm the van's place and the event.
+        await supabase
+          .from('event_applications')
+          .update({ status: 'confirmed', paid_at: new Date().toISOString() })
+          .eq('id', session.metadata.application_id)
+        await supabase
+          .from('event_requests')
+          .update({ admin_status: 'confirmed' })
+          .eq('id', session.metadata.event_id)
+      }
+      break
+    }
+
     case 'payment_intent.payment_failed': {
       const intent = event.data.object as Stripe.PaymentIntent
       await supabase

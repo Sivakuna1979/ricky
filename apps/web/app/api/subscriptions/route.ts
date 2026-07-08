@@ -45,10 +45,11 @@ export async function POST(req: NextRequest) {
     await supabase.from('businesses').update({ stripe_customer_id: customerId }).eq('id', business_id)
   }
 
-  // Create Stripe subscription
+  // Create Stripe subscription — first 2 months free, then £29.99/month
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: stripePrice }],
+    trial_period_days: 60,
     payment_behavior: 'default_incomplete',
     expand: ['latest_invoice.payment_intent'],
   })
