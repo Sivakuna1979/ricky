@@ -6,12 +6,12 @@ import { createClient } from '@/lib/supabase/server'
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 function prompt(area: string, months: number, types: string) {
   return `Search the web for REAL upcoming events in or near ${area}, UK, over the next ${months} months, where street food vans / mobile caterers could trade or be booked: ${types || 'festivals, food festivals, markets, fairs, carnivals, sports events, county shows, Christmas markets'}.
 
-Find as many genuine events as you can (aim for 8-15). For each, extract what the sources actually say.
+Work FAST: do at most 3 searches (e.g. "${area} festivals ${new Date().getFullYear()} food vendors"), then answer from what you found. Aim for 5-10 genuine events. For each, extract what the sources actually say.
 
 Return ONLY a valid JSON array, no other text, no markdown:
 [{
@@ -43,27 +43,38 @@ export async function POST(req: NextRequest) {
     const { area, months = 12, types = '' } = await req.json()
     if (!area?.trim()) return NextResponse.json({ error: 'Tell me the area to search (town, county or region).' }, { status: 400 })
 
-    const tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }]
+    const tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }]
     const messages = [{ role: 'user', content: prompt(area.trim(), months, types) }]
 
     let message
     try {
-      // Claude Fable 5 with live web search; server-side fallback to Opus 4.8
+      // Claude Fable 5 with live web search; low effort keeps it fast.
       message = await client.beta.messages.create({
         model: 'claude-fable-5',
-        max_tokens: 8192,
+        max_tokens: 4096,
+        output_config: { effort: 'low' },
         tools,
         messages,
         betas: ['server-side-fallback-2026-06-01'],
         fallbacks: [{ model: 'claude-opus-4-8' }],
       })
     } catch {
-      message = await client.messages.create({
-        model: 'claude-opus-4-8',
-        max_tokens: 8192,
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }],
-        messages,
-      })
+      try {
+        message = await client.messages.create({
+          model: 'claude-opus-4-8',
+          max_tokens: 4096,
+          tools,
+          messages,
+        })
+      } catch {
+        // Older web-search tool variant as a last resort
+        message = await client.messages.create({
+          model: 'claude-opus-4-8',
+          max_tokens: 4096,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+          messages,
+        })
+      }
     }
 
     const raw = (message.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')

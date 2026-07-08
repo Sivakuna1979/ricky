@@ -514,7 +514,7 @@ export default function AdminEventsPage() {
                 style={{ flex: '2 1 180px', padding: '10px 12px', borderRadius: 10, border: '1px solid #d8b4fe', fontSize: 13, outline: 'none' }} />
               <button onClick={runFinder} disabled={finding || !findArea.trim()}
                 style={{ padding: '10px 22px', borderRadius: 10, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: (finding || !findArea.trim()) ? 0.6 : 1 }}>
-                {finding ? '🔎 Fable is searching…' : '✨ Find Events'}
+                {finding ? '🔎 Searching the web (30–60s)…' : '✨ Find Events'}
               </button>
             </div>
             {findMsg && <div style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: findMsg.startsWith('✅') ? '#059669' : findMsg.startsWith('⚠️') ? '#b45309' : '#6b21a8' }}>{findMsg}</div>}
