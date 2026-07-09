@@ -15,7 +15,7 @@ export async function GET() {
   const admin = await createAdminClient()
   const [{ data: requests }, { data: channels }, { data: businesses }, { data: vans }] = await Promise.all([
     admin.from('whatsapp_requests').select('*').order('created_at', { ascending: false }).limit(100),
-    admin.from('whatsapp_channels').select('id, business_id, van_id, phone_number_id, display_number, is_active, created_at'),
+    admin.from('whatsapp_channels').select('id, business_id, van_id, phone_number_id, display_number, is_active, is_shared, created_at'),
     admin.from('businesses').select('id, name, phone').order('name'),
     admin.from('vans').select('id, name, business_id'),
   ])

@@ -52,18 +52,20 @@ export async function PUT(req: NextRequest) {
   try {
     const gate = await requireStaff()
     if (gate.error) return gate.error
-    const { business_id, van_id, phone_number_id, access_token, display_number, is_active } = await req.json()
-    if (!business_id || !van_id || !phone_number_id) {
-      return NextResponse.json({ error: 'business_id, van_id and phone_number_id are required' }, { status: 400 })
+    const { business_id, van_id, phone_number_id, access_token, display_number, is_active, is_shared } = await req.json()
+    if (!phone_number_id || (!is_shared && (!business_id || !van_id))) {
+      return NextResponse.json({ error: is_shared ? 'phone_number_id is required' : 'business_id, van_id and phone_number_id are required' }, { status: 400 })
     }
 
     const admin = await createAdminClient()
-    const { data: existing } = await admin
-      .from('whatsapp_channels').select('id, access_token').eq('business_id', business_id).maybeSingle()
+    const { data: existing } = is_shared
+      ? await admin.from('whatsapp_channels').select('id, access_token').eq('phone_number_id', String(phone_number_id).trim()).maybeSingle()
+      : await admin.from('whatsapp_channels').select('id, access_token').eq('business_id', business_id).maybeSingle()
 
     const row: any = {
-      business_id,
-      van_id,
+      business_id: is_shared ? null : business_id,
+      van_id: is_shared ? null : van_id,
+      is_shared: !!is_shared,
       phone_number_id: String(phone_number_id).trim(),
       display_number: display_number ?? '',
       is_active: is_active ?? true,
@@ -78,7 +80,9 @@ export async function PUT(req: NextRequest) {
     if (error) throw new Error(error.message)
 
     // Mark any pending request as done.
-    await admin.from('whatsapp_requests').update({ status: 'done' }).eq('business_id', business_id).eq('status', 'pending')
+    if (business_id) {
+      await admin.from('whatsapp_requests').update({ status: 'done' }).eq('business_id', business_id).eq('status', 'pending')
+    }
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Failed to save' }, { status: 500 })
@@ -88,9 +92,10 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const gate = await requireStaff()
   if (gate.error) return gate.error
-  const { business_id } = await req.json().catch(() => ({}))
-  if (!business_id) return NextResponse.json({ error: 'business_id required' }, { status: 400 })
+  const { business_id, phone_number_id } = await req.json().catch(() => ({}))
+  if (!business_id && !phone_number_id) return NextResponse.json({ error: 'business_id or phone_number_id required' }, { status: 400 })
   const admin = await createAdminClient()
-  await admin.from('whatsapp_channels').delete().eq('business_id', business_id)
+  if (phone_number_id) await admin.from('whatsapp_channels').delete().eq('phone_number_id', phone_number_id)
+  else await admin.from('whatsapp_channels').delete().eq('business_id', business_id)
   return NextResponse.json({ ok: true })
 }

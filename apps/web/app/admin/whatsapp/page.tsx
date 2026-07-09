@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 export default function AdminWhatsAppPage() {
   const [data, setData]     = useState<any>(null)
   const [error, setError]   = useState('')
-  const [form, setForm]     = useState({ business_id:'', van_id:'', phone_number_id:'', access_token:'', display_number:'' })
+  const [form, setForm]     = useState({ business_id:'', van_id:'', phone_number_id:'', access_token:'', display_number:'', is_shared:false })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
 
@@ -50,12 +50,12 @@ export default function AdminWhatsAppPage() {
     await load()
   }
 
-  const disconnect = async (bizId: string) => {
-    if (!confirm(`Disconnect WhatsApp for ${bizName(bizId)}?`)) return
+  const disconnect = async (key: any) => {
+    if (!confirm(key.phone_number_id ? 'Disconnect the shared FoodTaxi number?' : `Disconnect WhatsApp for ${bizName(key.business_id)}?`)) return
     await fetch('/api/whatsapp/channel', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ business_id: bizId }),
+      body: JSON.stringify(key),
     })
     await load()
   }
@@ -97,26 +97,38 @@ export default function AdminWhatsAppPage() {
             {/* Connect / edit form */}
             <div style={{ background:'#fff', borderRadius:14, padding:16, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:16 }}>
               <div style={{ fontWeight:800, fontSize:14, color:'#111', marginBottom:4 }}>🔌 Connect a business</div>
-              <label style={lbl}>Business</label>
-              <select value={form.business_id} onChange={e => pickBusiness(e.target.value)} style={inp}>
-                <option value="">— choose business —</option>
-                {data.businesses.map((b: any) => (
-                  <option key={b.id} value={b.id}>{b.name}{channelFor(b.id) ? ' ✅' : ''}</option>
-                ))}
-              </select>
-              {form.business_id && (
+              <label style={{ display:'flex', alignItems:'center', gap:8, margin:'10px 0', fontSize:13, fontWeight:800, color:'#128c7e', cursor:'pointer' }}>
+                <input type="checkbox" checked={!!form.is_shared} onChange={e => setForm(f => ({ ...f, is_shared: e.target.checked, business_id: e.target.checked ? '' : f.business_id }))} style={{ width:18, height:18, accentColor:'#128c7e' }} />
+                🌐 Shared FoodTaxi number — serves ALL businesses (AI asks the customer which van)
+              </label>
+              {!form.is_shared && (
                 <>
-                  <label style={lbl}>Van that receives the orders</label>
-                  <select value={form.van_id} onChange={e => setForm(f => ({ ...f, van_id: e.target.value }))} style={inp}>
-                    {bizVans.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  <label style={lbl}>Business</label>
+                  <select value={form.business_id} onChange={e => pickBusiness(e.target.value)} style={inp}>
+                    <option value="">— choose business —</option>
+                    {data.businesses.map((b: any) => (
+                      <option key={b.id} value={b.id}>{b.name}{channelFor(b.id) ? ' ✅' : ''}</option>
+                    ))}
                   </select>
+                </>
+              )}
+              {(form.business_id || form.is_shared) && (
+                <>
+                  {!form.is_shared && (
+                    <>
+                      <label style={lbl}>Van that receives the orders</label>
+                      <select value={form.van_id} onChange={e => setForm(f => ({ ...f, van_id: e.target.value }))} style={inp}>
+                        {bizVans.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                      </select>
+                    </>
+                  )}
                   <label style={lbl}>Meta Phone number ID</label>
                   <input value={form.phone_number_id} onChange={e => setForm(f => ({ ...f, phone_number_id: e.target.value }))} placeholder="e.g. 1144608618743220" style={inp} />
                   <label style={lbl}>Access token {channelFor(form.business_id) ? '(blank = keep current)' : ''}</label>
                   <input value={form.access_token} onChange={e => setForm(f => ({ ...f, access_token: e.target.value }))} placeholder="EAA..." type="password" style={inp} />
                   <label style={lbl}>Display number (what the business sees)</label>
                   <input value={form.display_number} onChange={e => setForm(f => ({ ...f, display_number: e.target.value }))} placeholder="+44 7xxx xxxxxx" style={inp} />
-                  <button onClick={save} disabled={saving || !form.van_id || !form.phone_number_id}
+                  <button onClick={save} disabled={saving || !form.phone_number_id || (!form.is_shared && !form.van_id)}
                     style={{ width:'100%', marginTop:14, padding:'12px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#128c7e,#25d366)', color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer', opacity: saving ? 0.6 : 1 }}>
                     {saving ? 'Saving…' : channelFor(form.business_id) ? '✓ Update channel' : '✓ Activate WhatsApp ordering'}
                   </button>
@@ -132,11 +144,11 @@ export default function AdminWhatsAppPage() {
               {data.channels.map((c: any) => (
                 <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#f9fafb', borderRadius:10, marginBottom:8, flexWrap:'wrap' }}>
                   <div style={{ flex:1, minWidth:180 }}>
-                    <div style={{ fontWeight:700, fontSize:13, color:'#111' }}>{bizName(c.business_id)} {c.is_active ? '🟢' : '⚫'}</div>
+                    <div style={{ fontWeight:700, fontSize:13, color:'#111' }}>{c.is_shared ? '🌐 Shared FoodTaxi number (all businesses)' : bizName(c.business_id)} {c.is_active ? '🟢' : '⚫'}</div>
                     <div style={{ fontSize:12, color:'#666' }}>{c.display_number || '—'} · ID {c.phone_number_id}</div>
                   </div>
-                  <button onClick={() => pickBusiness(c.business_id)} style={{ padding:'7px 12px', borderRadius:8, border:'1px solid #e5e7eb', background:'#fff', color:'#555', fontWeight:600, fontSize:12, cursor:'pointer' }}>Edit</button>
-                  <button onClick={() => disconnect(c.business_id)} style={{ padding:'7px 12px', borderRadius:8, border:'1px solid #fecaca', background:'#fff', color:'#ef4444', fontWeight:600, fontSize:12, cursor:'pointer' }}>Disconnect</button>
+                  {!c.is_shared && <button onClick={() => pickBusiness(c.business_id)} style={{ padding:'7px 12px', borderRadius:8, border:'1px solid #e5e7eb', background:'#fff', color:'#555', fontWeight:600, fontSize:12, cursor:'pointer' }}>Edit</button>}
+                  <button onClick={() => disconnect(c.is_shared ? { phone_number_id: c.phone_number_id } : { business_id: c.business_id })} style={{ padding:'7px 12px', borderRadius:8, border:'1px solid #fecaca', background:'#fff', color:'#ef4444', fontWeight:600, fontSize:12, cursor:'pointer' }}>Disconnect</button>
                 </div>
               ))}
             </div>

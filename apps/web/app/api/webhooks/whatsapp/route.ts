@@ -40,7 +40,7 @@ async function resolveChannel(admin: any, phoneNumberId: string) {
   if (phoneNumberId) {
     const { data } = await admin
       .from('whatsapp_channels')
-      .select('phone_number_id, access_token, van_id')
+      .select('phone_number_id, access_token, van_id, is_shared')
       .eq('phone_number_id', phoneNumberId)
       .eq('is_active', true)
       .maybeSingle()
@@ -57,6 +57,67 @@ async function resolveChannel(admin: any, phoneNumberId: string) {
 }
 
 // weekSchedule: [{ dayLabel: 'Today (Tuesday 7 Jul)', stops: [...] }, ...]
+// ---------------------------------------------------------------------------
+// Shared FoodTaxi number: work out WHICH van this customer is ordering from.
+// Name match in the message wins; otherwise their remembered van; otherwise
+// ask once with a numbered list (number replies resolve against it).
+// ---------------------------------------------------------------------------
+const STOPWORDS = new Set(['the','and','co','van','food','fish','chips','chip','a','of','ltd'])
+function nameMatches(text: string, name: string) {
+  const t = text.toLowerCase()
+  const n = (name ?? '').toLowerCase().trim()
+  if (!n) return false
+  if (t.includes(n)) return true
+  const tokens = n.split(/[^a-z0-9']+/).filter(w => w.length >= 4 && !STOPWORDS.has(w))
+  if (!tokens.length) return false
+  const hits = tokens.filter(w => t.includes(w)).length
+  return hits >= Math.min(2, tokens.length)
+}
+
+async function resolveSharedVan(admin: any, channel: any, from: string, text: string, firstName: string) {
+  const { data: vans } = await admin
+    .from('vans')
+    .select('id, name, business_id, businesses(name)')
+    .eq('is_active', true)
+    .limit(100)
+  const list = vans ?? []
+  if (!list.length) return null
+  if (list.length === 1) return list[0]
+
+  const { data: pref } = await admin
+    .from('whatsapp_customer_prefs').select('van_id, options').eq('phone', from).maybeSingle()
+
+  const remember = async (vanId: string) => {
+    await admin.from('whatsapp_customer_prefs').upsert({ phone: from, van_id: vanId, options: null, updated_at: new Date().toISOString() })
+  }
+
+  // Numbered reply to a list we offered ("1", "2"...)
+  const numMatch = text.trim().match(/^([1-9][0-9]?)\b/)
+  if (numMatch && Array.isArray(pref?.options)) {
+    const picked = list.find((v: any) => v.id === pref.options[Number(numMatch[1]) - 1])
+    if (picked) { await remember(picked.id); return picked }
+  }
+
+  // Business/van named in the message (also lets customers switch van any time)
+  const named = list.filter((v: any) => nameMatches(text, v.name) || nameMatches(text, v.businesses?.name))
+  if (named.length === 1) { await remember(named[0].id); return named[0] }
+
+  // Their usual van
+  if (pref?.van_id) {
+    const usual = list.find((v: any) => v.id === pref.van_id)
+    if (usual) return usual
+  }
+
+  // Ask once, with a numbered list
+  const choices = (named.length > 1 ? named : list).slice(0, 8)
+  await admin.from('whatsapp_customer_prefs').upsert({
+    phone: from, van_id: pref?.van_id ?? null, options: choices.map((v: any) => v.id), updated_at: new Date().toISOString(),
+  })
+  await sendWhatsApp(channel, from,
+    `Hi${firstName ? ` ${firstName}` : ''}! 👋 Which van would you like to order from? Reply with the number:\n${choices.map((v: any, i: number) => `${i + 1}. ${v.name}`).join('\n')}`)
+  return null
+}
+
 function buildPrompt({ menu, weekSchedule, pendingOrder, profileName, text }: any) {
   const scheduleList = weekSchedule.length
     ? weekSchedule.map((d: any) =>
@@ -164,8 +225,15 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
   const text = msg.text.body
   try {
     // Van + menu + today's stops
+    const earlyName = profileName ? profileName.split(' ')[0] : ''
     let van: any = null
-    if (channel.van_id) {
+    if (channel.is_shared) {
+      van = await resolveSharedVan(admin, channel, from, text, earlyName)
+      if (!van) {
+        await admin.from('whatsapp_messages').update({ outcome: 'asked_business' }).eq('id', msg.id)
+        return // we asked which van — their reply resolves it
+      }
+    } else if (channel.van_id) {
       const { data } = await admin.from('vans').select('id, name').eq('id', channel.van_id).single()
       van = data
     } else {
@@ -234,7 +302,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       }
       await admin.from('whatsapp_messages').update({ outcome: 'pickup_updated', order_id: pendingOrder.id }).eq('id', msg.id)
       await sendWhatsApp(channel, from,
-        `Perfect${name ? `, ${name.split(' ')[0]}` : ''}! ✅ Order #${pendingOrder.order_number} confirmed.\n📍 ${loc ?? 'the van'}${time ? ` · ${time}` : ''}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
+        `Perfect${name ? `, ${name.split(' ')[0]}` : ''}! ✅ Order #${pendingOrder.order_number} confirmed — ${van.name}.\n📍 ${loc ?? 'the van'}${time ? ` · ${time}` : ''}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       return
     }
 
@@ -279,11 +347,11 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
 
       if (!needs.location && !needs.time && !needs.name) {
         await sendWhatsApp(channel, from,
-          `✅ Order received${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${composedTime}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
+          `✅ Order received${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${composedTime}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       } else {
         // Order saved, but ask ONE simple question covering whatever is missing.
         await sendWhatsApp(channel, from,
-          `✅ Got your order${firstName ? `, ${firstName}` : ''}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${followUpQuestion(dayStops, needs, parsed.pickup_day)}`)
+          `✅ Got your order${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${followUpQuestion(dayStops, needs, parsed.pickup_day)}`)
       }
       return
     }
