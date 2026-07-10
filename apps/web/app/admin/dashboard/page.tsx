@@ -27,6 +27,7 @@ const NAV = [
   { label: 'Orders',      icon: '📦', href: '/admin/orders'      },
   { label: 'Events',      icon: '🎪', href: '/admin/events'      },
   { label: 'Invitations', icon: '📨', href: '/admin/invitations' },
+  { label: 'WhatsApp',    icon: '💬', href: '/admin/whatsapp'    },
   { label: 'Discovery',   icon: '🔍', href: '/admin/discovery'   },
   { label: 'Settings',    icon: '⚙️', href: '/admin/settings'    },
 ]
