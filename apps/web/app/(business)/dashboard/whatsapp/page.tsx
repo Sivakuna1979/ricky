@@ -98,14 +98,41 @@ export default function WhatsAppPage() {
             {loading ? (
               <div style={{ textAlign:'center', padding:40, color:'#888' }}>Loading…</div>
             ) : channel ? (
-              <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:14, padding:'20px', display:'flex', alignItems:'center', gap:14 }}>
-                <span style={{ fontSize:36 }}>✅</span>
-                <div>
-                  <div style={{ fontWeight:800, fontSize:16, color:'#166534' }}>WhatsApp ordering is ACTIVE</div>
-                  <div style={{ fontSize:13, color:'#15803d', marginTop:2 }}>{channel.display_number ? `Customers can order at ${channel.display_number}` : 'Customers can text their orders to your WhatsApp number.'}</div>
-                  <div style={{ fontSize:12, color:'#4d7c5f', marginTop:6 }}>Orders arrive in your Orders page automatically. Need a change? Contact FoodTaxi support.</div>
+              <>
+                <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:14, padding:'20px', display:'flex', alignItems:'center', gap:14, marginBottom:16 }}>
+                  <span style={{ fontSize:36 }}>✅</span>
+                  <div>
+                    <div style={{ fontWeight:800, fontSize:16, color:'#166534' }}>WhatsApp ordering is ACTIVE</div>
+                    <div style={{ fontSize:13, color:'#15803d', marginTop:2 }}>{channel.display_number ? `Customers order at ${channel.display_number}` : 'Customers can text their orders on WhatsApp.'}</div>
+                    <div style={{ fontSize:12, color:'#4d7c5f', marginTop:6 }}>Orders arrive in your Orders page automatically, confirmed by AI in seconds.</div>
+                  </div>
                 </div>
-              </div>
+
+                {/* Personal order link + QR — pre-fills this business so the AI routes instantly */}
+                {channel.display_number && (() => {
+                  const digits = String(channel.display_number).replace(/[^\d]/g, '').replace(/^0/, '44')
+                  const link = `https://wa.me/${digits}?text=${encodeURIComponent(`Hi! I'd like to order from ${bizName}: `)}`
+                  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(link)}`
+                  return (
+                    <div style={{ background:'#fff', borderRadius:14, padding:20, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', textAlign:'center' }}>
+                      <div style={{ fontWeight:800, fontSize:15, color:'#111', marginBottom:4 }}>📱 Your personal order link & QR</div>
+                      <div style={{ fontSize:12, color:'#888', marginBottom:14 }}>Customers who use this link or scan this QR are connected straight to YOUR van — no questions asked. Print the QR on your menu, van and posters.</div>
+                      <img src={qr} alt="Order QR code" style={{ width:200, height:200, borderRadius:12, border:'1px solid #e5e7eb' }} />
+                      <div style={{ margin:'12px 0 8px', fontSize:12, color:'#555', wordBreak:'break-all', background:'#f9fafb', borderRadius:8, padding:'8px 10px' }}>{link}</div>
+                      <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+                        <button onClick={async () => { try { await navigator.clipboard.writeText(link); alert('Link copied!') } catch {} }}
+                          style={{ padding:'10px 18px', borderRadius:10, border:'none', background:'#128c7e', color:'#fff', fontWeight:800, fontSize:13, cursor:'pointer' }}>
+                          📋 Copy link
+                        </button>
+                        <a href={qr.replace('size=360x360', 'size=1000x1000')} target="_blank" rel="noopener noreferrer"
+                          style={{ padding:'10px 18px', borderRadius:10, border:'1px solid #e5e7eb', background:'#fff', color:'#555', fontWeight:700, fontSize:13, textDecoration:'none' }}>
+                          ⬇️ Print-size QR
+                        </a>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </>
             ) : requested ? (
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:14, padding:'20px', display:'flex', alignItems:'center', gap:14 }}>
                 <span style={{ fontSize:36 }}>⏳</span>

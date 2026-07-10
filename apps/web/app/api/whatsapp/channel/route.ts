@@ -24,6 +24,14 @@ export async function GET() {
     .eq('business_id', biz.id)
     .eq('is_active', true)
     .maybeSingle()
+  // No dedicated number? The shared FoodTaxi number serves every business.
+  const { data: shared } = ch ? { data: null } : await admin
+    .from('whatsapp_channels')
+    .select('display_number')
+    .eq('is_shared', true)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
   const { data: reqRow } = await admin
     .from('whatsapp_requests')
     .select('id')
@@ -33,7 +41,7 @@ export async function GET() {
     .maybeSingle()
 
   return NextResponse.json({
-    channel: ch ? { display_number: ch.display_number } : null,
+    channel: ch ? { display_number: ch.display_number } : shared ? { display_number: shared.display_number, shared: true } : null,
     requested: Boolean(reqRow),
   })
 }
