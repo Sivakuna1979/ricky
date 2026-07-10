@@ -167,6 +167,7 @@ async function askClaude(prompt: string) {
     message = await client.beta.messages.create({
       model: 'claude-fable-5',
       max_tokens: 1536,
+      output_config: { effort: 'low' }, // fast replies — order-reading doesn't need deep thought
       messages: [{ role: 'user', content: prompt }],
       betas: ['server-side-fallback-2026-06-01'],
       fallbacks: [{ model: 'claude-opus-4-8' }],
@@ -283,10 +284,11 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       .limit(1)
       .maybeSingle()
 
-    // Hard cap the AI think-time so a stall can never leave the customer hanging.
+    // Hard cap the AI think-time so a stall can never leave the customer hanging
+    // (must be well under the platform's 60s ceiling so the fallback reply sends).
     const parsed = await Promise.race([
       askClaude(buildPrompt({ menu: menu ?? [], weekSchedule, pendingOrder, profileName, text })),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('AI timeout after 90s')), 90000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('AI timeout after 40s')), 40000)),
     ])
     await admin.from('whatsapp_messages').update({ outcome: `ai:${parsed.action ?? 'unknown'}` }).eq('id', msg.id)
     const knownName = parsed.customer_name?.trim() || (profileName && profileName !== 'WhatsApp customer' ? profileName : '')
