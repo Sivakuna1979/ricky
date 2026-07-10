@@ -17,6 +17,9 @@ import { createAdminClient } from '@/lib/supabase/server'
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+// AI replies can take a while — never let the platform kill us mid-order.
+export const maxDuration = 300
+
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams
   if (p.get('hub.mode') === 'subscribe' && p.get('hub.verify_token') === process.env.WHATSAPP_VERIFY_TOKEN) {
@@ -208,7 +211,7 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          const { error: dupErr } = await admin.from('whatsapp_messages').insert({ id: msg.id, from_phone: msg.from, body: msg.text.body })
+          const { error: dupErr } = await admin.from('whatsapp_messages').insert({ id: msg.id, from_phone: msg.from, body: msg.text.body, outcome: 'processing' })
           if (dupErr) continue
 
           const profileName = change.value?.contacts?.[0]?.profile?.name ?? ''
@@ -240,7 +243,11 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       const { data } = await admin.from('vans').select('id, name').eq('is_active', true).limit(1).single()
       van = data
     }
-    if (!van) return
+    if (!van) {
+      await admin.from('whatsapp_messages').update({ outcome: 'no_van' }).eq('id', msg.id)
+      return
+    }
+    await admin.from('whatsapp_messages').update({ outcome: `van:${van.name}`.slice(0, 60) }).eq('id', msg.id)
     const vanId = van.id
 
     const [{ data: menu }, { data: allStops }] = await Promise.all([
@@ -276,7 +283,12 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       .limit(1)
       .maybeSingle()
 
-    const parsed = await askClaude(buildPrompt({ menu: menu ?? [], weekSchedule, pendingOrder, profileName, text }))
+    // Hard cap the AI think-time so a stall can never leave the customer hanging.
+    const parsed = await Promise.race([
+      askClaude(buildPrompt({ menu: menu ?? [], weekSchedule, pendingOrder, profileName, text })),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('AI timeout after 90s')), 90000)),
+    ])
+    await admin.from('whatsapp_messages').update({ outcome: `ai:${parsed.action ?? 'unknown'}` }).eq('id', msg.id)
     const knownName = parsed.customer_name?.trim() || (profileName && profileName !== 'WhatsApp customer' ? profileName : '')
     const firstName = knownName ? knownName.split(' ')[0] : ''
     const dayBit = dayForRecord(parsed.pickup_day ?? '')
