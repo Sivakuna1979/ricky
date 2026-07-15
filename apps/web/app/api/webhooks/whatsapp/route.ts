@@ -199,6 +199,26 @@ function followUpQuestion(stops: any[], needs: { location: boolean, time: boolea
   return `One last thing — what name should we put on the order? 😊`
 }
 
+// Rescue messages a previous (killed) run left unfinished — runs on every
+// webhook call, so no order is ever lost for good.
+async function sweepStuck(admin: any, channel: any) {
+  const { data: stuck } = await admin
+    .from('whatsapp_messages')
+    .select('id, from_phone, body, outcome')
+    .in('outcome', ['processing', 'van_ok', 'ai_start', 'ai_haiku'])
+    .lt('created_at', new Date(Date.now() - 90e3).toISOString())
+    .gt('created_at', new Date(Date.now() - 24 * 3600e3).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(2)
+  for (const row of stuck ?? []) {
+    await admin.from('whatsapp_messages').update({ outcome: 'retrying' }).eq('id', row.id)
+    const synthetic = { id: row.id, from: row.from_phone, type: 'text', text: { body: row.body } }
+    await handleMessage(admin, channel, synthetic, '').catch(async (e: any) => {
+      await admin.from('whatsapp_messages').update({ outcome: `fatal: ${e.message}`.slice(0, 200) }).eq('id', row.id).catch(() => {})
+    })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json()
@@ -220,12 +240,15 @@ export async function POST(req: NextRequest) {
           if (dupErr) continue
 
           const profileName = change.value?.contacts?.[0]?.profile?.name ?? ''
-          // Process BEFORE responding — this platform freezes background work
-          // once the response is sent, so the reply must be composed inline.
-          // Haiku keeps the whole round-trip to a few seconds.
-          await handleMessage(admin, channel, msg, profileName).catch(async (e: any) => {
-            await admin.from('whatsapp_messages').update({ outcome: `fatal: ${e.message}`.slice(0, 200) }).eq('id', msg.id).catch(() => {})
-          })
+          // Fluid Compute is enabled: respond to Meta instantly and let the
+          // AI reply continue as a background task (waitUntil).
+          waitUntil(
+            handleMessage(admin, channel, msg, profileName)
+              .catch(async (e: any) => {
+                await admin.from('whatsapp_messages').update({ outcome: `fatal: ${e.message}`.slice(0, 200) }).eq('id', msg.id).catch(() => {})
+              })
+              .then(() => sweepStuck(admin, channel).catch(() => {}))
+          )
         }
       }
     }
