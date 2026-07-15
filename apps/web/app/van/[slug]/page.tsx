@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client'
 import { useState, useEffect } from 'react'
+import { LiveVanTracker } from '@/components/map/LiveVanTracker'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const CAT_ORDER = ['Fish','Chips','Burgers','Chicken','Vegetarian','Sides','Extras','Drinks','Desserts','Specials','Mains','Starters']
@@ -183,6 +184,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           <div style={{ fontSize:13, color:'var(--accent, #fdba74)', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupDayOffset > 0 ? ` · ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}` : ''}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
         </div>
       )}
+
+      {/* Track the van live while waiting for the order */}
+      <div style={{ width:'100%', maxWidth:420, marginBottom:20, textAlign:'left' }}>
+        <LiveVanTracker vanId={data?.vans?.[0]?.id} vanName={data?.vans?.[0]?.name ?? business.name} logo={brand?.logo} height="240px" />
+      </div>
       <p style={{ color:'#9ca3af', fontSize:14, maxWidth:300, lineHeight:1.6, marginBottom:32 }}>
         We've received your order at {business.name}. They'll contact you on {form.phone} when it's ready.
       </p>
@@ -373,16 +379,9 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         </a>
       </div>
 
-      {/* Live Tracking — always shown */}
+      {/* Live Tracking — our own Uber-style map */}
       <div style={{ padding:'0 16px 12px' }}>
-        <a href="https://liveshare.ramtracking.com/?token=cb236545-b5ef-4bbd-b8a3-ca7dc6b08cbe" target="_blank" rel="noopener noreferrer" style={{ display:'flex', alignItems:'center', gap:10, background: anyLive ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)', border:`1px solid ${anyLive ? 'rgba(16,185,129,0.3)' : '#1e2a45'}`, borderRadius:12, padding:'12px 16px', textDecoration:'none' }}>
-          <div style={{ width:10, height:10, borderRadius:'50%', background: anyLive ? '#10b981' : '#4b5563', boxShadow: anyLive ? '0 0 8px #10b981' : 'none', flexShrink:0 }} />
-          <div style={{ flex:1 }}>
-            <div style={{ fontWeight:700, fontSize:14, color: anyLive ? '#6ee7b7' : '#9ca3af' }}>{anyLive ? 'Track Van Live' : '🗺 Van Location Tracker'}</div>
-            <div style={{ fontSize:12, color: anyLive ? '#4ade80' : '#4b5563', opacity:0.8 }}>{anyLive ? 'Tap to see live location on map' : 'Live tracking available when van is out'}</div>
-          </div>
-          <div style={{ color: anyLive ? '#6ee7b7' : '#374151', fontSize:18 }}>→</div>
-        </a>
+        <LiveVanTracker vanId={vans?.[0]?.id} vanName={vans?.[0]?.name ?? business.name} logo={brand?.logo} height="280px" />
       </div>
 
       {/* Schedule — calendar day tabs, one day's stops at a time */}

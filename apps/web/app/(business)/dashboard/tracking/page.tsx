@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { GoLiveVan } from '@/components/tracking/GoLiveVan'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Tracking — FoodTaxi' }
@@ -76,7 +77,7 @@ export default async function TrackingPage() {
           <div className="main">
             <div style={{ marginBottom:24 }}>
               <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#111' }}>Live Tracking</h1>
-              <p style={{ color:'#888', margin:0, fontSize:13 }}>Monitor your van locations in real time</p>
+              <p style={{ color:'#888', margin:0, fontSize:13 }}>Tap GO LIVE when you set off — customers watch your van move on your page, just like Uber</p>
             </div>
             <div style={{ background:'#fff', borderRadius:14, padding:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
               {(vans ?? []).length === 0 ? (
@@ -87,15 +88,9 @@ export default async function TrackingPage() {
                   <a href="/dashboard/vans" style={{ padding:'10px 24px', borderRadius:10, background:'#f97316', color:'#fff', fontSize:14, fontWeight:700, textDecoration:'none' }}>Manage Vans</a>
                 </div>
               ) : (
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                <div style={{ display:'flex', flexDirection:'column' }}>
                   {(vans ?? []).map(van => (
-                    <div key={van.id} style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 16px', borderRadius:10, background:'#f9fafb', border:'1px solid #e5e7eb' }}>
-                      <div style={{ width:12, height:12, borderRadius:'50%', background: van.tracking_status === 'live' ? '#10b981' : '#d1d5db', flexShrink:0 }} />
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, fontSize:14, color:'#111' }}>{van.name || 'Unnamed Van'}</div>
-                        <div style={{ fontSize:12, color:'#888', marginTop:2 }}>{van.tracking_status === 'live' ? '🟢 Currently Live' : '⚫ Offline'}</div>
-                      </div>
-                    </div>
+                    <GoLiveVan key={van.id} van={van} />
                   ))}
                 </div>
               )}
