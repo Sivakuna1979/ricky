@@ -217,13 +217,12 @@ export async function POST(req: NextRequest) {
           if (dupErr) continue
 
           const profileName = change.value?.contacts?.[0]?.profile?.name ?? ''
-          // Answer Meta instantly; the AI reply runs as a background task the
-          // platform keeps alive (waitUntil) — never killed mid-order again.
-          waitUntil(
-            handleMessage(admin, channel, msg, profileName).catch(async (e: any) => {
-              await admin.from('whatsapp_messages').update({ outcome: `fatal: ${e.message}`.slice(0, 200) }).eq('id', msg.id).catch(() => {})
-            })
-          )
+          // Process BEFORE responding — this platform freezes background work
+          // once the response is sent, so the reply must be composed inline.
+          // Haiku keeps the whole round-trip to a few seconds.
+          await handleMessage(admin, channel, msg, profileName).catch(async (e: any) => {
+            await admin.from('whatsapp_messages').update({ outcome: `fatal: ${e.message}`.slice(0, 200) }).eq('id', msg.id).catch(() => {})
+          })
         }
       }
     }
