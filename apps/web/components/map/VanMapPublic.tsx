@@ -599,19 +599,41 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
         </div>
       </div>
 
-      {/* ── FoodTaxi registered businesses ── */}
+      {/* ── FoodTaxi registered businesses — premium, first, nearest-sorted ── */}
       {showCards && ftBizList.length > 0 && (
         <div style={{ marginTop:20 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:'#f97316', letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>🍽 On FoodTaxi</div>
-          {ftBizList.map((b: any) => (
-            <a key={b.slug} href={`/van/${b.slug}`} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(135deg,rgba(249,115,22,0.12),rgba(234,88,12,0.08))', border:'1px solid rgba(249,115,22,0.3)', borderRadius:14, padding:'14px 16px', marginBottom:8, textDecoration:'none', color:'#fff' }}>
-              <div>
-                <div style={{ fontWeight:800, fontSize:15 }}>{b.name}</div>
-                {b.postcode && <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:2 }}>📍 {b.postcode}</div>}
-              </div>
-              <div style={{ background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:10, padding:'8px 14px', fontSize:13, fontWeight:700, flexShrink:0 }}>View Menu →</div>
-            </a>
-          ))}
+          <div style={{ fontSize:12, fontWeight:800, color:'#f97316', letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>⭐ Order Online — On FoodTaxi</div>
+          {[...ftBizList]
+            .sort((a: any, b: any) => {
+              if (!distRef) return 0
+              const da = a.lat != null ? haversine(distRef.lat, distRef.lng, a.lat, a.lng) : 1e9
+              const db = b.lat != null ? haversine(distRef.lat, distRef.lng, b.lat, b.lng) : 1e9
+              return da - db
+            })
+            .map((b: any) => {
+              const dist = distRef && b.lat != null ? haversine(distRef.lat, distRef.lng, b.lat, b.lng) : null
+              return (
+                <a key={b.slug} href={`/van/${b.slug}`}
+                  style={{ display:'flex', alignItems:'center', gap:14, background:'linear-gradient(135deg,rgba(249,115,22,0.18),rgba(234,88,12,0.10))', border:'2px solid rgba(249,115,22,0.5)', borderRadius:18, padding:'18px 18px', marginBottom:10, textDecoration:'none', color:'#fff', boxShadow:'0 4px 20px rgba(249,115,22,0.15)' }}>
+                  {b.logo ? (
+                    <img src={b.logo} alt={b.name} style={{ width:64, height:64, borderRadius:14, objectFit:'cover', border:'2px solid rgba(255,255,255,0.15)', flexShrink:0 }} />
+                  ) : (
+                    <div style={{ width:64, height:64, borderRadius:14, background:'linear-gradient(135deg,#f97316,#ea580c)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, flexShrink:0 }}>🍽️</div>
+                  )}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      <div style={{ fontWeight:900, fontSize:17 }}>{b.name}</div>
+                      <span style={{ background:'#10b981', color:'#fff', fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:8, letterSpacing:0.5 }}>✓ VERIFIED</span>
+                    </div>
+                    <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginTop:3 }}>
+                      📍 {[b.city, b.postcode].filter(Boolean).join(' · ')}{dist != null ? ` · ${dist.toFixed(1)} mi away` : ''}
+                    </div>
+                    <div style={{ fontSize:11, color:'#6ee7b7', fontWeight:700, marginTop:3 }}>Online ordering · Live schedule · Instant confirmation</div>
+                  </div>
+                  <div style={{ background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', borderRadius:12, padding:'12px 16px', fontSize:14, fontWeight:800, flexShrink:0 }}>Order →</div>
+                </a>
+              )
+            })}
         </div>
       )}
 
