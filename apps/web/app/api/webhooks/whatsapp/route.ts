@@ -163,15 +163,15 @@ ${text}`
 }
 
 async function askClaude(prompt: string) {
+  // Order-reading must be FAST (webhook runs under tight platform limits).
+  // Haiku is the same model that powers the proven menu/schedule scanners —
+  // 1-3s replies. Opus is the quality fallback if Haiku errors.
   let message
   try {
-    message = await client.beta.messages.create({
-      model: 'claude-fable-5',
+    message = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1536,
-      output_config: { effort: 'low' }, // fast replies — order-reading doesn't need deep thought
       messages: [{ role: 'user', content: prompt }],
-      betas: ['server-side-fallback-2026-06-01'],
-      fallbacks: [{ model: 'claude-opus-4-8' }],
     })
   } catch {
     message = await client.messages.create({
@@ -255,7 +255,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       await admin.from('whatsapp_messages').update({ outcome: 'no_van' }).eq('id', msg.id)
       return
     }
-    await admin.from('whatsapp_messages').update({ outcome: `van:${van.name}`.slice(0, 60) }).eq('id', msg.id)
+    await admin.from('whatsapp_messages').update({ outcome: `van_ok` }).eq('id', msg.id)
     const vanId = van.id
 
     const [{ data: menu }, { data: allStops }] = await Promise.all([
@@ -291,11 +291,11 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       .limit(1)
       .maybeSingle()
 
-    // Hard cap the AI think-time so a stall can never leave the customer hanging
-    // (must be well under the platform's 60s ceiling so the fallback reply sends).
+    await admin.from('whatsapp_messages').update({ outcome: 'ai_start' }).eq('id', msg.id)
+    // Hard cap the AI think-time so a stall can never leave the customer hanging.
     const parsed = await Promise.race([
       askClaude(buildPrompt({ menu: menu ?? [], weekSchedule, pendingOrder, profileName, text })),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('AI timeout after 40s')), 40000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('AI timeout after 20s')), 20000)),
     ])
     await admin.from('whatsapp_messages').update({ outcome: `ai:${parsed.action ?? 'unknown'}` }).eq('id', msg.id)
     const knownName = parsed.customer_name?.trim() || (profileName && profileName !== 'WhatsApp customer' ? profileName : '')
