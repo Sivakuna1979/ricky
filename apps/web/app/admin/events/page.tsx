@@ -311,6 +311,29 @@ export default function AdminEventsPage() {
   const [showAddEvent, setShowAddEvent] = useState(false)
   const [showFinder, setShowFinder] = useState(false)
   const [findArea, setFindArea] = useState('')
+  const [locating, setLocating] = useState(false)
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) { setFindMsg('⚠️ Location not available on this device'); return }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          // Reverse geocode to a district name (free, no key)
+          const d = await fetch(`https://api.postcodes.io/postcodes?lon=${pos.coords.longitude}&lat=${pos.coords.latitude}`).then(r => r.json())
+          const r0 = d?.result?.[0]
+          const area = r0?.admin_district || r0?.parish || r0?.postcode || `${pos.coords.latitude.toFixed(3)},${pos.coords.longitude.toFixed(3)}`
+          setFindArea(area)
+          setFindMsg(`📍 Using your location: ${area}`)
+        } catch {
+          setFindArea(`${pos.coords.latitude.toFixed(3)},${pos.coords.longitude.toFixed(3)}`)
+        }
+        setLocating(false)
+      },
+      () => { setFindMsg('⚠️ Location permission denied'); setLocating(false) },
+      { enableHighAccuracy: false, timeout: 10000 }
+    )
+  }
   const [findMonths, setFindMonths] = useState('12')
   const [findTypes, setFindTypes] = useState('')
   const [finding, setFinding] = useState(false)
@@ -539,8 +562,14 @@ export default function AdminEventsPage() {
             <div style={{ fontWeight: 800, fontSize: 14, color: '#6b21a8', marginBottom: 4 }}>🤖 AI Event Finder — Fable searches the web for real upcoming events</div>
             <div style={{ fontSize: 12, color: '#7e22ce', marginBottom: 10 }}>Tell it where to look. Review what it finds, untick anything, publish the rest to your customers in one tap.</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input value={findArea} onChange={e => setFindArea(e.target.value)} placeholder="Area — e.g. West Sussex, Brighton, Surrey…"
-                style={{ flex: '2 1 200px', padding: '10px 12px', borderRadius: 10, border: '1px solid #d8b4fe', fontSize: 14, outline: 'none' }} />
+              <div style={{ flex: '2 1 200px', display: 'flex', gap: 6 }}>
+                <input value={findArea} onChange={e => setFindArea(e.target.value)} placeholder="Area — e.g. West Sussex, Brighton, Surrey…"
+                  style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #d8b4fe', fontSize: 14, outline: 'none' }} />
+                <button onClick={useMyLocation} disabled={locating} title="Use my current location"
+                  style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #d8b4fe', background: '#fff', fontSize: 16, cursor: 'pointer', opacity: locating ? 0.6 : 1 }}>
+                  {locating ? '…' : '📍'}
+                </button>
+              </div>
               <select value={findMonths} onChange={e => setFindMonths(e.target.value)} style={{ flex: '1 1 120px', padding: '10px', borderRadius: 10, border: '1px solid #d8b4fe', fontSize: 13, fontWeight: 700, color: '#6b21a8' }}>
                 {[['3','Next 3 months'], ['6','Next 6 months'], ['12','Next 12 months'], ['24','Next 2 years']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
