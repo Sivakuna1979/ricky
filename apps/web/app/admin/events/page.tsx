@@ -373,6 +373,34 @@ export default function AdminEventsPage() {
     setTimeout(poll, 5000)
   }
 
+  const [outreachMsg, setOutreachMsg] = useState('')
+  const [outreaching, setOutreaching] = useState(false)
+  const [drafts, setDrafts] = useState([])
+
+  const sendInterest = async () => {
+    const withEmail = (found ?? []).filter(e => e.selected && e.organiser_email)
+    if (!withEmail.length) { setOutreachMsg('⚠️ None of the selected events have an organiser email — use the source links to contact them.'); return }
+    setOutreaching(true)
+    setOutreachMsg('')
+    setDrafts([])
+    const res = await fetch('/api/events/outreach', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: withEmail }),
+    })
+    const d = await res.json().catch(() => ({ error: `Server error (${res.status})` }))
+    if (d.error) { setOutreachMsg(`⚠️ ${d.error}`); setOutreaching(false); return }
+    const sent = d.results.filter(r => r.status === 'sent').length
+    const already = d.results.filter(r => r.status === 'already_sent').length
+    const draftList = d.results.filter(r => r.status === 'draft')
+    if (d.provider === 'mailto' && draftList.length) {
+      setDrafts(draftList)
+      setOutreachMsg('✉️ Email service not configured — tap each draft below to send from your own email app.')
+    } else {
+      setOutreachMsg(`📨 Interest sent to ${sent} organiser(s)${already ? ` · ${already} already contacted` : ''} — replies come to your inbox.`)
+    }
+    setOutreaching(false)
+  }
+
   const publishFound = async () => {
     const selected = (found ?? []).filter(e => e.selected)
     if (!selected.length) return
@@ -590,16 +618,33 @@ export default function AdminEventsPage() {
                   <div style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>{e.name}</div>
                   <div style={{ fontSize: 12, color: '#555' }}>📅 {e.date}{e.event_time ? ` · ${e.event_time}` : ''} · 📍 {e.location}{e.postcode ? ` (${e.postcode})` : ''}{e.region ? ` · ${e.region}` : ''}{e.footfall ? ` · 👥 ~${e.footfall}` : ''}</div>
                   {e.notes && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{e.notes}</div>}
-                  {e.source_url && <a href={e.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700, textDecoration: 'none' }}>🔗 Check source</a>}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
+                    {e.source_url && <a href={e.source_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700, textDecoration: 'none' }}>🔗 Check source</a>}
+                    {e.organiser_email
+                      ? <span style={{ fontSize: 11, color: '#059669', fontWeight: 700 }}>📧 {e.organiser_email}</span>
+                      : <span style={{ fontSize: 11, color: '#9ca3af' }}>no organiser email found</span>}
+                  </div>
                 </div>
               </div>
             ))}
             {found && found.some(e => e.selected) && (
-              <button onClick={publishFound} disabled={publishing}
-                style={{ marginTop: 12, width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: publishing ? 0.6 : 1 }}>
-                {publishing ? 'Publishing…' : `🚀 Publish ${found.filter(e => e.selected).length} events to the Van Board`}
-              </button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                <button onClick={publishFound} disabled={publishing}
+                  style={{ flex: '2 1 200px', padding: '12px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: publishing ? 0.6 : 1 }}>
+                  {publishing ? 'Publishing…' : `🚀 Publish ${found.filter(e => e.selected).length} events to the Van Board`}
+                </button>
+                <button onClick={sendInterest} disabled={outreaching}
+                  style={{ flex: '1 1 160px', padding: '12px', borderRadius: 10, border: 'none', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', opacity: outreaching ? 0.6 : 1 }}>
+                  {outreaching ? 'Sending…' : `📨 Send interest (${found.filter(e => e.selected && e.organiser_email).length} with email)`}
+                </button>
+              </div>
             )}
+            {outreachMsg && <div style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: outreachMsg.startsWith('📨') ? '#059669' : '#b45309' }}>{outreachMsg}</div>}
+            {drafts.map((dft, i) => (
+              <a key={i} href={dft.mailto} style={{ display: 'block', marginTop: 6, padding: '10px 12px', borderRadius: 10, background: '#fff', border: '1px solid #e9d5ff', fontSize: 13, fontWeight: 700, color: '#0e7490', textDecoration: 'none' }}>
+                ✉️ Send draft to {dft.name} →
+              </a>
+            ))}
           </div>
         </div>
       )}

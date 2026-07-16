@@ -25,6 +25,8 @@ Return ONLY a valid JSON array, no other text, no markdown:
   "event_type": "festival|market|sports|corporate|other",
   "footfall": 0,
   "source_url": "...",
+  "organiser_email": "",         // organiser/vendor-applications email if the sources show one, else ""
+  "organiser_name": "",          // organiser or company name if shown
   "notes": "..."
 }]
 Rules:
@@ -97,6 +99,8 @@ async function runDiscovery(id: string, area: string, months: number, types: str
         event_type: ['festival','market','sports','corporate','wedding','birthday','private','other'].includes(e.event_type) ? e.event_type : 'festival',
         footfall: Number(e.footfall) || null,
         source_url: String(e.source_url ?? '').slice(0, 300),
+        organiser_email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e.organiser_email ?? '') ? e.organiser_email : '',
+        organiser_name: String(e.organiser_name ?? '').slice(0, 120),
         notes: String(e.notes ?? '').slice(0, 500),
       }))
       .filter((e: any) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && new Date(e.date) >= new Date(new Date().toDateString()))
