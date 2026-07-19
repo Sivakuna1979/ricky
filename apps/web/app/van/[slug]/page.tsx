@@ -242,16 +242,18 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           const pickupMissing = attempted && (!pickupStop || !pickupTime)
           const dayStops = schedule.filter((s: any) => s.day_of_week === selectedPickupDay.dow).slice().sort((a: any, b: any) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
           const genSlots = (stop: any) => {
+            // 10-minute slots across the stop's window — always at least the
+            // arrival time, so short stops (15-20 min) still offer choices.
             const slots: string[] = []
             const [ah, am] = stop.arrival_time.split(':').map(Number)
             const [dh, dm] = stop.departure_time.split(':').map(Number)
             let cur = ah * 60 + am
             const end = dh * 60 + dm
-            while (cur + 30 <= end) {
+            while (cur <= end && slots.length < 12) {
               const h = Math.floor(cur / 60), m = cur % 60
-              const label = `${h > 12 ? h - 12 : h}:${m.toString().padStart(2,'0')}${h >= 12 ? 'pm' : 'am'}`
+              const label = `${h > 12 ? h - 12 : h === 0 ? 12 : h}:${m.toString().padStart(2,'0')}${h >= 12 ? 'pm' : 'am'}`
               slots.push(label)
-              cur += 30
+              cur += 10
             }
             return slots
           }
