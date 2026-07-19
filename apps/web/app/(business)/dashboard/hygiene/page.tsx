@@ -341,8 +341,9 @@ export default function HygienePage() {
         .sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid #e5e7eb;padding:16px 10px;min-height:calc(100vh - 56px)}
         .main{flex:1;padding:24px;max-width:760px}
         .body{display:flex;flex:1}
-        .bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:6px 8px 18px;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px}
-        @media(max-width:700px){.sidebar{display:none}.main{padding:16px 14px 90px}.bottom{display:flex;justify-content:space-around}}
+        .bottom{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e7eb;z-index:100;padding:8px 10px 18px;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:14px;scroll-snap-type:x proximity;overscroll-behavior-x:contain;scrollbar-width:none}
+        .bottom::-webkit-scrollbar,.biz-bottom::-webkit-scrollbar{display:none}
+        @media(max-width:700px){.sidebar{display:none}.main{padding:16px 14px 90px}.bottom{display:flex;justify-content:flex-start}}
         @media print{.topbar,.sidebar,.bottom,.no-print{display:none!important}.main{padding:0;max-width:100%}body{background:#fff}}
       `}</style>
       <div className="wrap">
@@ -702,7 +703,7 @@ export default function HygienePage() {
         </div>
         <nav className="bottom">
           {NAV.map(n => (
-            <a key={n.href} href={n.href} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, textDecoration:'none', color: n.active ? '#f97316' : '#9ca3af', fontSize:10, fontWeight:600, minWidth:48 }}>
+            <a key={n.href} href={n.href} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, textDecoration:'none', color: n.active ? '#f97316' : '#9ca3af', fontSize:10, fontWeight:600, minWidth:56, flexShrink:0, padding:'2px 4px', scrollSnapAlign:'start' }}>
               <span style={{ fontSize:20 }}>{n.icon}</span>{n.label}
             </a>
           ))}
