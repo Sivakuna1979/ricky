@@ -34,6 +34,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   })
   const selectedPickupDay = pickupDays[pickupDayOffset]
   const [placing, setPlacing]     = useState(false)
+  const [attempted, setAttempted] = useState(false)
   const [orderNum, setOrderNum]   = useState('')
 
   useEffect(() => {
@@ -109,8 +110,21 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
     window.open(`https://wa.me/${waNum}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
   }
 
+  // What the customer still needs to fill in (pickup only required when the van has stops)
+  const hasStops = schedule.length > 0
+  const missingBits = [
+    hasStops && !pickupStop ? '📍 pickup spot' : null,
+    hasStops && pickupStop && !pickupTime ? '⏰ pickup time' : null,
+    !form.name.trim() ? '👤 your name' : null,
+    !form.phone.trim() ? '📞 phone number' : null,
+  ].filter(Boolean)
+
   const placeOrder = async () => {
-    if (!form.name || !form.phone) return
+    if (missingBits.length) {
+      setAttempted(true)
+      document.getElementById(hasStops && !pickupStop ? 'pickup-section' : 'contact-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
     setPlacing(true)
     const pickupDayLabel = pickupDayOffset === 0 ? '' : ` on ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`
     const pickupNote = pickupStop
@@ -225,6 +239,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         {/* Pickup day + location + time */}
         {(() => {
           if (!schedule.length) return null
+          const pickupMissing = attempted && (!pickupStop || !pickupTime)
           const dayStops = schedule.filter((s: any) => s.day_of_week === selectedPickupDay.dow).slice().sort((a: any, b: any) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
           const genSlots = (stop: any) => {
             const slots: string[] = []
@@ -241,7 +256,12 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
             return slots
           }
           return (
-            <div style={{ marginBottom:20 }}>
+            <div id="pickup-section" style={{ marginBottom:20, borderRadius:14, padding: pickupMissing ? '12px' : 0, border: pickupMissing ? '2px solid #ef4444' : 'none', background: pickupMissing ? 'rgba(239,68,68,0.06)' : 'transparent' }}>
+              {pickupMissing && (
+                <div style={{ fontSize:13, fontWeight:800, color:'#f87171', marginBottom:10 }}>
+                  ⚠️ {!pickupStop ? 'Please choose where you\'ll collect your order' : 'Please pick a rough collection time'}
+                </div>
+              )}
               <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>🗓️ Which day?</div>
               <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:8, marginBottom:12 }}>
                 {pickupDays.map(d => {
@@ -302,14 +322,14 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           )
         })()}
 
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        <div id="contact-section" style={{ display:'flex', flexDirection:'column', gap:12 }}>
           <div>
-            <label style={{ fontSize:12, fontWeight:700, color:'#9ca3af', display:'block', marginBottom:6 }}>Your Name *</label>
-            <input value={form.name} onChange={e => setForm(f => ({...f, name:e.target.value}))} placeholder="e.g. John Smith" style={{ width:'100%', padding:'12px 14px', borderRadius:10, border:'1px solid #1e2a45', background:'#0d1427', color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
+            <label style={{ fontSize:12, fontWeight:700, color: attempted && !form.name.trim() ? '#f87171' : '#9ca3af', display:'block', marginBottom:6 }}>Your Name * {attempted && !form.name.trim() ? '— required' : ''}</label>
+            <input value={form.name} onChange={e => setForm(f => ({...f, name:e.target.value}))} placeholder="e.g. John Smith" style={{ width:'100%', padding:'12px 14px', borderRadius:10, border: attempted && !form.name.trim() ? '2px solid #ef4444' : '1px solid #1e2a45', background:'#0d1427', color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
           </div>
           <div>
-            <label style={{ fontSize:12, fontWeight:700, color:'#9ca3af', display:'block', marginBottom:6 }}>Phone Number *</label>
-            <input value={form.phone} onChange={e => setForm(f => ({...f, phone:e.target.value}))} placeholder="e.g. 07700 900000" type="tel" style={{ width:'100%', padding:'12px 14px', borderRadius:10, border:'1px solid #1e2a45', background:'#0d1427', color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
+            <label style={{ fontSize:12, fontWeight:700, color: attempted && !form.phone.trim() ? '#f87171' : '#9ca3af', display:'block', marginBottom:6 }}>Phone Number * {attempted && !form.phone.trim() ? '— required' : ''}</label>
+            <input value={form.phone} onChange={e => setForm(f => ({...f, phone:e.target.value}))} placeholder="e.g. 07700 900000" type="tel" style={{ width:'100%', padding:'12px 14px', borderRadius:10, border: attempted && !form.phone.trim() ? '2px solid #ef4444' : '1px solid #1e2a45', background:'#0d1427', color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
           </div>
           <div>
             <label style={{ fontSize:12, fontWeight:700, color:'#9ca3af', display:'block', marginBottom:6 }}>Notes (optional)</label>
@@ -326,7 +346,13 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
             💬 Order via WhatsApp · £{cartTotal.toFixed(2)}
           </button>
         )}
-        <button onClick={placeOrder} disabled={placing || !form.name || !form.phone} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background: placing ? 'color-mix(in srgb, var(--brand, #f97316) 50%, transparent)' : 'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', fontSize:16, fontWeight:800, cursor: placing ? 'wait' : 'pointer' }}>
+        {attempted && missingBits.length > 0 && (
+          <div style={{ background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.4)', borderRadius:12, padding:'12px 14px', marginBottom:10 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:'#f87171' }}>Almost there! Please complete:</div>
+            <div style={{ fontSize:13, color:'#fca5a5', marginTop:4 }}>{missingBits.join(' · ')}</div>
+          </div>
+        )}
+        <button onClick={placeOrder} disabled={placing} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', background: placing ? 'color-mix(in srgb, var(--brand, #f97316) 50%, transparent)' : 'linear-gradient(135deg,var(--brand, #f97316),var(--brand2, #ea580c))', color:'#fff', fontSize:16, fontWeight:800, cursor: placing ? 'wait' : 'pointer', opacity: attempted && missingBits.length ? 0.85 : 1 }}>
           {placing ? 'Placing Order…' : `✅ Place Order · £${cartTotal.toFixed(2)}`}
         </button>
       </div>
