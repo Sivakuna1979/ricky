@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { NewOrderWatcher } from '@/components/orders/NewOrderWatcher'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Business Dashboard — FoodTaxi' }
@@ -98,6 +99,20 @@ export default async function BusinessDashboardPage() {
     ? await supabase.from('orders').select('id, total, status, created_at')
         .in('van_id', vanIds).gte('created_at', `${today}T00:00:00`).not('status', 'eq', 'cancelled')
     : { data: [] }
+
+  // Last-7-days insights
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString()
+  const { data: weekOrders } = vanIds.length
+    ? await supabase.from('orders').select('id, total, status').in('van_id', vanIds).gte('created_at', weekAgo).not('status', 'eq', 'cancelled')
+    : { data: [] }
+  const weekIds = (weekOrders ?? []).map(o => o.id)
+  const { data: weekItems } = weekIds.length
+    ? await supabase.from('order_items').select('name, quantity, order_id').in('order_id', weekIds.slice(0, 200))
+    : { data: [] }
+  const weekSales = (weekOrders ?? []).reduce((s, o) => s + (o.total ?? 0), 0)
+  const itemTally: Record<string, number> = {}
+  for (const it of weekItems ?? []) itemTally[it.name] = (itemTally[it.name] ?? 0) + (it.quantity ?? 1)
+  const topItems = Object.entries(itemTally).sort((a, b) => b[1] - a[1]).slice(0, 3)
 
   const todaySales    = (todayOrders ?? []).reduce((s, o) => s + (o.total ?? 0), 0)
   const pendingOrders = (todayOrders ?? []).filter(o => ['pending','accepted','preparing'].includes(o.status)).length
@@ -227,6 +242,34 @@ export default async function BusinessDashboardPage() {
                 {features.map(f => (
                   <span key={f} style={{ padding:'4px 12px', borderRadius:20, background:'#f0fdf4', color:'#065f46', fontSize:12, fontWeight:600, border:'1px solid #bbf7d0' }}>✓ {f}</span>
                 ))}
+              </div>
+            </div>
+
+            <NewOrderWatcher />
+
+            {/* This week insights */}
+            <div style={{ background:'#fff', borderRadius:14, padding:'18px 20px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:20 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                <h2 style={{ fontSize:16, fontWeight:700, color:'#111', margin:0 }}>📈 This Week</h2>
+                <span style={{ fontSize:12, color:'#888' }}>last 7 days</span>
+              </div>
+              <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                <div style={{ flex:1, minWidth:110, background:'#f9fafb', borderRadius:10, padding:'12px', textAlign:'center' }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:'#059669' }}>£{weekSales.toFixed(2)}</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'#888' }}>SALES</div>
+                </div>
+                <div style={{ flex:1, minWidth:110, background:'#f9fafb', borderRadius:10, padding:'12px', textAlign:'center' }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:'#f97316' }}>{(weekOrders ?? []).length}</div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'#888' }}>ORDERS</div>
+                </div>
+                <div style={{ flex:2, minWidth:160, background:'#f9fafb', borderRadius:10, padding:'12px' }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>TOP SELLERS</div>
+                  {topItems.length === 0
+                    ? <div style={{ fontSize:12, color:'#bbb', fontStyle:'italic' }}>No sales yet this week</div>
+                    : topItems.map(([name, qty], i) => (
+                        <div key={name} style={{ fontSize:12, color:'#333', fontWeight:600 }}>{['🥇','🥈','🥉'][i]} {name} <span style={{ color:'#999' }}>×{qty}</span></div>
+                      ))}
+                </div>
               </div>
             </div>
 

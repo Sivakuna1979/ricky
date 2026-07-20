@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { OrderManageRow } from '@/components/orders/OrderManageRow'
 import { WhatsAppImport } from '@/components/orders/WhatsAppImport'
+import { NewOrderWatcher } from '@/components/orders/NewOrderWatcher'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,7 +98,9 @@ export default async function OrdersPage() {
 
           <div className="biz-main">
             <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#111' }}>📦 Orders</h1>
-            <p style={{ color:'#888', margin:'0 0 24px', fontSize:13 }}>{biz.name} — all recent orders</p>
+            <p style={{ color:'#888', margin:'0 0 14px', fontSize:13 }}>{biz.name} — all recent orders</p>
+
+            <NewOrderWatcher />
 
             {vanIds.length > 0 && <WhatsAppImport vanId={vanIds[0]} businessId={biz.id} />}
 

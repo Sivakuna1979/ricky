@@ -256,6 +256,18 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true })
 }
 
+
+// Best-effort owner ping about a new order (free within the 24h window).
+async function notifyOwner(admin: any, channel: any, van: any, order_number: string, total: number, name: string) {
+  try {
+    if (!van?.business_id) return
+    const { data: biz } = await admin.from('businesses').select('phone').eq('id', van.business_id).single()
+    if (!biz?.phone) return
+    const to = String(biz.phone).replace(/[^\d]/g, '').replace(/^0/, '44')
+    await sendWhatsApp(channel, to, `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}. Open your dashboard: https://food-taxi.vercel.app/dashboard/orders`)
+  } catch {}
+}
+
 async function handleMessage(admin: any, channel: any, msg: any, profileName: string) {
   const from = msg.from
   const text = msg.text.body
@@ -270,10 +282,10 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         return // we asked which van — their reply resolves it
       }
     } else if (channel.van_id) {
-      const { data } = await admin.from('vans').select('id, name').eq('id', channel.van_id).single()
+      const { data } = await admin.from('vans').select('id, name, business_id').eq('id', channel.van_id).single()
       van = data
     } else {
-      const { data } = await admin.from('vans').select('id, name').eq('is_active', true).limit(1).single()
+      const { data } = await admin.from('vans').select('id, name, business_id').eq('is_active', true).limit(1).single()
       van = data
     }
     if (!van) {
@@ -382,6 +394,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         order_id: order.id, menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity, item_total: i.price * i.quantity,
       })))
       await admin.from('whatsapp_messages').update({ outcome: 'ordered', order_id: order.id }).eq('id', msg.id)
+      await notifyOwner(admin, channel, van, order_number, total, knownName)
 
       const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — £${(i.price * i.quantity).toFixed(2)}`).join('\n')
       const dayStops = stopsForDay(parsed.pickup_day ?? '')

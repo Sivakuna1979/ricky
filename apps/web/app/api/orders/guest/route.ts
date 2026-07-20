@@ -25,6 +25,40 @@ async function sbPostWith(key: string, table: string, body: any) {
   return Array.isArray(data) ? data[0] : data
 }
 
+async function sbGet(path: string) {
+  const key = SERVICE_KEY() || ANON_KEY()
+  const res = await fetch(`${SB_URL()}/rest/v1/${path}`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  })
+  return res.ok ? res.json() : null
+}
+
+// Best-effort WhatsApp ping to the business owner about a new order.
+// Works free whenever the owner has messaged the FoodTaxi number in the
+// last 24h; otherwise Meta rejects it and we just skip silently.
+async function notifyOwner(van_id: string, order_number: string, total: number, name: string) {
+  try {
+    const vans = await sbGet(`vans?id=eq.${van_id}&select=business_id`)
+    const bizId = vans?.[0]?.business_id
+    if (!bizId) return
+    const bizs = await sbGet(`businesses?id=eq.${bizId}&select=phone`)
+    const phone = bizs?.[0]?.phone
+    if (!phone) return
+    const channels = await sbGet(`whatsapp_channels?is_active=eq.true&select=phone_number_id,access_token,is_shared&order=is_shared.desc&limit=1`)
+    const ch = channels?.[0]
+    if (!ch) return
+    const to = String(phone).replace(/[^\d]/g, '').replace(/^0/, '44')
+    await fetch(`https://graph.facebook.com/v21.0/${ch.phone_number_id}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ch.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp', to, type: 'text',
+        text: { body: `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}. Open your dashboard: https://food-taxi.vercel.app/dashboard/orders` },
+      }),
+    }).catch(() => {})
+  } catch {}
+}
+
 // Try the service key first (bypasses RLS); if it's missing or invalid,
 // fall back to the anon key (works via the orders_guest_insert policy).
 async function sbPost(table: string, body: any) {
@@ -88,6 +122,8 @@ export async function POST(req: NextRequest) {
         item_total: i.item_total,
       }))).catch(() => {})
     }
+
+    if (van_id) await notifyOwner(van_id, order_number, total ?? 0, customer_name)
 
     return NextResponse.json({ order_number, id: order?.id })
   } catch (err: any) {
