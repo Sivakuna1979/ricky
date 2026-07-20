@@ -296,6 +296,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
   const ftMarkers    = useRef<any[]>([])
   const userMarker   = useRef<any>(null)
   const watchIdRef   = useRef<number|null>(null)
+  const recenteredRef = useRef(false)
   const lastFetchRef = useRef<number>(0)
   const LRef         = useRef<any>(null)
   const userPosRef   = useRef<{lat:number;lng:number}|null>(null)
@@ -414,7 +415,11 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
             const icon = L.divIcon({ className:'', html:'<div style="width:18px;height:18px;border-radius:50%;background:#60a5fa;border:3px solid #fff;box-shadow:0 0 10px rgba(96,165,250,0.9)"></div>', iconSize:[18,18], iconAnchor:[9,9] })
             userMarker.current = L.marker([plat,plng],{icon}).addTo(map).bindPopup('<b>📍 You are here</b>')
           }
-          if (centerLat==null || centerLng==null) { fetchGoogle(plat,plng); fetchFoodTaxi(plat,plng) }
+          if (centerLat==null || centerLng==null) {
+            // Recenter the map on the visitor the first time we get a fix
+            if (!recenteredRef.current) { recenteredRef.current = true; map.setView([plat, plng], 13) }
+            fetchGoogle(plat,plng); fetchFoodTaxi(plat,plng)
+          }
         }, ()=>{}, { enableHighAccuracy:true, timeout:15000, maximumAge:30000 })
         watchIdRef.current = id
       }

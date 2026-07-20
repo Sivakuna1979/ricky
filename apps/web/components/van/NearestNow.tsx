@@ -8,45 +8,50 @@ function miles(lat1, lng1, lat2, lng2) {
   return 3959 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-// Auto-locates the visitor on page load and shows registered FoodTaxi
-// businesses nearest to them — zero taps required.
+// Shows registered FoodTaxi businesses immediately on page load; once the
+// visitor's location arrives, sorts nearest-first and adds distances.
 export function NearestNow() {
-  const [items, setItems] = useState<any[] | null>(null)
+  const [items, setItems] = useState<any[]>([])
+  const [pos, setPos] = useState<any>(null)
   const [placeName, setPlaceName] = useState('')
 
+  // 1. Load registered businesses straight away — no location needed
+  useEffect(() => {
+    fetch('/api/foodtaxi-businesses')
+      .then(r => r.json())
+      .then(d => setItems(Array.isArray(d) ? d : []))
+      .catch(() => {})
+  }, [])
+
+  // 2. Ask for location in parallel; upgrade the list when it arrives
   useEffect(() => {
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords
+      async (p) => {
+        setPos({ lat: p.coords.latitude, lng: p.coords.longitude })
         try {
-          const biz = await fetch('/api/foodtaxi-businesses').then(r => r.json())
-          const withDist = (Array.isArray(biz) ? biz : [])
-            .filter((b: any) => b.lat != null)
-            .map((b: any) => ({ ...b, dist: miles(lat, lng, b.lat, b.lng) }))
-            .sort((a: any, b: any) => a.dist - b.dist)
-            .slice(0, 5)
-          setItems(withDist)
-        } catch { setItems([]) }
-        // Friendly place name (best effort)
-        try {
-          const d = await fetch(`https://api.postcodes.io/postcodes?lon=${lng}&lat=${lat}`).then(r => r.json())
+          const d = await fetch(`https://api.postcodes.io/postcodes?lon=${p.coords.longitude}&lat=${p.coords.latitude}`).then(r => r.json())
           setPlaceName(d?.result?.[0]?.admin_district ?? '')
         } catch {}
       },
-      () => setItems(null), // denied — show nothing, manual search still works
+      () => {},
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
     )
   }, [])
 
-  if (!items || !items.length) return null
+  if (!items.length) return null
+
+  const list = [...items]
+    .map((b: any) => ({ ...b, dist: pos && b.lat != null ? miles(pos.lat, pos.lng, b.lat, b.lng) : null }))
+    .sort((a: any, b: any) => (a.dist ?? 1e9) - (b.dist ?? 1e9))
+    .slice(0, 5)
 
   return (
     <div style={{ maxWidth: 680, margin: '18px auto 0', width: '100%', textAlign: 'left' }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
-        📍 Nearest to you{placeName ? ` — ${placeName}` : ''}
+        {pos ? `📍 Nearest to you${placeName ? ` — ${placeName}` : ''}` : '⭐ Order online now'}
       </div>
-      {items.map((b: any) => (
+      {list.map((b: any) => (
         <a key={b.slug} href={`/van/${b.slug}`}
           style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.4)', borderRadius: 16, padding: '12px 14px', marginBottom: 8, textDecoration: 'none', color: '#fff' }}>
           {b.logo ? (
@@ -56,7 +61,9 @@ export function NearestNow() {
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>🚐 {b.dist.toFixed(1)} mi away{b.city ? ` · ${b.city}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+              {b.dist != null ? `🚐 ${b.dist.toFixed(1)} mi away` : '🍽️ Order online'}{b.city ? ` · ${b.city}` : b.postcode ? ` · ${b.postcode}` : ''}
+            </div>
           </div>
           <div style={{ background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>Order →</div>
         </a>
