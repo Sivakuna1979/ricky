@@ -191,7 +191,7 @@ function SectionMap() {
         <h2 style={{ fontSize:'clamp(1.8rem,4vw,2.5rem)', fontWeight:800, color:'#e2e8f0', margin:'0 0 28px', letterSpacing:'-0.025em' }}>Van Map</h2>
         <div style={{ borderRadius:24, overflow:'hidden', border:'4px solid transparent', backgroundClip:'padding-box', boxShadow:'0 0 0 4px #f97316, 0 8px 40px rgba(249,115,22,0.25)' }}>
           <Suspense fallback={<div style={{ height:480, background:'#f8fafc', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5rem', color:'#94a3b8' }}>🗺️ Loading map…</div>}>
-            <VanMapPublic height="480px" />
+            <VanMapPublic height="480px" showCards={true} />
           </Suspense>
         </div>
       </div>
