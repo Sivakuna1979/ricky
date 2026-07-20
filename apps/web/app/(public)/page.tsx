@@ -5,6 +5,7 @@ import dynamicImport from 'next/dynamic'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { VanSearchBar } from '@/components/van/VanSearchBar'
+import { NearestNow } from '@/components/van/NearestNow'
 import { FeaturedVans } from '@/components/van/FeaturedVans'
 
 const VanMapPublic = dynamicImport(
@@ -78,6 +79,7 @@ function SectionHero() {
           Real-time GPS tracking, online ordering, and live menus from the UK's best mobile food businesses — all in one place.
         </p>
         <VanSearchBar />
+        <NearestNow />
         <div style={{ marginTop:48, display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'center', gap:24 }}>
           {[['⭐','4.9 / 5 Rating','#fbbf24'],['🚐','2,400+ Vans','#60a5fa'],['📦','Free to Use','#34d399']].map(([icon,text,color]) => (
             <div key={text as string} style={{ display:'flex', alignItems:'center', gap:8 }}>
