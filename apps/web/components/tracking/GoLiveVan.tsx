@@ -9,6 +9,8 @@ export function GoLiveVan({ van }: any) {
   const [live, setLive] = useState(van.tracking_status === 'live')
   const [sharing, setSharing] = useState(false)
   const [pings, setPings] = useState(0)
+  const [accuracy, setAccuracy] = useState<number | null>(null)
+  const lastAccRef = useRef(99999)
   const [error, setError] = useState('')
   const watchRef = useRef<any>(null)
   const lastSentRef = useRef(0)
@@ -23,9 +25,18 @@ export function GoLiveVan({ van }: any) {
       try { wakeLockRef.current = await (navigator as any).wakeLock?.request?.('screen') } catch {}
       watchRef.current = navigator.geolocation.watchPosition(
         async (pos) => {
+          const acc = pos.coords.accuracy ?? 9999
           const now = Date.now()
-          if (now - lastSentRef.current < 5000) return // throttle to ~5s
+          // Skip wildly inaccurate fixes (e.g. IP/WiFi guesses that put the van
+          // miles away). Wait for a real GPS fix (<80m). Never throttle a
+          // much-better fix — send it straight away so the pin snaps to truth.
+          const throttled = now - lastSentRef.current < 5000
+          const bigImprovement = acc < lastAccRef.current - 40
+          if (acc > 80 && lastAccRef.current <= 80) return   // ignore a sudden coarse reading
+          if (throttled && !bigImprovement) return
           lastSentRef.current = now
+          lastAccRef.current = acc
+          setAccuracy(Math.round(acc))
           const res = await fetch(`/api/tracking/${van.id}/location`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -34,13 +45,13 @@ export function GoLiveVan({ van }: any) {
               longitude: pos.coords.longitude,
               heading: pos.coords.heading ?? null,
               speed: pos.coords.speed ?? null,
-              accuracy: pos.coords.accuracy ?? null,
+              accuracy: acc,
             }),
           }).catch(() => null)
           if (res?.ok) setPings(p => p + 1)
         },
         (err) => setError(err.code === 1 ? 'Location permission denied — allow location for this site in your phone settings.' : `GPS error: ${err.message}`),
-        { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
       )
       setSharing(true)
       setLive(true)
@@ -67,7 +78,7 @@ export function GoLiveVan({ van }: any) {
         <div style={{ flex:1, minWidth:140 }}>
           <div style={{ fontWeight:800, fontSize:15, color:'#111' }}>{van.name || 'Unnamed Van'}</div>
           <div style={{ fontSize:12, color:'#888', marginTop:2 }}>
-            {sharing ? `🛰 Sharing live — ${pings} updates sent` : live ? '🟢 Marked live' : '⚫ Offline'}
+            {sharing ? `🛰 Sharing live — ${pings} sent${accuracy != null ? ` · ±${accuracy}m` : ' · getting GPS…'}` : live ? '🟢 Marked live' : '⚫ Offline'}
           </div>
         </div>
         {!sharing ? (

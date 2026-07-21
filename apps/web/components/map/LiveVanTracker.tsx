@@ -28,7 +28,7 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
     let stop = false
     const poll = async () => {
       try {
-        const d = await fetch(`/api/tracking/${vanId}/location`).then(r => r.json())
+        const d = await fetch(`/api/tracking/${vanId}/location?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json())
         if (stop) return
         if (d?.latitude) {
           setLoc(d)
@@ -37,7 +37,7 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
       } catch {}
     }
     poll()
-    const t = setInterval(poll, 5000)
+    const t = setInterval(poll, 4000)
     return () => { stop = true; clearInterval(t) }
   }, [vanId])
 
@@ -73,6 +73,10 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
         vanMarkerRef.current = L.marker([loc.latitude, loc.longitude], { icon: vanIcon }).addTo(mapRef.current)
       } else {
         vanMarkerRef.current.setLatLng([loc.latitude, loc.longitude])
+        // Keep the moving van on screen (gentle pan if it drifts near the edge)
+        if (fittedRef.current && !mapRef.current.getBounds().pad(-0.15).contains([loc.latitude, loc.longitude])) {
+          mapRef.current.panTo([loc.latitude, loc.longitude], { animate: true })
+        }
       }
       if (pickup?.lat && !pickupMarkerRef.current) {
         pickupMarkerRef.current = L.marker([pickup.lat, pickup.lng], {
