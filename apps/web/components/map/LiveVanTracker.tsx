@@ -16,6 +16,8 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
   const mapRef = useRef<any>(null)
   const vanMarkerRef = useRef<any>(null)
   const pickupMarkerRef = useRef<any>(null)
+  const userMarkerRef = useRef<any>(null)
+  const fittedRef = useRef(false)
   const divRef = useRef<any>(null)
   const [loc, setLoc] = useState<any>(null)
   const [stale, setStale] = useState(false)
@@ -76,11 +78,27 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
         pickupMarkerRef.current = L.marker([pickup.lat, pickup.lng], {
           icon: L.divIcon({ className: '', html: '<div style="font-size:30px;">📍</div>', iconSize: [30, 30], iconAnchor: [15, 30] }),
         }).addTo(mapRef.current).bindPopup(pickup.label ?? 'Your pickup')
-        const bounds = L.latLngBounds([[loc.latitude, loc.longitude], [pickup.lat, pickup.lng]])
-        mapRef.current.fitBounds(bounds, { padding: [40, 40] })
+      }
+      // Customer's own "You are here" blue dot
+      if (userPos) {
+        const youIcon = L.divIcon({
+          className: '',
+          html: `<div style="width:18px;height:18px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 0 4px rgba(59,130,246,0.3),0 2px 6px rgba(0,0,0,0.4);"></div><div style="text-align:center;font-size:9px;font-weight:800;color:#3b82f6;text-shadow:0 1px 2px #fff;margin-top:2px;white-space:nowrap;">YOU</div>`,
+          iconSize: [18, 32], iconAnchor: [9, 9],
+        })
+        if (!userMarkerRef.current) userMarkerRef.current = L.marker([userPos.lat, userPos.lng], { icon: youIcon }).addTo(mapRef.current).bindPopup('📍 You are here')
+        else userMarkerRef.current.setLatLng([userPos.lat, userPos.lng])
+      }
+      // Frame both van and the customer/pickup once
+      if (!fittedRef.current) {
+        const anchor = pickup?.lat ? pickup : userPos
+        if (anchor) {
+          fittedRef.current = true
+          mapRef.current.fitBounds(L.latLngBounds([[loc.latitude, loc.longitude], [anchor.lat, anchor.lng]]), { padding: [50, 50], maxZoom: 15 })
+        }
       }
     })
-  }, [loc, pickup, logo])
+  }, [loc, pickup, logo, userPos])
 
   useEffect(() => () => { mapRef.current?.remove?.(); mapRef.current = null }, [])
 
@@ -115,6 +133,18 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
         <div style={{ fontSize:10, color:'#6b7280' }}>{new Date(loc.recorded_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}</div>
       </div>
       <div ref={divRef} style={{ height, width:'100%' }} />
+      <div style={{ display:'flex', gap:8, padding:'8px', background:'#0d1427' }}>
+        <a href={`https://www.google.com/maps/dir/?api=1&destination=${loc.latitude},${loc.longitude}`} target="_blank" rel="noopener noreferrer"
+          style={{ flex:1, textAlign:'center', padding:'10px', borderRadius:10, background:'linear-gradient(135deg,#f97316,#ea580c)', color:'#fff', fontWeight:800, fontSize:13, textDecoration:'none' }}>
+          🧭 Directions to the van
+        </a>
+        {userPos && (
+          <button onClick={() => { fittedRef.current = false; if (mapRef.current) mapRef.current.setView([userPos.lat, userPos.lng], 15) }}
+            style={{ padding:'10px 14px', borderRadius:10, background:'rgba(59,130,246,0.15)', border:'1px solid rgba(59,130,246,0.4)', color:'#93c5fd', fontWeight:700, fontSize:13, cursor:'pointer' }}>
+            📍 Me
+          </button>
+        )}
+      </div>
       <style>{`@keyframes pulse{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}`}</style>
     </div>
   )
