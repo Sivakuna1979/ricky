@@ -17,6 +17,7 @@ const schema = z.object({
   equipment_name: z.string().optional(),
   temperature_celsius: z.number(),
   corrective_action: z.string().optional(),
+  recorded_at: z.coerce.date().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -29,14 +30,19 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { log_type, temperature_celsius } = parsed.data
+  const { log_type, temperature_celsius, recorded_at } = parsed.data
   const range = SAFE_RANGES[log_type]
   const is_within_range = temperature_celsius >= range.min && temperature_celsius <= range.max
+
+  if (recorded_at && recorded_at.getTime() > Date.now() + 5 * 60 * 1000) {
+    return NextResponse.json({ error: 'recorded_at cannot be in the future' }, { status: 400 })
+  }
 
   const { data, error } = await supabase
     .from('temperature_logs')
     .insert({
       ...parsed.data,
+      recorded_at: recorded_at ? recorded_at.toISOString() : undefined,
       is_within_range,
       min_safe_temp: range.min,
       max_safe_temp: range.max,

@@ -18,6 +18,7 @@ const schema = z.object({
   equipment_name: z.string().optional(),
   temperature_celsius: z.coerce.number(),
   corrective_action: z.string().optional(),
+  recorded_at: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -28,9 +29,16 @@ interface Props {
   onSuccess?: () => void
 }
 
+// Format a Date as the local value a <input type="datetime-local"> expects.
+function toLocalInputValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function TemperatureLogForm({ businessId, vanId, onSuccess }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ compliant: boolean; temp: number } | null>(null)
+  const [backdate, setBackdate] = useState(false)
 
   const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -42,10 +50,11 @@ export function TemperatureLogForm({ businessId, vanId, onSuccess }: Props) {
 
   const onSubmit = async (data: FormData) => {
     setSubmitting(true)
+    const recorded_at = backdate && data.recorded_at ? new Date(data.recorded_at).toISOString() : undefined
     const res = await fetch('/api/hygiene/temperature', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, business_id: businessId, van_id: vanId }),
+      body: JSON.stringify({ ...data, recorded_at, business_id: businessId, van_id: vanId }),
     })
 
     if (res.ok) {
@@ -53,6 +62,7 @@ export function TemperatureLogForm({ businessId, vanId, onSuccess }: Props) {
       setResult({ compliant: saved.is_within_range, temp: data.temperature_celsius })
       toast.success('Temperature logged successfully')
       reset()
+      setBackdate(false)
       onSuccess?.()
     } else {
       toast.error('Failed to log temperature')
@@ -105,6 +115,27 @@ export function TemperatureLogForm({ businessId, vanId, onSuccess }: Props) {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Corrective Action (if out of range)</label>
           <textarea {...register('corrective_action')} rows={2} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none resize-none" placeholder="Describe action taken..." />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={backdate}
+              onChange={e => setBackdate(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+            />
+            This reading was missed earlier — set the actual time
+          </label>
+          {backdate && (
+            <input
+              {...register('recorded_at')}
+              type="datetime-local"
+              defaultValue={toLocalInputValue(new Date())}
+              max={toLocalInputValue(new Date())}
+              className="mt-2 w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+            />
+          )}
         </div>
 
         <button
