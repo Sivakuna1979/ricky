@@ -28,11 +28,13 @@ export function GoLiveVan({ van }: any) {
           const acc = pos.coords.accuracy ?? 9999
           const now = Date.now()
           // Skip wildly inaccurate fixes (e.g. IP/WiFi guesses that put the van
-          // miles away). Wait for a real GPS fix (<80m). Never throttle a
-          // much-better fix — send it straight away so the pin snaps to truth.
+          // miles away) — including the very first fix, which is often a coarse
+          // network-based estimate before GPS locks on. Wait for a real GPS fix
+          // (<150m). Never throttle a much-better fix — send it straight away
+          // so the pin snaps to truth.
           const throttled = now - lastSentRef.current < 5000
           const bigImprovement = acc < lastAccRef.current - 40
-          if (acc > 80 && lastAccRef.current <= 80) return   // ignore a sudden coarse reading
+          if (acc > 150) return   // never post a coarse, non-GPS fix
           if (throttled && !bigImprovement) return
           lastSentRef.current = now
           lastAccRef.current = acc
