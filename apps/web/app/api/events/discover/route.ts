@@ -125,7 +125,7 @@ ${gathered}`
       const raw = (message.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
       const events = extractEvents(raw)
       if (Array.isArray(events) && events.length) {
-        return await finishDiscovery(admin, id, events, raw)
+        return await finishDiscovery(admin, id, events, raw, 'google')
       }
       // fall through to Anthropic web search if Google found nothing usable
     }
@@ -166,13 +166,13 @@ ${gathered}`
 
     const raw = (message.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
     const events = extractEvents(raw)
-    await finishDiscovery(admin, id, events, raw)
+    await finishDiscovery(admin, id, events, raw, 'fable')
   } catch (err: any) {
     await admin.from('ai_event_discoveries').update({ status: 'error', error: (err.message ?? 'Search failed').slice(0, 400) }).eq('id', id)
   }
 }
 
-async function finishDiscovery(admin: any, id: string, events: any, raw: string) {
+async function finishDiscovery(admin: any, id: string, events: any, raw: string, engine: 'google' | 'fable') {
   const clean = (Array.isArray(events) ? events : [])
     .filter((e: any) => e?.name && e?.date)
     .map((e: any) => ({
@@ -191,12 +191,20 @@ async function finishDiscovery(admin: any, id: string, events: any, raw: string)
     }))
     .filter((e: any) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && new Date(e.date) >= new Date(new Date().toDateString()))
 
-  await admin.from('ai_event_discoveries').update({
+  const payload = {
     status: 'done',
     events: clean,
     // When empty, keep a snippet of what the AI actually said so we can diagnose.
     error: clean.length ? null : `No events extracted. AI said: ${raw.slice(0, 300) || '(no text output)'}`,
-  }).eq('id', id)
+    engine,
+  }
+  const { error: updateErr } = await admin.from('ai_event_discoveries').update(payload).eq('id', id)
+  // The `engine` column may not exist yet if the migration hasn't been run —
+  // retry without it rather than losing the whole result.
+  if (updateErr) {
+    const { engine: _drop, ...withoutEngine } = payload
+    await admin.from('ai_event_discoveries').update(withoutEngine).eq('id', id)
+  }
 }
 
 // POST { area, months, types } -> { id }   (search runs in the background)
@@ -235,6 +243,6 @@ export async function GET(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const admin = await createAdminClient()
-  const { data } = await admin.from('ai_event_discoveries').select('status, events, error').eq('id', id).single()
+  const { data } = await admin.from('ai_event_discoveries').select('*').eq('id', id).single()
   return NextResponse.json(data ?? { status: 'error', error: 'Not found' })
 }

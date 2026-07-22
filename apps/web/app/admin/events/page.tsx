@@ -356,13 +356,14 @@ export default function AdminEventsPage() {
     const started = Date.now()
     const poll = async () => {
       const secs = Math.round((Date.now() - started) / 1000)
-      setFindMsg(`🔎 Fable is searching the web… ${secs}s`)
+      setFindMsg(`🔎 Searching the web… ${secs}s`)
       const s = await fetch(`/api/events/discover?id=${d.id}`).then(r => r.json()).catch(() => null)
       if (s?.status === 'done') {
         const events = s.events ?? []
         if (!events.length) { setFindMsg(`⚠️ ${s.error ?? 'No events found — try a bigger area.'}`); setFinding(false); return }
         setFound(events.map(e => ({ ...e, selected: true })))
-        setFindMsg(`🤖 Fable found ${events.length} events — untick any you don't want, then publish`)
+        const engineLabel = s.engine === 'google' ? 'Google' : 'Fable'
+        setFindMsg(`🤖 ${engineLabel} found ${events.length} events — untick any you don't want, then publish`)
         setFinding(false)
         return
       }
