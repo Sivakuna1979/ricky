@@ -19,6 +19,12 @@ function tempOptions(pick: any) {
   return opts
 }
 
+// Format a Date as the local value a <input type="datetime-local"> expects.
+function toLocalInputValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 // Simple daily tasks, tailored by business type. Presented as routine jobs —
 // plain language, no inspection jargon.
 const BASE_OPENING = [
@@ -86,6 +92,8 @@ export default function HygienePage() {
   const [action, setAction]       = useState('')
   const [tempSaving, setTempSaving] = useState(false)
   const [tempMsg, setTempMsg]     = useState<any>(null)
+  const [backdate, setBackdate]   = useState(false)
+  const [recordedAt, setRecordedAt] = useState(() => toLocalInputValue(new Date()))
   const [todayTemps, setTodayTemps] = useState<any[]>([])
   const [units, setUnits]         = useState<any>({}) // { fridge_temp: ['Fridge 1', ...], ... }
 
@@ -279,6 +287,7 @@ export default function HygienePage() {
         equipment_name: equipment || undefined,
         temperature_celsius: Number(tempValue),
         corrective_action: action || undefined,
+        recorded_at: backdate ? new Date(recordedAt).toISOString() : undefined,
       }),
     })
     const data = await res.json().catch(() => ({}))
@@ -288,6 +297,8 @@ export default function HygienePage() {
       setUnits((u: any) => ({ ...u, [tempType]: [...(u[tempType] ?? []), equipment] }))
     }
     setAction('')
+    setBackdate(false)
+    setRecordedAt(toLocalInputValue(new Date()))
     await refreshToday(biz.id)
     setTempSaving(false)
   }
@@ -426,6 +437,16 @@ export default function HygienePage() {
                     </select>
                   </div>
                   <div style={{ fontSize:11, color:'#999', marginTop:4, textAlign:'center' }}>Tap and scroll to your thermometer reading</div>
+
+                  <label style={{ display:'flex', alignItems:'center', gap:8, marginTop:10, fontSize:13, fontWeight:700, color:'#333', cursor:'pointer' }}>
+                    <input type="checkbox" checked={backdate} onChange={e => { setBackdate(e.target.checked); if (e.target.checked) setRecordedAt(toLocalInputValue(new Date())) }} style={{ width:18, height:18, accentColor:'#0e7490' }} />
+                    Missed this earlier — set the actual time
+                  </label>
+                  {backdate && (
+                    <input type="datetime-local" value={recordedAt} max={toLocalInputValue(new Date())} onChange={e => setRecordedAt(e.target.value)}
+                      style={{ ...inp, marginTop:6 }} />
+                  )}
+
                   {tempMsg && tempMsg.ok && !tempMsg.inRange && (
                     <input value={action} onChange={e => setAction(e.target.value)} placeholder="What did you do about it? (e.g. moved food, called engineer)" style={{ ...inp, marginTop:8, border:'1px solid #fca5a5' }} />
                   )}
