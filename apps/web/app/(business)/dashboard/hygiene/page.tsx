@@ -440,11 +440,14 @@ export default function HygienePage() {
 
                   <label style={{ display:'flex', alignItems:'center', gap:8, marginTop:10, fontSize:13, fontWeight:700, color:'#333', cursor:'pointer' }}>
                     <input type="checkbox" checked={backdate} onChange={e => { setBackdate(e.target.checked); if (e.target.checked) setRecordedAt(toLocalInputValue(new Date())) }} style={{ width:18, height:18, accentColor:'#0e7490' }} />
-                    Missed this earlier — set the actual time
+                    Catching up from a paper record — set the date &amp; time
                   </label>
                   {backdate && (
-                    <input type="datetime-local" value={recordedAt} max={toLocalInputValue(new Date())} onChange={e => setRecordedAt(e.target.value)}
-                      style={{ ...inp, marginTop:6 }} />
+                    <>
+                      <input type="datetime-local" value={recordedAt} max={toLocalInputValue(new Date())} onChange={e => setRecordedAt(e.target.value)}
+                        style={{ ...inp, marginTop:6 }} />
+                      <div style={{ fontSize:11, color:'#999', marginTop:4 }}>Pick any past date and time — today, last week, whenever you wrote it down.</div>
+                    </>
                   )}
 
                   {tempMsg && tempMsg.ok && !tempMsg.inRange && (
