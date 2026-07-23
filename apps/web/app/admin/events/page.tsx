@@ -298,6 +298,7 @@ export default function AdminEventsPage() {
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterSearch, setFilterSearch] = useState('')
+  const [hidePast, setHidePast] = useState(true)
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
   const [blockedDates, setBlockedDates] = useState([])
@@ -524,7 +525,12 @@ export default function AdminEventsPage() {
     setExportMsg('Downloaded!'); setTimeout(() => setExportMsg(''), 3000)
   }
 
+  const todayStr = new Date().toISOString().slice(0,10)
+  const isPast = (b) => b.event_date && b.event_date < todayStr && !['completed','cancelled'].includes(b.admin_status)
+  const pastCount = bookings.filter(isPast).length
+
   const filtered = bookings.filter(b => {
+    if (hidePast && isPast(b)) return false
     if (filterStatus !== 'all' && b.admin_status !== filterStatus) return false
     if (filterSearch) {
       const q = filterSearch.toLowerCase()
@@ -534,7 +540,7 @@ export default function AdminEventsPage() {
              (b.event_location ?? '').toLowerCase().includes(q)
     }
     return true
-  })
+  }).sort((a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''))
 
   const calYear = parseInt(calMonth.slice(0,4))
   const calMon  = parseInt(calMonth.slice(5,7)) - 1
@@ -769,6 +775,10 @@ export default function AdminEventsPage() {
                   </select>
                   <button onClick={exportCSV} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>↓ CSV</button>
                   {exportMsg && <span style={{ fontSize: 12, color: '#10b981', fontWeight: 700 }}>{exportMsg}</span>}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#666', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    <input type="checkbox" checked={hidePast} onChange={e => setHidePast(e.target.checked)} />
+                    Hide finished events{pastCount > 0 ? ` (${pastCount})` : ''}
+                  </label>
                 </div>
 
                 <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>{filtered.length} request{filtered.length !== 1 ? 's' : ''}</div>
@@ -792,6 +802,7 @@ export default function AdminEventsPage() {
                             <span style={{ fontWeight: 700, fontSize: 15, color: '#111' }}>{b.name}</span>
                             {b.urgent && <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', background: '#fef2f2', padding: '1px 6px', borderRadius: 4 }}>URGENT</span>}
                             {b.marketplace_visible && <span style={{ fontSize: 10, fontWeight: 700, color: '#3b82f6', background: '#eff6ff', padding: '1px 6px', borderRadius: 4 }}>📢 LIVE</span>}
+                            {isPast(b) && <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>⏰ EVENT DATE PASSED</span>}
                           </div>
                           <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                             {b.event_date}{b.event_time ? ` · ${b.event_time}` : ''} · {b.event_type || 'Event'}
