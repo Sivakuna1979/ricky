@@ -78,7 +78,7 @@ export default function PosPage() {
     if (!vanId) return
     const supabase = createClient()
     const fetchReady = () => {
-      supabase.from('orders').select('id, order_number, guest_name, total, created_at')
+      supabase.from('orders').select('id, order_number, guest_name, total, created_at, order_items(*)')
         .eq('van_id', vanId).eq('status', 'ready')
         .order('created_at', { ascending: true })
         .then(({ data }) => setReadyOrders(data ?? []))
@@ -243,16 +243,27 @@ export default function PosPage() {
                     <div style={{ background: '#ecfdf5', border: '2px solid #10b981', borderRadius: 14, padding: 14, marginBottom: 14 }}>
                       <div style={{ fontWeight: 800, fontSize: 13, color: '#065f46', marginBottom: 8 }}>🔔 Ready for Pickup — {readyOrders.length}</div>
                       {readyOrders.map(o => (
-                        <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid rgba(16,185,129,0.2)' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>#{(o.order_number ?? o.id.slice(0, 8)).toUpperCase()}</span>
-                            {o.guest_name && <span style={{ fontSize: 12, color: '#666' }}> · {o.guest_name}</span>}
-                            <span style={{ fontSize: 12, color: '#666' }}> · £{Number(o.total).toFixed(2)}</span>
+                        <div key={o.id} style={{ padding: '9px 0', borderBottom: '1px solid rgba(16,185,129,0.2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>#{(o.order_number ?? o.id.slice(0, 8)).toUpperCase()}</span>
+                              {o.guest_name && <span style={{ fontSize: 12, color: '#666' }}> · {o.guest_name}</span>}
+                              <span style={{ fontSize: 12, color: '#666' }}> · £{Number(o.total).toFixed(2)}</span>
+                            </div>
+                            <button onClick={() => handOver(o.id)} disabled={handingOver === o.id}
+                              style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: handingOver === o.id ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                              {handingOver === o.id ? '…' : '✅ Hand Over'}
+                            </button>
                           </div>
-                          <button onClick={() => handOver(o.id)} disabled={handingOver === o.id}
-                            style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: handingOver === o.id ? 0.6 : 1, whiteSpace: 'nowrap' }}>
-                            {handingOver === o.id ? '…' : '✅ Hand Over'}
-                          </button>
+                          <div style={{ background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                            <div style={{ fontSize: 10, fontWeight: 800, color: '#059669', marginBottom: 3, letterSpacing: 0.3 }}>CHECK BEFORE HANDING OVER</div>
+                            {(o.order_items ?? []).map((it: any, i: number) => (
+                              <div key={it.id ?? i} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '2px 0' }}>
+                                <span style={{ fontWeight: 800, color: '#0e7490', minWidth: 22 }}>{it.quantity}×</span>
+                                <span style={{ color: '#111', fontWeight: 600 }}>{it.name}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
