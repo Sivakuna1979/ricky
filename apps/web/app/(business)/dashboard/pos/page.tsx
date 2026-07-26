@@ -32,6 +32,9 @@ export default function PosPage() {
   const [placing, setPlacing]     = useState(false)
   const [error, setError]         = useState('')
   const [lastSale, setLastSale]   = useState<any>(null)
+  const [showSales, setShowSales] = useState(false)
+  const [recentSales, setRecentSales] = useState<any[]>([])
+  const [salesSearch, setSalesSearch] = useState('')
   const channelRef = useRef<any>(null)
 
   useEffect(() => {
@@ -65,6 +68,17 @@ export default function PosPage() {
       .order('category').order('name')
       .then(({ data }) => { setMenuItems(data ?? []); setMenuLoading(false) })
   }, [vanId])
+
+  const loadRecentSales = () => {
+    if (!vanId) return
+    const supabase = createClient()
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+    supabase.from('orders').select('id, order_number, guest_name, total, created_at, source')
+      .eq('van_id', vanId).gte('created_at', startOfToday.toISOString())
+      .order('created_at', { ascending: false }).limit(100)
+      .then(({ data }) => setRecentSales(data ?? []))
+  }
+  useEffect(() => { if (showSales) loadRecentSales() }, [vanId, showSales]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live broadcast to the customer-facing display screen (public, no auth) —
   // an ephemeral Realtime channel, nothing written to the database.
@@ -135,6 +149,7 @@ export default function PosPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data.error?.formErrors?.join?.(', ') ?? data.error ?? 'Could not complete the sale'); setPlacing(false); return }
       setLastSale({ id: data.id, order_number: data.order_number, total: cartTotal, count: cartCount })
+      setRecentSales(s => [{ id: data.id, order_number: data.order_number, guest_name: data.guest_name, total: cartTotal, created_at: data.created_at, source: 'pos' }, ...s])
       channelRef.current?.send({
         type: 'broadcast', event: 'sale_complete',
         payload: { order_number: data.order_number, total: cartTotal, changeDue },
@@ -196,7 +211,48 @@ export default function PosPage() {
               <>
                 {/* ── Menu grid ── */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h1 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 12px', color: '#111' }}>🧾 Till — {van?.name}</h1>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                    <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#111' }}>🧾 Till — {van?.name}</h1>
+                    <button onClick={() => setShowSales(v => !v)}
+                      style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: showSales ? '#ecfeff' : '#fff', color: '#0e7490', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                      🧾 Sales & Receipts {showSales ? '▲' : '▼'}
+                    </button>
+                  </div>
+
+                  {showSales && (
+                    <div style={{ background: '#fff', borderRadius: 14, padding: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: 16 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: '#111', marginBottom: 10 }}>Today's Sales — {recentSales.length}</div>
+                      <input value={salesSearch} onChange={e => setSalesSearch(e.target.value)} placeholder="Search by name or order #"
+                        style={{ ...inp, width: '100%', marginBottom: 10 }} />
+                      <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                        {recentSales.length === 0 && <div style={{ color: '#bbb', fontSize: 13, padding: '10px 0' }}>No sales yet today.</div>}
+                        {recentSales
+                          .filter(s => {
+                            const q = salesSearch.trim().toLowerCase()
+                            if (!q) return true
+                            return (s.guest_name ?? '').toLowerCase().includes(q) || (s.order_number ?? '').toLowerCase().includes(q)
+                          })
+                          .map(s => (
+                            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid #f3f4f6' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>
+                                  #{(s.order_number ?? s.id.slice(0, 8)).toUpperCase()}
+                                  {s.source === 'pos' && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#0e7490', background: '#ecfeff', padding: '1px 6px', borderRadius: 8 }}>TILL</span>}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#999' }}>
+                                  {s.guest_name ? `${s.guest_name} · ` : ''}{new Date(s.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>£{Number(s.total).toFixed(2)}</div>
+                              <a href={`/receipt/${s.id}`} target="_blank" rel="noopener noreferrer"
+                                style={{ padding: '6px 12px', borderRadius: 8, background: '#0e7490', color: '#fff', fontWeight: 700, fontSize: 11, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                                🖨️ Receipt
+                              </a>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
 
                   {categories.length > 0 && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
