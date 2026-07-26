@@ -65,6 +65,7 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontWeight:700, fontSize:14, color:'#111' }}>
             Order #{(order.order_number ?? order.id.slice(0,8)).toUpperCase()}
+            {order.source === 'pos' && <span style={{ marginLeft:6, fontSize:10, fontWeight:800, color:'#0e7490', background:'#ecfeff', padding:'2px 7px', borderRadius:10 }}>🧾 TILL</span>}
             <span style={{ color:'#c4c9d4', fontWeight:400, marginLeft:6, fontSize:12 }}>{open ? '▲' : '▼'}</span>
           </div>
           <div style={{ fontSize:12, color:'#888', marginTop:2 }}>

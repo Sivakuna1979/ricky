@@ -37,6 +37,7 @@ export default async function BillingPage() {
     { icon: '📊', label: 'Dashboard',  href: '/dashboard',          active: false },
     { icon: '🚐', label: 'My Vans',    href: '/dashboard/vans',     active: false },
     { icon: '📦', label: 'Orders',     href: '/dashboard/orders',   active: false },
+    { icon: '🧾', label: 'POS',        href: '/dashboard/pos',      active: false },
     { icon: '📋', label: 'Menu',       href: '/dashboard/menu',     active: false },
     { icon: '💳', label: 'My Plan',    href: '/dashboard/billing',  active: true  },
     { icon: '🎪', label: 'Events',     href: '/van/events',         active: false },

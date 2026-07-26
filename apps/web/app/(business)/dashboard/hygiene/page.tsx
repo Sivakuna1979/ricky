@@ -71,6 +71,7 @@ const TYPE_EXTRAS: Record<string, { opening: string[], closing: string[] }> = {
 const NAV = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
   { icon: '📦', label: 'Orders',    href: '/dashboard/orders' },
+  { icon: '🧾', label: 'POS',       href: '/dashboard/pos' },
   { icon: '🎪', label: 'Events',    href: '/van/events' },
   { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene', active: true },
   { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
