@@ -11,7 +11,9 @@ const posOrderSchema = z.object({
   van_id: z.string().uuid(),
   payment_method: z.enum(['cash_at_van', 'card_at_van']),
   customer_name: z.string().optional(),
+  customer_email: z.string().email().optional().or(z.literal('')),
   served_by: z.string().optional(),
+  cash_tendered: z.number().optional(),
   items: z.array(z.object({
     menu_item_id: z.string().uuid(),
     name: z.string(),
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const parsed = posOrderSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-  const { van_id, payment_method, customer_name, served_by, items } = parsed.data
+  const { van_id, payment_method, customer_name, customer_email, served_by, cash_tendered, items } = parsed.data
 
   // Confirm this van belongs to the signed-in staff/owner before selling
   // against it — RLS enforces this too, but a clear 403 beats a cryptic
@@ -52,7 +54,9 @@ export async function POST(req: NextRequest) {
       subtotal,
       total,
       guest_name: customer_name?.trim() || 'Walk-in customer',
+      guest_email: customer_email?.trim() || null,
       notes: served_by?.trim() ? `Served by ${served_by.trim()}` : null,
+      cash_tendered: payment_method === 'cash_at_van' ? cash_tendered ?? null : null,
       status: 'collected',
       collected_at: now,
       accepted_at: now,

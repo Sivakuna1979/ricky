@@ -101,6 +101,11 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
             </div>
           )}
 
+          <a href={`/receipt/${order.id}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+            style={{ display:'inline-block', fontSize:12, fontWeight:700, color:'#0e7490', textDecoration:'none', marginBottom:12 }}>
+            🧾 View / Print / Email Receipt
+          </a>
+
           {/* Payment + actions */}
           {active && (
             <>

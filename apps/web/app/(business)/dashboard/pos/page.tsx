@@ -25,6 +25,7 @@ export default function PosPage() {
   const [category, setCategory]   = useState<string | null>(null)
   const [cart, setCart]           = useState<Record<string, number>>({})
   const [customerName, setCustomerName] = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
   const [servedBy, setServedBy]   = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'cash_at_van' | 'card_at_van'>('cash_at_van')
   const [cashTendered, setCashTendered] = useState('')
@@ -125,18 +126,20 @@ export default function PosPage() {
           van_id: vanId,
           payment_method: paymentMethod,
           customer_name: customerName || undefined,
+          customer_email: customerEmail || undefined,
           served_by: servedBy || undefined,
+          cash_tendered: paymentMethod === 'cash_at_van' ? tendered ?? undefined : undefined,
           items: cartLines.map(i => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data.error?.formErrors?.join?.(', ') ?? data.error ?? 'Could not complete the sale'); setPlacing(false); return }
-      setLastSale({ order_number: data.order_number, total: cartTotal, count: cartCount })
+      setLastSale({ id: data.id, order_number: data.order_number, total: cartTotal, count: cartCount })
       channelRef.current?.send({
         type: 'broadcast', event: 'sale_complete',
         payload: { order_number: data.order_number, total: cartTotal, changeDue },
       })
-      setCart({}); setCustomerName(''); setCashTendered('')
+      setCart({}); setCustomerName(''); setCustomerEmail(''); setCashTendered('')
     } catch {
       setError('Network error — please try again')
     }
@@ -232,6 +235,12 @@ export default function PosPage() {
                       <div style={{ fontWeight: 800, fontSize: 17, color: '#059669', marginBottom: 4 }}>Sale complete</div>
                       <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>Order #{lastSale.order_number}</div>
                       <div style={{ fontSize: 22, fontWeight: 900, color: '#111', margin: '10px 0' }}>£{lastSale.total.toFixed(2)}</div>
+                      {lastSale.id && (
+                        <a href={`/receipt/${lastSale.id}`} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'block', padding: '11px', borderRadius: 10, border: '1px solid #e5e7eb', color: '#0e7490', fontWeight: 700, fontSize: 13, textDecoration: 'none', marginBottom: 8 }}>
+                          🧾 View / Print / Email Receipt
+                        </a>
+                      )}
                       <button onClick={() => {
                         setLastSale(null)
                         channelRef.current?.send({ type: 'broadcast', event: 'sale_update', payload: { lines: [], total: 0, paymentMethod: 'cash_at_van', tendered: null, changeDue: null } })
@@ -265,6 +274,7 @@ export default function PosPage() {
                       </div>
 
                       <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name (optional)" style={{ ...inp, width: '100%', marginBottom: 8 }} />
+                      <input value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} type="email" placeholder="Email — for emailed receipt (optional)" style={{ ...inp, width: '100%', marginBottom: 8 }} />
                       <input value={servedBy} onChange={e => setServedBy(e.target.value)} placeholder="Served by (optional)" style={{ ...inp, width: '100%', marginBottom: 10 }} />
 
                       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
