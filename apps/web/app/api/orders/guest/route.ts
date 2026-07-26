@@ -81,9 +81,9 @@ export async function POST(req: NextRequest) {
     if (!customer_phone) return NextResponse.json({ error: 'Phone is required' }, { status: 400 })
     if (!items?.length) return NextResponse.json({ error: 'No items in order' }, { status: 400 })
 
-    const order_number = 'FT' + Date.now().toString().slice(-6)
-
-    // Try with guest columns first, fall back to notes-only
+    // Try with guest columns first, fall back to notes-only.
+    // order_number is left unset so the DB trigger fills it in (daily-reset
+    // sequence) — do not generate one client-side.
     let order: any = null
     try {
       order = await sbPost('orders', {
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
         total: total ?? 0,
         payment_method: payment_method ?? 'cash_at_van',
         status: 'pending',
-        order_number,
+        source: 'guest',
       })
     } catch {
       const pickupStr = pickup_location ? ` | Pickup: ${pickup_location}${pickup_time ? ` ~${pickup_time}` : ''}` : ''
@@ -108,9 +108,10 @@ export async function POST(req: NextRequest) {
         total: total ?? 0,
         payment_method: payment_method ?? 'cash_at_van',
         status: 'pending',
-        order_number,
+        source: 'guest',
       })
     }
+    const order_number = order?.order_number
 
     if (order?.id && items.length > 0) {
       await sbPost('order_items', items.map((i: any) => ({

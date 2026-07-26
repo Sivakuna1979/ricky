@@ -373,7 +373,6 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         price: Number(i.price) || 0,
       }))
       const total = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0)
-      const order_number = 'FT' + Date.now().toString().slice(-6)
 
       const { data: order, error } = await admin.from('orders').insert({
         van_id: vanId,
@@ -386,9 +385,10 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         total,
         payment_method: 'cash_at_van',
         status: 'pending',
-        order_number,
-      }).select('id').single()
+        source: 'whatsapp',
+      }).select('id, order_number').single()
       if (error) throw new Error(error.message)
+      const order_number = order.order_number
 
       await admin.from('order_items').insert(items.map((i: any) => ({
         order_id: order.id, menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity, item_total: i.price * i.quantity,
