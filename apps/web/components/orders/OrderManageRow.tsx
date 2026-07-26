@@ -4,8 +4,10 @@ import { useState } from 'react'
 
 const STATUS_COLORS = {
   pending:    { bg:'#fef3c7', color:'#92400e' },
+  accepted:   { bg:'#dbeafe', color:'#1e40af' },
+  preparing:  { bg:'#ede9fe', color:'#5b21b6' },
   ready:      { bg:'#d1fae5', color:'#065f46' },
-  completed:  { bg:'#f0fdf4', color:'#166534' },
+  collected:  { bg:'#f0fdf4', color:'#166534' },
   cancelled:  { bg:'#fee2e2', color:'#991b1b' },
 }
 
@@ -36,7 +38,7 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
   }
 
   const complete = async () => {
-    if (await update({ status: 'completed', payment_method: payment })) setStatus('completed')
+    if (await update({ status: 'collected', payment_method: payment })) setStatus('collected')
   }
   const markReady = async () => {
     if (await update({ status: 'ready' })) setStatus('ready')
@@ -48,7 +50,7 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
 
   const s = STATUS_COLORS[status] ?? { bg:'#f3f4f6', color:'#555' }
   const items = order.order_items ?? []
-  const active = status === 'pending' || status === 'ready'
+  const active = ['pending', 'accepted', 'preparing', 'ready'].includes(status)
 
   // Free notification: open WhatsApp / Messages on the owner's phone with the
   // message pre-written — sending costs nothing.
@@ -139,7 +141,7 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
               </div>
             </>
           )}
-          {status === 'completed' && (
+          {status === 'collected' && (
             <div style={{ fontSize:13, fontWeight:700, color:'#059669' }}>✅ Completed{order.payment_method || payment ? ` · paid by ${(order.payment_method ?? payment) === 'card_at_van' ? 'card' : 'cash'}` : ''}</div>
           )}
           {status === 'cancelled' && (

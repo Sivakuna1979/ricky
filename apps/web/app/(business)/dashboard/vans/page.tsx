@@ -155,6 +155,7 @@ export default function VansPage() {
     { icon: '🚐', label: 'My Vans',   href: '/dashboard/vans',    active: true },
     { icon: '📦', label: 'Orders',    href: '/dashboard/orders' },
     { icon: '🧾', label: 'POS',       href: '/dashboard/pos' },
+    { icon: '🍳', label: 'Kitchen',   href: '/dashboard/kitchen' },
   { icon: '🎪', label: 'Events',    href: '/van/events' },
     { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
     { icon: '💳', label: 'My Plan',   href: '/dashboard/billing' },

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
-const ALLOWED_STATUS = ['pending', 'ready', 'completed', 'cancelled']
+const ALLOWED_STATUS = ['pending', 'accepted', 'preparing', 'ready', 'collected', 'cancelled']
 const ALLOWED_PAYMENT = ['cash_at_van', 'card_at_van']
 
 // UK mobile numbers: 07xxx -> +447xxx

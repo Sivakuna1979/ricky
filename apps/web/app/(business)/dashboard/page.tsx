@@ -129,6 +129,7 @@ export default async function BusinessDashboardPage() {
     { icon: '📊', label: 'Dashboard',    href: '/dashboard',          active: true  },
     { icon: '📦', label: 'Orders',       href: '/dashboard/orders',   active: false },
     { icon: '🧾', label: 'POS',          href: '/dashboard/pos',      active: false },
+    { icon: '🍳', label: 'Kitchen',      href: '/dashboard/kitchen',  active: false },
     { icon: '🎪', label: 'Events',       href: '/van/events',         active: false },
     { icon: '🧼', label: 'Hygiene',      href: '/dashboard/hygiene',  active: false },
     { icon: '🗓️', label: 'Schedule',     href: '/dashboard/schedule', active: false },

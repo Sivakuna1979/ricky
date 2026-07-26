@@ -8,6 +8,7 @@ const NAV = [
   { icon: '🚐', label: 'My Vans',   href: '/dashboard/vans' },
   { icon: '📦', label: 'Orders',    href: '/dashboard/orders' },
   { icon: '🧾', label: 'POS',       href: '/dashboard/pos', active: true },
+  { icon: '🍳', label: 'Kitchen',   href: '/dashboard/kitchen' },
   { icon: '🎪', label: 'Events',    href: '/van/events' },
   { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
   { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene' },
@@ -35,6 +36,8 @@ export default function PosPage() {
   const [showSales, setShowSales] = useState(false)
   const [recentSales, setRecentSales] = useState<any[]>([])
   const [salesSearch, setSalesSearch] = useState('')
+  const [readyOrders, setReadyOrders] = useState<any[]>([])
+  const [handingOver, setHandingOver] = useState<string | null>(null)
   const channelRef = useRef<any>(null)
 
   useEffect(() => {
@@ -68,6 +71,31 @@ export default function PosPage() {
       .order('category').order('name')
       .then(({ data }) => { setMenuItems(data ?? []); setMenuLoading(false) })
   }, [vanId])
+
+  // Orders the kitchen has finished — waiting for the customer to be handed
+  // their food and the sale to actually complete.
+  useEffect(() => {
+    if (!vanId) return
+    const supabase = createClient()
+    const fetchReady = () => {
+      supabase.from('orders').select('id, order_number, guest_name, total, created_at')
+        .eq('van_id', vanId).eq('status', 'ready')
+        .order('created_at', { ascending: true })
+        .then(({ data }) => setReadyOrders(data ?? []))
+    }
+    fetchReady()
+    const channel = supabase.channel(`pos-ready-${vanId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `van_id=eq.${vanId}` }, fetchReady)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [vanId])
+
+  const handOver = async (orderId: string) => {
+    setHandingOver(orderId)
+    const supabase = createClient()
+    await supabase.from('orders').update({ status: 'collected', collected_at: new Date().toISOString() }).eq('id', orderId)
+    setHandingOver(null)
+  }
 
   const loadRecentSales = () => {
     if (!vanId) return
@@ -211,6 +239,25 @@ export default function PosPage() {
               <>
                 {/* ── Menu grid ── */}
                 <div style={{ flex: 1, minWidth: 0 }}>
+                  {readyOrders.length > 0 && (
+                    <div style={{ background: '#ecfdf5', border: '2px solid #10b981', borderRadius: 14, padding: 14, marginBottom: 14 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13, color: '#065f46', marginBottom: 8 }}>🔔 Ready for Pickup — {readyOrders.length}</div>
+                      {readyOrders.map(o => (
+                        <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid rgba(16,185,129,0.2)' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>#{(o.order_number ?? o.id.slice(0, 8)).toUpperCase()}</span>
+                            {o.guest_name && <span style={{ fontSize: 12, color: '#666' }}> · {o.guest_name}</span>}
+                            <span style={{ fontSize: 12, color: '#666' }}> · £{Number(o.total).toFixed(2)}</span>
+                          </div>
+                          <button onClick={() => handOver(o.id)} disabled={handingOver === o.id}
+                            style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: handingOver === o.id ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                            {handingOver === o.id ? '…' : '✅ Hand Over'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                     <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#111' }}>🧾 Till — {van?.name}</h1>
                     <button onClick={() => setShowSales(v => !v)}
@@ -287,9 +334,10 @@ export default function PosPage() {
                 <div style={{ width: 340, flexShrink: 0, background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', position: 'sticky', top: 76 }}>
                   {lastSale ? (
                     <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                      <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
-                      <div style={{ fontWeight: 800, fontSize: 17, color: '#059669', marginBottom: 4 }}>Sale complete</div>
+                      <div style={{ fontSize: 40, marginBottom: 10 }}>🍳</div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: '#059669', marginBottom: 4 }}>Payment taken — now preparing</div>
                       <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>Order #{lastSale.order_number}</div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 2 }}>It'll show on the Kitchen screen, then land in "Ready for Pickup" above once made.</div>
                       <div style={{ fontSize: 22, fontWeight: 900, color: '#111', margin: '10px 0' }}>£{lastSale.total.toFixed(2)}</div>
                       {lastSale.id && (
                         <a href={`/receipt/${lastSale.id}`} target="_blank" rel="noopener noreferrer"

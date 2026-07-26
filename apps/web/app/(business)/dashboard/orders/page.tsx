@@ -12,6 +12,7 @@ const NAV = [
   { icon: '🚐', label: 'My Vans',   href: '/dashboard/vans' },
   { icon: '📦', label: 'Orders',    href: '/dashboard/orders', active: true },
   { icon: '🧾', label: 'POS',       href: '/dashboard/pos' },
+  { icon: '🍳', label: 'Kitchen',   href: '/dashboard/kitchen' },
   { icon: '🎪', label: 'Events',    href: '/van/events' },
   { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
   { icon: '💳', label: 'Billing',   href: '/dashboard/billing' },
@@ -25,7 +26,7 @@ const STATUS_COLORS = {
   accepted:   { bg:'#dbeafe', color:'#1e40af' },
   preparing:  { bg:'#ede9fe', color:'#5b21b6' },
   ready:      { bg:'#d1fae5', color:'#065f46' },
-  completed:  { bg:'#f0fdf4', color:'#166534' },
+  collected:  { bg:'#f0fdf4', color:'#166534' },
   cancelled:  { bg:'#fee2e2', color:'#991b1b' },
 }
 
