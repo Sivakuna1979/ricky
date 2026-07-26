@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const NAV = [
@@ -27,9 +27,11 @@ export default function PosPage() {
   const [customerName, setCustomerName] = useState('')
   const [servedBy, setServedBy]   = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'cash_at_van' | 'card_at_van'>('cash_at_van')
+  const [cashTendered, setCashTendered] = useState('')
   const [placing, setPlacing]     = useState(false)
   const [error, setError]         = useState('')
   const [lastSale, setLastSale]   = useState<any>(null)
+  const channelRef = useRef<any>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -63,6 +65,17 @@ export default function PosPage() {
       .then(({ data }) => { setMenuItems(data ?? []); setMenuLoading(false) })
   }, [vanId])
 
+  // Live broadcast to the customer-facing display screen (public, no auth) —
+  // an ephemeral Realtime channel, nothing written to the database.
+  useEffect(() => {
+    if (!vanId) return
+    const supabase = createClient()
+    const channel = supabase.channel(`pos-display-${vanId}`)
+    channel.subscribe()
+    channelRef.current = channel
+    return () => { supabase.removeChannel(channel) }
+  }, [vanId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const van = vans.find(v => v.id === vanId)
   const categories = useMemo(() => {
     const set = new Set(menuItems.map(i => i.category).filter(Boolean))
@@ -82,12 +95,24 @@ export default function PosPage() {
     return next
   })
 
-  const canCash = van?.accepts_cash !== false
-  const canCard = van?.accepts_card_at_van !== false
+  const tendered = paymentMethod === 'cash_at_van' ? Number(cashTendered) || 0 : null
+  const changeDue = tendered != null ? Math.max(0, tendered - cartTotal) : null
+  const shortBy = tendered != null && tendered < cartTotal ? cartTotal - tendered : 0
+
+  // Push the live sale state to the customer-facing screen on every change.
   useEffect(() => {
-    if (paymentMethod === 'cash_at_van' && !canCash && canCard) setPaymentMethod('card_at_van')
-    if (paymentMethod === 'card_at_van' && !canCard && canCash) setPaymentMethod('cash_at_van')
-  }, [canCash, canCard]) // eslint-disable-line react-hooks/exhaustive-deps
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'sale_update',
+      payload: {
+        lines: cartLines.map(i => ({ name: i.name, price: i.price, qty: cart[i.id] })),
+        total: cartTotal,
+        paymentMethod,
+        tendered,
+        changeDue,
+      },
+    })
+  }, [cart, cartTotal, paymentMethod, tendered]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const completeSale = async () => {
     if (!cartLines.length || !vanId) return
@@ -107,7 +132,11 @@ export default function PosPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data.error?.formErrors?.join?.(', ') ?? data.error ?? 'Could not complete the sale'); setPlacing(false); return }
       setLastSale({ order_number: data.order_number, total: cartTotal, count: cartCount })
-      setCart({}); setCustomerName('')
+      channelRef.current?.send({
+        type: 'broadcast', event: 'sale_complete',
+        payload: { order_number: data.order_number, total: cartTotal, changeDue },
+      })
+      setCart({}); setCustomerName(''); setCashTendered('')
     } catch {
       setError('Network error — please try again')
     }
@@ -203,7 +232,10 @@ export default function PosPage() {
                       <div style={{ fontWeight: 800, fontSize: 17, color: '#059669', marginBottom: 4 }}>Sale complete</div>
                       <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>Order #{lastSale.order_number}</div>
                       <div style={{ fontSize: 22, fontWeight: 900, color: '#111', margin: '10px 0' }}>£{lastSale.total.toFixed(2)}</div>
-                      <button onClick={() => setLastSale(null)} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
+                      <button onClick={() => {
+                        setLastSale(null)
+                        channelRef.current?.send({ type: 'broadcast', event: 'sale_update', payload: { lines: [], total: 0, paymentMethod: 'cash_at_van', tendered: null, changeDue: null } })
+                      }} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
                         🧾 New Sale
                       </button>
                     </div>
@@ -236,20 +268,37 @@ export default function PosPage() {
                       <input value={servedBy} onChange={e => setServedBy(e.target.value)} placeholder="Served by (optional)" style={{ ...inp, width: '100%', marginBottom: 10 }} />
 
                       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                        {canCash && (
-                          <button onClick={() => setPaymentMethod('cash_at_van')} style={{ flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, border: paymentMethod === 'cash_at_van' ? '2px solid #0e7490' : '1px solid #e5e7eb', background: paymentMethod === 'cash_at_van' ? '#ecfeff' : '#fff', color: paymentMethod === 'cash_at_van' ? '#0e7490' : '#555' }}>💷 Cash</button>
-                        )}
-                        {canCard && (
-                          <button onClick={() => setPaymentMethod('card_at_van')} style={{ flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, border: paymentMethod === 'card_at_van' ? '2px solid #0e7490' : '1px solid #e5e7eb', background: paymentMethod === 'card_at_van' ? '#ecfeff' : '#fff', color: paymentMethod === 'card_at_van' ? '#0e7490' : '#555' }}>💳 Card</button>
-                        )}
+                        <button onClick={() => setPaymentMethod('cash_at_van')} style={{ flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, border: paymentMethod === 'cash_at_van' ? '2px solid #0e7490' : '1px solid #e5e7eb', background: paymentMethod === 'cash_at_van' ? '#ecfeff' : '#fff', color: paymentMethod === 'cash_at_van' ? '#0e7490' : '#555' }}>💷 Cash</button>
+                        <button onClick={() => setPaymentMethod('card_at_van')} style={{ flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, border: paymentMethod === 'card_at_van' ? '2px solid #0e7490' : '1px solid #e5e7eb', background: paymentMethod === 'card_at_van' ? '#ecfeff' : '#fff', color: paymentMethod === 'card_at_van' ? '#0e7490' : '#555' }}>💳 Card</button>
                       </div>
+
+                      {paymentMethod === 'cash_at_van' && (
+                        <div style={{ marginBottom: 12 }}>
+                          <input type="number" step="0.01" inputMode="decimal" value={cashTendered} onChange={e => setCashTendered(e.target.value)}
+                            placeholder="Cash received" style={{ ...inp, width: '100%', fontSize: 16, fontWeight: 700, textAlign: 'center' }} />
+                          {cashTendered !== '' && (
+                            shortBy > 0 ? (
+                              <div style={{ marginTop: 6, textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#b45309' }}>£{shortBy.toFixed(2)} short</div>
+                            ) : (
+                              <div style={{ marginTop: 6, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#059669' }}>Change due: £{(changeDue ?? 0).toFixed(2)}</div>
+                            )
+                          )}
+                        </div>
+                      )}
 
                       {error && <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 700, marginBottom: 8 }}>⚠️ {error}</div>}
 
-                      <button onClick={completeSale} disabled={!cartLines.length || placing}
-                        style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: '#059669', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', opacity: (!cartLines.length || placing) ? 0.5 : 1 }}>
+                      <button onClick={completeSale} disabled={!cartLines.length || placing || (paymentMethod === 'cash_at_van' && shortBy > 0)}
+                        style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: '#059669', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', opacity: (!cartLines.length || placing || (paymentMethod === 'cash_at_van' && shortBy > 0)) ? 0.5 : 1 }}>
                         {placing ? 'Processing…' : `✅ Complete Sale · £${cartTotal.toFixed(2)}`}
                       </button>
+
+                      {vanId && (
+                        <a href={`/pos-display/${vanId}`} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: 12, fontWeight: 700, color: '#6366f1', textDecoration: 'none' }}>
+                          📺 Open Customer Display (second screen)
+                        </a>
+                      )}
                     </>
                   )}
                 </div>
