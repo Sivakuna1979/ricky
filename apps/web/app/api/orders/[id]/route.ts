@@ -12,7 +12,10 @@ const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+  if (!user) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+
+  const { data: userData } = await supabase.from('users').select('role').eq('auth_id', user.id).maybeSingle()
+  if (user.email !== SUPER_ADMIN_EMAIL && userData?.role !== 'super_admin') {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   }
 

@@ -36,9 +36,13 @@ export default async function OrdersPage() {
   const supabase = await createClient()
   const { data: { user }, error: userErr } = await supabase.auth.getUser()
   if (userErr || !user) redirect('/login')
-  const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL
 
-  let { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
+  let { data: userData } = await supabase.from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
+  // Match either the known admin email or the DB role directly (whichever
+  // this account actually has) — RLS itself only ever checks the role, so
+  // relying on email alone could silently disagree with what the database
+  // will actually allow.
+  const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL || userData?.role === 'super_admin'
 
   let biz: any = null
   try {
