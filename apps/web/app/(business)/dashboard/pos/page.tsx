@@ -122,23 +122,33 @@ export default function PosPage() {
   }, [vanId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const van = vans.find(v => v.id === vanId)
+  // Drinks are a grab-and-go add-on, not something to hunt for first — keep
+  // everything else in its normal (alphabetical) order but always push
+  // Drinks to the end of the list.
+  const drinksLast = (a: string, b: string) => {
+    const aDrinks = a.toLowerCase() === 'drinks', bDrinks = b.toLowerCase() === 'drinks'
+    if (aDrinks && !bDrinks) return 1
+    if (bDrinks && !aDrinks) return -1
+    return a.localeCompare(b)
+  }
   const categories = useMemo(() => {
     const set = new Set(menuItems.map(i => i.category).filter(Boolean))
-    return Array.from(set)
+    return Array.from(set).sort(drinksLast)
   }, [menuItems])
   const visibleItems = category ? menuItems.filter(i => i.category === category) : menuItems
   // Group into sections (e.g. Chips / Drinks / Extras / Fish) so the menu
   // reads like an actual menu board instead of one long jumbled list —
   // items already arrive sorted by category from the query.
   const groupedItems = useMemo(() => {
-    const groups: { category: string; items: any[] }[] = []
     const byCategory = new Map<string, any[]>()
     for (const item of visibleItems) {
       const key = item.category || 'Other'
-      if (!byCategory.has(key)) { byCategory.set(key, []); groups.push({ category: key, items: byCategory.get(key)! }) }
+      if (!byCategory.has(key)) byCategory.set(key, [])
       byCategory.get(key)!.push(item)
     }
-    return groups
+    return Array.from(byCategory.entries())
+      .sort(([a], [b]) => drinksLast(a, b))
+      .map(([category, items]) => ({ category, items }))
   }, [visibleItems])
 
   const cartLines = menuItems.filter(i => cart[i.id])
