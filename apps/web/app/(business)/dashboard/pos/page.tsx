@@ -125,6 +125,19 @@ export default function PosPage() {
     return Array.from(set)
   }, [menuItems])
   const visibleItems = category ? menuItems.filter(i => i.category === category) : menuItems
+  // Group into sections (e.g. Chips / Drinks / Extras / Fish) so the menu
+  // reads like an actual menu board instead of one long jumbled list —
+  // items already arrive sorted by category from the query.
+  const groupedItems = useMemo(() => {
+    const groups: { category: string; items: any[] }[] = []
+    const byCategory = new Map<string, any[]>()
+    for (const item of visibleItems) {
+      const key = item.category || 'Other'
+      if (!byCategory.has(key)) { byCategory.set(key, []); groups.push({ category: key, items: byCategory.get(key)! }) }
+      byCategory.get(key)!.push(item)
+    }
+    return groups
+  }, [visibleItems])
 
   const cartLines = menuItems.filter(i => cart[i.id])
   const cartTotal = cartLines.reduce((s, i) => s + i.price * cart[i.id], 0)
@@ -326,18 +339,25 @@ export default function PosPage() {
                   ) : visibleItems.length === 0 ? (
                     <div style={{ color: '#999', padding: 20 }}>No available menu items. Add some in <a href="/dashboard/menu" style={{ color: '#f97316' }}>Menu</a>.</div>
                   ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10 }}>
-                      {visibleItems.map(item => (
-                        <button key={item.id} onClick={() => addItem(item.id)}
-                          style={{ textAlign: 'left', padding: '14px', borderRadius: 14, border: cart[item.id] ? '2px solid #0e7490' : '1px solid #e5e7eb', background: cart[item.id] ? '#ecfeff' : '#fff', cursor: 'pointer', position: 'relative' }}>
-                          {cart[item.id] > 0 && (
-                            <span style={{ position: 'absolute', top: 8, right: 8, background: '#0e7490', color: '#fff', borderRadius: 999, minWidth: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, padding: '0 6px' }}>{cart[item.id]}</span>
-                          )}
-                          <div style={{ fontWeight: 700, fontSize: 14, color: '#111', marginBottom: 4 }}>{item.name}</div>
-                          <div style={{ fontWeight: 800, fontSize: 15, color: '#0e7490' }}>£{Number(item.price).toFixed(2)}</div>
-                        </button>
-                      ))}
-                    </div>
+                    groupedItems.map(group => (
+                      <div key={group.category} style={{ marginBottom: 22 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid #fed7aa' }}>
+                          {group.category} <span style={{ color: '#c4c9d4', fontWeight: 600 }}>({group.items.length})</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10 }}>
+                          {group.items.map(item => (
+                            <button key={item.id} onClick={() => addItem(item.id)}
+                              style={{ textAlign: 'left', padding: '14px', borderRadius: 14, border: cart[item.id] ? '2px solid #0e7490' : '1px solid #e5e7eb', background: cart[item.id] ? '#ecfeff' : '#fff', cursor: 'pointer', position: 'relative' }}>
+                              {cart[item.id] > 0 && (
+                                <span style={{ position: 'absolute', top: 8, right: 8, background: '#0e7490', color: '#fff', borderRadius: 999, minWidth: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, padding: '0 6px' }}>{cart[item.id]}</span>
+                              )}
+                              <div style={{ fontWeight: 700, fontSize: 14, color: '#111', marginBottom: 4 }}>{item.name}</div>
+                              <div style={{ fontWeight: 800, fontSize: 15, color: '#0e7490' }}>£{Number(item.price).toFixed(2)}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
 
