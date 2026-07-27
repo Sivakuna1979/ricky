@@ -629,9 +629,10 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
                     <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                       <div style={{ fontWeight:900, fontSize:17 }}>{b.name}</div>
                       <span style={{ background:'#10b981', color:'#fff', fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:8, letterSpacing:0.5 }}>✓ VERIFIED</span>
+                      {b.isLive && <span style={{ background:'#22c55e', color:'#fff', fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:8, letterSpacing:0.5 }}>🟢 LIVE NOW</span>}
                     </div>
                     <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginTop:3 }}>
-                      📍 {[b.city, b.postcode].filter(Boolean).join(' · ')}{dist != null ? ` · ${dist.toFixed(1)} mi away` : ''}
+                      📍 {b.isLive ? 'Trading now' : [b.city, b.postcode].filter(Boolean).join(' · ')}{dist != null ? ` · ${dist.toFixed(1)} mi away` : ''}
                     </div>
                     <div style={{ fontSize:11, color:'#6ee7b7', fontWeight:700, marginTop:3 }}>Online ordering · Live schedule · Instant confirmation</div>
                   </div>
