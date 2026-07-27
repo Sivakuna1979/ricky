@@ -30,10 +30,13 @@ const STATUS_COLORS = {
   cancelled:  { bg:'#fee2e2', color:'#991b1b' },
 }
 
+const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
+
 export default async function OrdersPage() {
   const supabase = await createClient()
   const { data: { user }, error: userErr } = await supabase.auth.getUser()
   if (userErr || !user) redirect('/login')
+  const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL
 
   let { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
 
@@ -118,7 +121,7 @@ export default async function OrdersPage() {
                   <h2 style={{ fontSize:13, fontWeight:700, color:'#888', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10 }}>{label}</h2>
                   <div style={{ background:'#fff', borderRadius:14, boxShadow:'0 1px 3px rgba(0,0,0,0.07)', overflow:'hidden' }}>
                     {grpOrders.map((o, i) => (
-                      <OrderManageRow key={o.id} order={o} vanName={vanMap[o.van_id]} isLast={i === grpOrders.length - 1} />
+                      <OrderManageRow key={o.id} order={o} vanName={vanMap[o.van_id]} isLast={i === grpOrders.length - 1} isSuperAdmin={isSuperAdmin} />
                     ))}
                   </div>
                 </div>

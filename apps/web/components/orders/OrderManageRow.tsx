@@ -11,13 +11,25 @@ const STATUS_COLORS = {
   cancelled:  { bg:'#fee2e2', color:'#991b1b' },
 }
 
-export function OrderManageRow({ order, vanName, isLast }: any) {
+export function OrderManageRow({ order, vanName, isLast, isSuperAdmin }: any) {
   const [open, setOpen]       = useState(false)
   const [status, setStatus]   = useState(order.status)
   const [payment, setPayment] = useState(order.payment_method ?? 'cash_at_van')
   const [busy, setBusy]       = useState(false)
   const [error, setError]     = useState('')
   const [smsNote, setSmsNote] = useState('')
+  const [deleted, setDeleted] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const deleteForever = async () => {
+    const ref = (order.order_number ?? order.id.slice(0, 8)).toUpperCase()
+    if (!confirm(`Permanently delete order #${ref}? This cannot be undone and leaves no record — only use this for test data, never real orders.`)) return
+    setDeleting(true)
+    const res = await fetch(`/api/orders/${order.id}`, { method: 'DELETE' })
+    if (res.ok) setDeleted(true)
+    else { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Delete failed') }
+    setDeleting(false)
+  }
 
   const update = async (fields: any) => {
     setBusy(true)
@@ -60,6 +72,14 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
   const waPhone = (order.guest_phone ?? '').replace(/[^\d]/g, '').replace(/^0/, '44')
   const waLink = `https://wa.me/${waPhone}?text=${encodeURIComponent(readyMsg)}`
   const smsLink = `sms:${order.guest_phone}?&body=${encodeURIComponent(readyMsg)}`
+
+  if (deleted) {
+    return (
+      <div style={{ borderBottom: isLast ? 'none' : '1px solid #f3f4f6', padding:'10px 18px', fontSize:12, color:'#aaa', fontStyle:'italic' }}>
+        Order #{ref} deleted
+      </div>
+    )
+  }
 
   return (
     <div style={{ borderBottom: isLast ? 'none' : '1px solid #f3f4f6' }}>
@@ -163,6 +183,15 @@ export function OrderManageRow({ order, vanName, isLast }: any) {
           )}
           {smsNote && <div style={{ fontSize:13, fontWeight:700, color: smsNote.startsWith('📱') ? '#059669' : '#b45309', marginTop:8 }}>{smsNote}</div>}
           {error && <div style={{ fontSize:13, fontWeight:700, color:'#ef4444', marginTop:8 }}>⚠️ {error}</div>}
+
+          {isSuperAdmin && (
+            <div style={{ marginTop:16, paddingTop:12, borderTop:'1px dashed #e5e7eb' }}>
+              <button onClick={deleteForever} disabled={deleting}
+                style={{ fontSize:11, fontWeight:700, color:'#ef4444', background:'none', border:'1px solid #fecaca', borderRadius:8, padding:'6px 12px', cursor:'pointer', opacity: deleting ? 0.6 : 1 }}>
+                {deleting ? 'Deleting…' : '🗑 Delete Permanently (Admin — test data only)'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
