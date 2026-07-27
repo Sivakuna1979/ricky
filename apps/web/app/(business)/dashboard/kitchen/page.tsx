@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const NAV = [
@@ -94,6 +94,19 @@ export default function KitchenDisplayPage() {
 
   const van = vans.find(v => v.id === vanId)
 
+  // Total quantity needed per item across every order still waiting to be
+  // made (not yet 'ready') — so the fryer can batch-cook instead of reading
+  // one ticket at a time, e.g. "10x Cod" instead of 5 separate orders of 2.
+  const prepSummary = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const o of orders) {
+      for (const it of o.order_items ?? []) {
+        totals.set(it.name, (totals.get(it.name) ?? 0) + it.quantity)
+      }
+    }
+    return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
+  }, [orders])
+
   return (
     <>
       <style>{`
@@ -138,6 +151,20 @@ export default function KitchenDisplayPage() {
             ) : (
               <>
                 <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 16px', color: '#111' }}>🍳 Kitchen — {van?.name} <span style={{ fontSize: 14, fontWeight: 600, color: '#888' }}>({orders.length} to make)</span></h1>
+
+                {prepSummary.length > 0 && (
+                  <div style={{ background: '#111827', borderRadius: 16, padding: '16px 18px', marginBottom: 18 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#9ca3af', letterSpacing: 0.5, marginBottom: 10 }}>🔥 TOTAL TO FRY/PREP RIGHT NOW ({orders.length} order{orders.length !== 1 ? 's' : ''} waiting)</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                      {prepSummary.map(([name, qty]) => (
+                        <div key={name} style={{ background: '#1f2937', borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                          <span style={{ fontSize: 24, fontWeight: 900, color: '#fbbf24' }}>{qty}×</span>
+                          <span style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {orders.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 60, color: '#bbb', fontSize: 16, fontWeight: 600 }}>✅ All caught up — no orders waiting</div>
