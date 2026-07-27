@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useWakeLock } from '@/lib/useWakeLock'
 
 // Public, no-login second screen for the customer facing away from the
 // till — mirrors what staff are ringing up in /dashboard/pos in real time
 // via a Supabase Realtime broadcast channel (nothing written to the DB).
 export default function PosDisplayPage() {
+  useWakeLock()
   const { vanId } = useParams<{ vanId: string }>()
   const [van, setVan] = useState<any>(null)
   const [sale, setSale] = useState<any>(null)

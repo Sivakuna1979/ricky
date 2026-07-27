@@ -2,6 +2,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useWakeLock } from '@/lib/useWakeLock'
 
 const NAV = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
@@ -33,6 +34,7 @@ export default function KitchenDisplayPage() {
   const [busyId, setBusyId]   = useState<string | null>(null)
   const [, forceTick]         = useState(0)
   const supabaseRef = useRef<any>(null)
+  useWakeLock()
 
   useEffect(() => {
     const supabase = createClient()

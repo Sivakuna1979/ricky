@@ -2,6 +2,7 @@
 'use client'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useWakeLock } from '@/lib/useWakeLock'
 
 const NAV = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
@@ -17,6 +18,7 @@ const NAV = [
 ]
 
 export default function PosPage() {
+  useWakeLock()
   const [loading, setLoading]     = useState(true)
   const [biz, setBiz]             = useState<any>(null)
   const [vans, setVans]           = useState<any[]>([])
