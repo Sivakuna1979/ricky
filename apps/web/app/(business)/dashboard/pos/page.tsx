@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useWakeLock } from '@/lib/useWakeLock'
+import { sortCategories } from '@/lib/categoryOrder'
 
 const NAV = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
@@ -57,7 +58,7 @@ export default function PosPage() {
       if (!b) { window.location.href = '/register/business'; return }
       setBiz(b)
       const { data: vs } = await supabase.from('vans')
-        .select('id, name, accepts_cash, accepts_card_at_van')
+        .select('id, name, accepts_cash, accepts_card_at_van, category_order')
         .eq('business_id', b.id).eq('is_active', true)
       setVans(vs ?? [])
       if (vs?.length) setVanId(vs[0].id)
@@ -156,19 +157,13 @@ export default function PosPage() {
   }, [vanId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const van = vans.find(v => v.id === vanId)
-  // Drinks are a grab-and-go add-on, not something to hunt for first — keep
-  // everything else in its normal (alphabetical) order but always push
-  // Drinks to the end of the list.
-  const drinksLast = (a: string, b: string) => {
-    const aDrinks = a.toLowerCase() === 'drinks', bDrinks = b.toLowerCase() === 'drinks'
-    if (aDrinks && !bDrinks) return 1
-    if (bDrinks && !aDrinks) return -1
-    return a.localeCompare(b)
-  }
+  // Categories follow the owner's chosen order (set in Menu → Category
+  // Order), falling back to alphabetical-with-Drinks-last for anything not
+  // yet placed.
   const categories = useMemo(() => {
     const set = new Set(menuItems.map(i => i.category).filter(Boolean))
-    return Array.from(set).sort(drinksLast)
-  }, [menuItems])
+    return sortCategories(Array.from(set), van?.category_order)
+  }, [menuItems, van?.category_order])
   const visibleItems = category ? menuItems.filter(i => i.category === category) : menuItems
   // Group into sections (e.g. Chips / Drinks / Extras / Fish) so the menu
   // reads like an actual menu board instead of one long jumbled list —
@@ -180,10 +175,9 @@ export default function PosPage() {
       if (!byCategory.has(key)) byCategory.set(key, [])
       byCategory.get(key)!.push(item)
     }
-    return Array.from(byCategory.entries())
-      .sort(([a], [b]) => drinksLast(a, b))
-      .map(([category, items]) => ({ category, items }))
-  }, [visibleItems])
+    const order = sortCategories(Array.from(byCategory.keys()), van?.category_order)
+    return order.map(category => ({ category, items: byCategory.get(category)! }))
+  }, [visibleItems, van?.category_order])
 
   const cartLines = menuItems.filter(i => cart[i.id])
   const cartSubtotal = cartLines.reduce((s, i) => s + i.price * cart[i.id], 0)

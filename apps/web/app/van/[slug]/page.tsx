@@ -2,9 +2,9 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { LiveVanTracker } from '@/components/map/LiveVanTracker'
+import { sortCategories } from '@/lib/categoryOrder'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const CAT_ORDER = ['Fish','Chips','Burgers','Chicken','Vegetarian','Sides','Extras','Drinks','Desserts','Specials','Mains','Starters']
 const TYPE_EMOJI: Record<string, string> = {
   fish_and_chips:'🐟', burger:'🍔', pizza:'🍕', coffee:'☕',
   ice_cream:'🍦', kebab:'🥙', street_food:'🌮', catering_trailer:'🚐',
@@ -170,7 +170,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
 
   const { business, vans, menuItems } = data
   const allCats = [...new Set(menuItems?.map((i: any) => i.category).filter(Boolean))] as string[]
-  const sortedCats = [...CAT_ORDER.filter(c => allCats.includes(c)), ...allCats.filter(c => !CAT_ORDER.includes(c))]
+  const sortedCats = sortCategories(allCats, vans?.[0]?.category_order)
   const byCategory: Record<string, any[]> = {}
   for (const item of menuItems ?? []) {
     const cat = item.category ?? 'Other'

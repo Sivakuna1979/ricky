@@ -2,6 +2,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { sortCategories } from '@/lib/categoryOrder'
 
 const CATEGORIES = ['Fish', 'Chips', 'Burgers', 'Chicken', 'Vegetarian', 'Sides', 'Extras', 'Drinks', 'Desserts', 'Specials', 'Mains', 'Starters']
 
@@ -257,6 +258,8 @@ function AIScanModal({ vanId, onClose, onImported }) {
 export default function MenuPage() {
   const [items, setItems]       = useState([])
   const [vanId, setVanId]       = useState(null)
+  const [catOrder, setCatOrder] = useState([])
+  const [showReorder, setShowReorder] = useState(false)
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
   const [msg, setMsg]           = useState('')
@@ -292,9 +295,10 @@ export default function MenuPage() {
       }
       if (!biz) { const { data: r } = await supabase.rpc('get_my_business'); if (r) biz = r }
       if (!biz) { window.location.href = '/register/business'; return }
-      const { data: vans } = await supabase.from('vans').select('id').eq('business_id', biz.id).limit(1)
+      const { data: vans } = await supabase.from('vans').select('id, category_order').eq('business_id', biz.id).limit(1)
       const vid = vans?.[0]?.id ?? null
       setVanId(vid)
+      setCatOrder(vans?.[0]?.category_order ?? [])
       if (vid) { await loadMenu(supabase, vid); await loadDeals(supabase, vid) }
       setLoading(false)
     })
@@ -372,13 +376,10 @@ export default function MenuPage() {
     if (vanId) await loadMenu(supabase, vanId)
   }
 
-  // Group by actual categories in the data, preserving a sensible order
-  const ORDER = ['Fish', 'Chips', 'Burgers', 'Chicken', 'Vegetarian', 'Sides', 'Extras', 'Drinks', 'Desserts', 'Specials', 'Mains', 'Starters', 'Can Drink']
+  // Group by actual categories in the data, in the owner's chosen order
+  // (falling back to alphabetical-with-Drinks-last for anything unordered).
   const allCats = [...new Set(items.map(i => i.category).filter(Boolean))]
-  const sortedCats = [
-    ...ORDER.filter(c => allCats.includes(c)),
-    ...allCats.filter(c => !ORDER.includes(c)),
-  ]
+  const sortedCats = sortCategories(allCats, catOrder)
   const grouped = sortedCats.reduce((acc, cat) => {
     const catItems = items.filter(i => i.category === cat)
     if (catItems.length) acc[cat] = catItems
@@ -386,6 +387,17 @@ export default function MenuPage() {
   }, {} as Record<string, any[]>)
   const uncategorised = items.filter(i => !i.category)
   if (uncategorised.length) grouped['Other'] = uncategorised
+
+  const moveCategory = async (cat, direction) => {
+    const current = sortCategories(allCats, catOrder)
+    const i = current.indexOf(cat)
+    const j = i + direction
+    if (j < 0 || j >= current.length) return
+    const next = [...current]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setCatOrder(next)
+    if (vanId) await createClient().from('vans').update({ category_order: next }).eq('id', vanId)
+  }
 
   return (
     <>
@@ -460,6 +472,26 @@ export default function MenuPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Reorder categories — controls the order sections appear in here, on the till and on the public menu */}
+            {!loading && sortedCats.length > 1 && (
+              <div style={{ background:'#fff', borderRadius:14, padding:'18px 20px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: showReorder ? 12 : 0 }}>
+                  <div>
+                    <h2 style={{ fontSize:15, fontWeight:800, color:'#111', margin:0 }}>↕️ Category Order</h2>
+                    <p style={{ fontSize:12, color:'#888', margin:'2px 0 0' }}>Controls the order sections appear here, on the till and on your public menu</p>
+                  </div>
+                  <button onClick={() => setShowReorder(v => !v)} style={{ padding:'8px 16px', borderRadius:10, background: showReorder ? '#f3f4f6' : '#111827', color: showReorder ? '#555' : '#fff', fontWeight:700, fontSize:13, border:'none', cursor:'pointer', whiteSpace:'nowrap' }}>{showReorder ? 'Done' : 'Reorder'}</button>
+                </div>
+                {showReorder && sortedCats.map((cat, i) => (
+                  <div key={cat} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderTop:'1px solid #f3f4f6' }}>
+                    <span style={{ flex:1, fontWeight:700, fontSize:14, color:'#111' }}>{cat}</span>
+                    <button onClick={() => moveCategory(cat, -1)} disabled={i === 0} style={{ width:32, height:32, borderRadius:8, border:'1px solid #e5e7eb', background:'#fff', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.35 : 1, fontWeight:800 }}>↑</button>
+                    <button onClick={() => moveCategory(cat, 1)} disabled={i === sortedCats.length - 1} style={{ width:32, height:32, borderRadius:8, border:'1px solid #e5e7eb', background:'#fff', cursor: i === sortedCats.length - 1 ? 'default' : 'pointer', opacity: i === sortedCats.length - 1 ? 0.35 : 1, fontWeight:800 }}>↓</button>
+                  </div>
+                ))}
               </div>
             )}
 
