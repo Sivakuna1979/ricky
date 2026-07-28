@@ -16,6 +16,7 @@ const posOrderSchema = z.object({
   customer_email: z.string().email().optional().or(z.literal('')),
   served_by: z.string().optional(),
   cash_tendered: z.number().optional(),
+  discount_amount: z.number().min(0).optional(),
   items: z.array(z.object({
     menu_item_id: z.string().uuid(),
     name: z.string(),
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const parsed = posOrderSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-  const { van_id, payment_method, customer_name, customer_email, served_by, cash_tendered, items } = parsed.data
+  const { van_id, payment_method, customer_name, customer_email, served_by, cash_tendered, discount_amount, items } = parsed.data
 
   // Confirm this van belongs to the signed-in staff/owner before selling
   // against it — RLS enforces this too, but a clear 403 beats a cryptic
@@ -45,7 +46,8 @@ export async function POST(req: NextRequest) {
   }
 
   const subtotal = items.reduce((sum, item) => sum + item.item_total, 0)
-  const total = subtotal
+  const discount = Math.min(discount_amount ?? 0, subtotal)
+  const total = subtotal - discount
 
   const now = new Date().toISOString()
   const { data: order, error } = await supabase
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest) {
       van_id,
       payment_method,
       subtotal,
+      discount_amount: discount,
       total,
       guest_name: customer_name?.trim() || 'Walk-in customer',
       guest_email: customer_email?.trim() || null,

@@ -25,6 +25,7 @@ export default function PosPage() {
   const [vanId, setVanId]         = useState<string | null>(null)
   const [menuItems, setMenuItems] = useState<any[]>([])
   const [menuLoading, setMenuLoading] = useState(false)
+  const [deals, setDeals]         = useState<any[]>([])
   const [category, setCategory]   = useState<string | null>(null)
   const [cart, setCart]           = useState<Record<string, number>>({})
   const [customerName, setCustomerName] = useState('')
@@ -72,7 +73,40 @@ export default function PosPage() {
     supabase.from('menu_items').select('*').eq('van_id', vanId).eq('available', true)
       .order('category').order('name')
       .then(({ data }) => { setMenuItems(data ?? []); setMenuLoading(false) })
+    supabase.from('menu_deals').select('*, menu_deal_items(menu_item_id)').eq('van_id', vanId).eq('active', true)
+      .then(({ data }) => setDeals((data ?? []).map((d: any) => ({ ...d, itemIds: new Set(d.menu_deal_items.map((di: any) => di.menu_item_id)) }))))
   }, [vanId])
+
+  // Applies "any N of these for £X" deals to the cart: greedily forms as many
+  // complete bundles as possible per deal (processed in a fixed order so the
+  // same unit is never claimed by two deals), discounting the most expensive
+  // qualifying units first so the customer always gets the better outcome.
+  const computeDealPricing = (cartLines: any[], cartQtys: Record<string, number>) => {
+    const remaining: Record<string, number> = {}
+    for (const line of cartLines) remaining[line.id] = cartQtys[line.id] ?? 0
+
+    let discount = 0
+    const breakdown: { name: string; bundles: number }[] = []
+
+    for (const deal of deals) {
+      const units: { id: string; price: number }[] = []
+      for (const line of cartLines) {
+        if (!deal.itemIds.has(line.id)) continue
+        for (let i = 0; i < (remaining[line.id] ?? 0); i++) units.push({ id: line.id, price: line.price })
+      }
+      const bundles = Math.floor(units.length / deal.quantity)
+      if (bundles <= 0) continue
+      units.sort((a, b) => b.price - a.price)
+      const used = units.slice(0, bundles * deal.quantity)
+      const usedSum = used.reduce((s, u) => s + u.price, 0)
+      discount += usedSum - bundles * Number(deal.deal_price)
+      breakdown.push({ name: deal.name, bundles })
+      const usedCount: Record<string, number> = {}
+      for (const u of used) usedCount[u.id] = (usedCount[u.id] ?? 0) + 1
+      for (const id in usedCount) remaining[id] -= usedCount[id]
+    }
+    return { discount: Math.max(0, discount), breakdown }
+  }
 
   // Orders the kitchen has finished — waiting for the customer to be handed
   // their food and the sale to actually complete.
@@ -152,7 +186,9 @@ export default function PosPage() {
   }, [visibleItems])
 
   const cartLines = menuItems.filter(i => cart[i.id])
-  const cartTotal = cartLines.reduce((s, i) => s + i.price * cart[i.id], 0)
+  const cartSubtotal = cartLines.reduce((s, i) => s + i.price * cart[i.id], 0)
+  const dealPricing = useMemo(() => computeDealPricing(cartLines, cart), [cartLines, cart, deals]) // eslint-disable-line react-hooks/exhaustive-deps
+  const cartTotal = Math.max(0, cartSubtotal - dealPricing.discount)
   const cartCount = Object.values(cart).reduce((s: number, n: any) => s + n, 0)
 
   const addItem = (id: string) => setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
@@ -196,6 +232,7 @@ export default function PosPage() {
           customer_email: customerEmail || undefined,
           served_by: servedBy || undefined,
           cash_tendered: paymentMethod === 'cash_at_van' ? tendered ?? undefined : undefined,
+          discount_amount: dealPricing.discount || undefined,
           items: cartLines.map(i => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         }),
       })
@@ -357,16 +394,24 @@ export default function PosPage() {
                           {group.category} <span style={{ color: '#c4c9d4', fontWeight: 600 }}>({group.items.length})</span>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10 }}>
-                          {group.items.map(item => (
+                          {group.items.map(item => {
+                            const itemDeal = deals.find(d => d.itemIds.has(item.id))
+                            return (
                             <button key={item.id} onClick={() => addItem(item.id)}
                               style={{ textAlign: 'left', padding: '14px', borderRadius: 14, border: cart[item.id] ? '2px solid #0e7490' : '1px solid #e5e7eb', background: cart[item.id] ? '#ecfeff' : '#fff', cursor: 'pointer', position: 'relative' }}>
                               {cart[item.id] > 0 && (
                                 <span style={{ position: 'absolute', top: 8, right: 8, background: '#0e7490', color: '#fff', borderRadius: 999, minWidth: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, padding: '0 6px' }}>{cart[item.id]}</span>
                               )}
+                              {itemDeal && (
+                                <div style={{ display: 'inline-block', marginBottom: 5, padding: '2px 7px', borderRadius: 8, background: '#fef3c7', color: '#92400e', fontSize: 10, fontWeight: 800 }}>
+                                  🏷️ {itemDeal.quantity} for £{Number(itemDeal.deal_price).toFixed(2)}
+                                </div>
+                              )}
                               <div style={{ fontWeight: 700, fontSize: 14, color: '#111', marginBottom: 4 }}>{item.name}</div>
                               <div style={{ fontWeight: 800, fontSize: 15, color: '#0e7490' }}>£{Number(item.price).toFixed(2)}</div>
                             </button>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     ))
@@ -416,7 +461,18 @@ export default function PosPage() {
                         </div>
                       )}
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 16, padding: '10px 0', borderTop: '2px solid #f3f4f6', marginBottom: 12 }}>
+                      {dealPricing.discount > 0 && (
+                        <div style={{ borderTop: '2px solid #f3f4f6', paddingTop: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
+                            <span>Subtotal</span><span>£{cartSubtotal.toFixed(2)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#059669', fontWeight: 700, marginTop: 2 }}>
+                            <span>🏷️ Deal savings{dealPricing.breakdown.length ? ` (${dealPricing.breakdown.map(b => `${b.name} ×${b.bundles}`).join(', ')})` : ''}</span>
+                            <span>−£{dealPricing.discount.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 16, padding: '10px 0', borderTop: dealPricing.discount > 0 ? 'none' : '2px solid #f3f4f6', marginBottom: 12 }}>
                         <span>Total</span><span>£{cartTotal.toFixed(2)}</span>
                       </div>
 

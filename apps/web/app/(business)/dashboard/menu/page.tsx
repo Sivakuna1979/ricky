@@ -265,9 +265,19 @@ export default function MenuPage() {
   const [editItem, setEditItem] = useState(null)
   const [form, setForm]         = useState({ name:'', description:'', price:'', category:'Mains', available:true })
 
+  const [deals, setDeals]           = useState([])
+  const [showDealForm, setShowDealForm] = useState(false)
+  const [dealForm, setDealForm]     = useState({ name:'', quantity:'3', deal_price:'', itemIds: new Set() })
+  const [dealSaving, setDealSaving] = useState(false)
+
   const loadMenu = async (supabase, vid) => {
     const { data: menuItems } = await supabase.from('menu_items').select('*').eq('van_id', vid).order('category').order('name')
     setItems(menuItems ?? [])
+  }
+
+  const loadDeals = async (supabase, vid) => {
+    const { data } = await supabase.from('menu_deals').select('*, menu_deal_items(menu_item_id)').eq('van_id', vid).order('created_at')
+    setDeals(data ?? [])
   }
 
   useEffect(() => {
@@ -285,10 +295,44 @@ export default function MenuPage() {
       const { data: vans } = await supabase.from('vans').select('id').eq('business_id', biz.id).limit(1)
       const vid = vans?.[0]?.id ?? null
       setVanId(vid)
-      if (vid) await loadMenu(supabase, vid)
+      if (vid) { await loadMenu(supabase, vid); await loadDeals(supabase, vid) }
       setLoading(false)
     })
   }, [])
+
+  const openAddDeal = () => { setDealForm({ name:'', quantity:'3', deal_price:'', itemIds: new Set() }); setShowDealForm(true) }
+
+  const saveDeal = async () => {
+    if (!dealForm.name || !dealForm.quantity || !dealForm.deal_price || dealForm.itemIds.size < 2) {
+      setMsg('Name, quantity, price and at least 2 items are required for a deal'); return
+    }
+    setDealSaving(true)
+    const supabase = createClient()
+    const { data: deal, error } = await supabase.from('menu_deals').insert({
+      van_id: vanId, name: dealForm.name, quantity: parseInt(dealForm.quantity) || 2,
+      deal_price: parseFloat(dealForm.deal_price) || 0,
+    }).select().single()
+    if (error) { setMsg('Error: ' + error.message); setDealSaving(false); return }
+    await supabase.from('menu_deal_items').insert(
+      Array.from(dealForm.itemIds).map(menu_item_id => ({ deal_id: deal.id, menu_item_id }))
+    )
+    await loadDeals(supabase, vanId)
+    setShowDealForm(false); setDealSaving(false); setMsg('✅ Deal created!')
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  const toggleDealActive = async (deal) => {
+    const supabase = createClient()
+    await supabase.from('menu_deals').update({ active: !deal.active }).eq('id', deal.id)
+    setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, active: !d.active } : d))
+  }
+
+  const deleteDeal = async (id) => {
+    if (!confirm('Delete this deal?')) return
+    const supabase = createClient()
+    await supabase.from('menu_deals').delete().eq('id', id)
+    setDeals(prev => prev.filter(d => d.id !== id))
+  }
 
   const openAdd  = () => { setEditItem(null); setForm({ name:'', description:'', price:'', category:'Mains', available:true }); setShowForm(true) }
   const openEdit = (item) => { setEditItem(item); setForm({ name:item.name, description:item.description??'', price:String(item.price??''), category:item.category??'Mains', available:item.available??true }); setShowForm(true) }
@@ -391,6 +435,33 @@ export default function MenuPage() {
                 </button>
               </div>
             </div>
+
+            {/* Deals — "any N for £X" mix-and-match pricing, applied automatically at the till */}
+            {!loading && vanId && (
+              <div style={{ background:'#fff', borderRadius:14, padding:'18px 20px', marginBottom:20, boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: deals.length ? 14 : 4 }}>
+                  <div>
+                    <h2 style={{ fontSize:15, fontWeight:800, color:'#111', margin:0 }}>🏷️ Deals</h2>
+                    <p style={{ fontSize:12, color:'#888', margin:'2px 0 0' }}>e.g. "any 3 sauces for £1" — applies automatically at the POS till</p>
+                  </div>
+                  <button onClick={openAddDeal} style={{ padding:'8px 16px', borderRadius:10, background:'#111827', color:'#fff', fontWeight:700, fontSize:13, border:'none', cursor:'pointer', whiteSpace:'nowrap' }}>+ Add Deal</button>
+                </div>
+                {deals.map(deal => {
+                  const dealItemIds = new Set((deal.menu_deal_items ?? []).map(di => di.menu_item_id))
+                  const names = items.filter(i => dealItemIds.has(i.id)).map(i => i.name)
+                  return (
+                    <div key={deal.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderTop:'1px solid #f3f4f6' }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:700, fontSize:14, color:'#111' }}>{deal.name} <span style={{ color:'#059669', fontWeight:800 }}>— {deal.quantity} for £{Number(deal.deal_price).toFixed(2)}</span></div>
+                        <div style={{ fontSize:12, color:'#888', marginTop:2 }}>{names.join(' · ') || 'No items selected'}</div>
+                      </div>
+                      <button onClick={() => toggleDealActive(deal)} title={deal.active ? 'Deactivate' : 'Activate'} style={{ background:'none', border:'none', cursor:'pointer', fontSize:18, padding:'4px' }}>{deal.active ? '✅' : '❌'}</button>
+                      <button onClick={() => deleteDeal(deal.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', fontSize:18, padding:'4px' }}>🗑</button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* AI banner (when no items yet) */}
             {!loading && items.length === 0 && (
@@ -499,6 +570,61 @@ export default function MenuPage() {
 
       {/* AI Scan Modal */}
       {showScan && <AIScanModal vanId={vanId} onClose={() => { setShowScan(false); const s = createClient(); if(vanId) loadMenu(s, vanId) }} onImported={onImported} />}
+
+      {/* Add Deal Modal */}
+      {showDealForm && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+          <div style={{ background:'#fff', borderRadius:16, padding:28, width:'100%', maxWidth:480, maxHeight:'85vh', overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ fontSize:18, fontWeight:800, color:'#111', margin:'0 0 6px' }}>🏷️ Add Deal</h2>
+            <p style={{ fontSize:12, color:'#888', margin:'0 0 20px' }}>e.g. "3 Sauces for £1" — pick which items count towards it</p>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:12, fontWeight:700, color:'#555', display:'block', marginBottom:5 }}>Deal Name *</label>
+              <input value={dealForm.name} onChange={e => setDealForm(p => ({...p, name: e.target.value}))} placeholder="e.g. Sauce Deal"
+                style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:14, outline:'none', boxSizing:'border-box' }} />
+            </div>
+            <div style={{ display:'flex', gap:10, marginBottom:14 }}>
+              <div style={{ flex:1 }}>
+                <label style={{ fontSize:12, fontWeight:700, color:'#555', display:'block', marginBottom:5 }}>Quantity *</label>
+                <input type="number" min="2" value={dealForm.quantity} onChange={e => setDealForm(p => ({...p, quantity: e.target.value}))}
+                  style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:14, outline:'none', boxSizing:'border-box' }} />
+              </div>
+              <div style={{ flex:1 }}>
+                <label style={{ fontSize:12, fontWeight:700, color:'#555', display:'block', marginBottom:5 }}>Deal Price (£) *</label>
+                <input type="number" step="0.01" min="0" value={dealForm.deal_price} onChange={e => setDealForm(p => ({...p, deal_price: e.target.value}))} placeholder="1.00"
+                  style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:14, outline:'none', boxSizing:'border-box' }} />
+              </div>
+            </div>
+
+            <label style={{ fontSize:12, fontWeight:700, color:'#555', display:'block', marginBottom:5 }}>Eligible Items * (pick at least 2)</label>
+            <div style={{ border:'1px solid #e5e7eb', borderRadius:10, maxHeight:220, overflowY:'auto', marginBottom:20 }}>
+              {items.map(item => {
+                const checked = dealForm.itemIds.has(item.id)
+                return (
+                  <label key={item.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:'1px solid #f3f4f6', cursor:'pointer', background: checked ? '#fff7ed' : '#fff' }}>
+                    <input type="checkbox" checked={checked} onChange={e => setDealForm(p => {
+                      const next = new Set(p.itemIds)
+                      e.target.checked ? next.add(item.id) : next.delete(item.id)
+                      return { ...p, itemIds: next }
+                    })} style={{ width:16, height:16, flexShrink:0 }} />
+                    <span style={{ flex:1, fontSize:13, color:'#111' }}>{item.name}</span>
+                    <span style={{ fontSize:12, color:'#059669', fontWeight:700 }}>£{Number(item.price).toFixed(2)}</span>
+                  </label>
+                )
+              })}
+            </div>
+
+            {msg && <div style={{ padding:'10px 14px', borderRadius:8, background: msg.startsWith('✅') ? '#d1fae5' : '#fee2e2', color: msg.startsWith('✅') ? '#065f46' : '#991b1b', marginBottom:14, fontWeight:600, fontSize:13 }}>{msg}</div>}
+
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setShowDealForm(false)} style={{ flex:1, padding:'11px', borderRadius:10, border:'1px solid #e5e7eb', background:'#f9fafb', fontSize:14, fontWeight:600, cursor:'pointer', color:'#555' }}>Cancel</button>
+              <button onClick={saveDeal} disabled={dealSaving} style={{ flex:2, padding:'11px', borderRadius:10, border:'none', background:'#111827', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer', opacity: dealSaving ? 0.7 : 1 }}>
+                {dealSaving ? 'Saving…' : 'Create Deal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

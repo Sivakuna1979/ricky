@@ -68,6 +68,11 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
               <span>VAT</span><span>£{Number(order.vat_amount).toFixed(2)}</span>
             </div>
           )}
+          {Number(order.discount_amount) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#059669', fontWeight: 700, marginBottom: 4 }}>
+              <span>Deal savings</span><span>−£{Number(order.discount_amount).toFixed(2)}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 18, margin: '6px 0' }}>
             <span>Total</span><span>£{Number(order.total).toFixed(2)}</span>
           </div>
