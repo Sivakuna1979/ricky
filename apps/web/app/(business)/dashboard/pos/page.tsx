@@ -481,6 +481,18 @@ export default function PosPage() {
 
                       {paymentMethod === 'cash_at_van' && (
                         <div style={{ marginBottom: 12 }}>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                            <button type="button" onClick={() => setCashTendered(String(cartTotal))}
+                              style={{ flex: '1 1 auto', padding: '9px 6px', borderRadius: 8, border: '2px solid #059669', background: '#ecfdf5', color: '#059669', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+                              Exact £{cartTotal.toFixed(2)}
+                            </button>
+                            {[5, 10, 20, 50].filter(n => n >= cartTotal).map(n => (
+                              <button key={n} type="button" onClick={() => setCashTendered(String(n))}
+                                style={{ flex: '1 1 auto', padding: '9px 6px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#0e7490', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+                                £{n}
+                              </button>
+                            ))}
+                          </div>
                           <input type="number" step="0.01" inputMode="decimal" value={cashTendered} onChange={e => setCashTendered(e.target.value)}
                             placeholder="Cash received" style={{ ...inp, width: '100%', fontSize: 16, fontWeight: 700, textAlign: 'center' }} />
                           {cashTendered !== '' && (
