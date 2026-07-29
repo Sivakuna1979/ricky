@@ -14,6 +14,7 @@ export default function PosDisplayPage() {
   const [van, setVan] = useState<any>(null)
   const [sale, setSale] = useState<any>(null)
   const [justCompleted, setJustCompleted] = useState<any>(null)
+  const [announcement, setAnnouncement] = useState<string | null>(null)
 
   useEffect(() => {
     if (!vanId) return
@@ -28,6 +29,15 @@ export default function PosDisplayPage() {
         setSale(null)
         setTimeout(() => setJustCompleted(null), 6000)
       })
+      .on('broadcast', { event: 'order_ready' }, ({ payload }) => {
+        setAnnouncement(payload.text)
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          const utter = new SpeechSynthesisUtterance(payload.text)
+          utter.rate = 0.95
+          window.speechSynthesis.speak(utter)
+        }
+        setTimeout(() => setAnnouncement(null), 8000)
+      })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -41,6 +51,13 @@ export default function PosDisplayPage() {
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: '#f97316', letterSpacing: 1 }}>{van?.name ?? 'FoodTaxi'}</div>
       </div>
+
+      {announcement && (
+        <div style={{ background: '#10b981', color: '#fff', borderRadius: 16, padding: '18px 20px', marginBottom: 20, textAlign: 'center' }}>
+          <div style={{ fontSize: 26, marginBottom: 4 }}>🔔</div>
+          <div style={{ fontSize: 20, fontWeight: 800 }}>{announcement}</div>
+        </div>
+      )}
 
       {justCompleted ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>

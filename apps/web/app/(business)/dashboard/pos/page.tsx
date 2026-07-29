@@ -42,7 +42,36 @@ export default function PosPage() {
   const [salesSearch, setSalesSearch] = useState('')
   const [readyOrders, setReadyOrders] = useState<any[]>([])
   const [handingOver, setHandingOver] = useState<string | null>(null)
+  const [voiceOn, setVoiceOn] = useState(true)
   const channelRef = useRef<any>(null)
+  const announcedRef = useRef<Set<string>>(new Set())
+  const firstReadyFetchRef = useRef(true)
+
+  const voiceOnRef = useRef(true)
+  useEffect(() => {
+    const saved = localStorage.getItem('pos-voice-collection')
+    if (saved != null) setVoiceOn(saved === '1')
+  }, [])
+  useEffect(() => {
+    voiceOnRef.current = voiceOn
+    localStorage.setItem('pos-voice-collection', voiceOn ? '1' : '0')
+  }, [voiceOn])
+
+  // Speaks the customer's name (or order number, if no name was taken) out
+  // loud so staff don't have to shout across the counter every time an
+  // order comes off the fryer — the same announcement also plays on the
+  // customer-facing display screen. Reads voiceOnRef/channelRef (not the
+  // state directly) so it stays correct even though it's captured once by
+  // the ready-orders subscription effect below.
+  const announceReady = (order: any) => {
+    const who = order.guest_name && order.guest_name !== 'Walk-in customer' ? order.guest_name : `Order number ${order.order_number}`
+    const text = `${who}, your order is ready for collection`
+    channelRef.current?.send({ type: 'broadcast', event: 'order_ready', payload: { text } })
+    if (!voiceOnRef.current || typeof window === 'undefined' || !window.speechSynthesis) return
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.rate = 0.95
+    window.speechSynthesis.speak(utter)
+  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -118,7 +147,17 @@ export default function PosPage() {
       supabase.from('orders').select('id, order_number, guest_name, total, created_at, order_items(*)')
         .eq('van_id', vanId).eq('status', 'ready')
         .order('created_at', { ascending: true })
-        .then(({ data }) => setReadyOrders(data ?? []))
+        .then(({ data }) => {
+          const orders = data ?? []
+          if (!firstReadyFetchRef.current) {
+            for (const o of orders) {
+              if (!announcedRef.current.has(o.id)) announceReady(o)
+            }
+          }
+          for (const o of orders) announcedRef.current.add(o.id)
+          firstReadyFetchRef.current = false
+          setReadyOrders(orders)
+        })
     }
     fetchReady()
     const channel = supabase.channel(`pos-ready-${vanId}`)
@@ -297,7 +336,13 @@ export default function PosPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {readyOrders.length > 0 && (
                     <div style={{ background: '#ecfdf5', border: '2px solid #10b981', borderRadius: 14, padding: 14, marginBottom: 14 }}>
-                      <div style={{ fontWeight: 800, fontSize: 13, color: '#065f46', marginBottom: 8 }}>🔔 Ready for Pickup — {readyOrders.length}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, color: '#065f46' }}>🔔 Ready for Pickup — {readyOrders.length}</div>
+                        <button onClick={() => setVoiceOn(v => !v)} title={voiceOn ? 'Voice announcements on' : 'Voice announcements off'}
+                          style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #10b981', background: voiceOn ? '#10b981' : '#fff', color: voiceOn ? '#fff' : '#10b981', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
+                          {voiceOn ? '🔊 Voice On' : '🔇 Voice Off'}
+                        </button>
+                      </div>
                       {readyOrders.map(o => (
                         <div key={o.id} style={{ padding: '9px 0', borderBottom: '1px solid rgba(16,185,129,0.2)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -306,6 +351,10 @@ export default function PosPage() {
                               {o.guest_name && <span style={{ fontSize: 12, color: '#666' }}> · {o.guest_name}</span>}
                               <span style={{ fontSize: 12, color: '#666' }}> · £{Number(o.total).toFixed(2)}</span>
                             </div>
+                            <button onClick={() => announceReady(o)} title="Call out again"
+                              style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #10b981', background: '#fff', color: '#059669', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                              📢
+                            </button>
                             <button onClick={() => handOver(o.id)} disabled={handingOver === o.id}
                               style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: handingOver === o.id ? 0.6 : 1, whiteSpace: 'nowrap' }}>
                               {handingOver === o.id ? '…' : '✅ Hand Over'}
