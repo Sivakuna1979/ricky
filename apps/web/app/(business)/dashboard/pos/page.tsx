@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { sortCategories } from '@/lib/categoryOrder'
 import { speakEnergetic } from '@/lib/speak'
+import { shortOrderNumber } from '@/lib/orderNumber'
 
 const NAV = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
@@ -66,14 +67,9 @@ export default function PosPage() {
   // channelRef (not the state directly) so it stays correct even though
   // it's captured once by the ready-orders subscription effect below.
   const announceReady = (order: any) => {
-    let who: string
-    if (order.guest_name && order.guest_name !== 'Walk-in customer') {
-      who = order.guest_name
-    } else {
-      const digits = String(order.order_number ?? '').replace(/\D/g, '')
-      const last2 = digits ? String(parseInt(digits.slice(-2), 10)) : order.order_number
-      who = `Order ${last2}`
-    }
+    const who = order.guest_name && order.guest_name !== 'Walk-in customer'
+      ? order.guest_name
+      : `Order ${shortOrderNumber(order.order_number)}`
     const text = `${who}, your order is ready for collection!`
     channelRef.current?.send({ type: 'broadcast', event: 'order_ready', payload: { text } })
     if (voiceOnRef.current) speakEnergetic(text)
@@ -568,10 +564,16 @@ export default function PosPage() {
                       </button>
 
                       {vanId && (
-                        <a href={`/pos-display/${vanId}`} target="_blank" rel="noopener noreferrer"
-                          style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: 12, fontWeight: 700, color: '#6366f1', textDecoration: 'none' }}>
-                          📺 Open Customer Display (second screen)
-                        </a>
+                        <>
+                          <a href={`/pos-display/${vanId}`} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: 12, fontWeight: 700, color: '#6366f1', textDecoration: 'none' }}>
+                            📺 Open Customer Display (mirrors the till)
+                          </a>
+                          <a href={`/order-status/${vanId}`} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'block', textAlign: 'center', marginTop: 6, fontSize: 12, fontWeight: 700, color: '#6366f1', textDecoration: 'none' }}>
+                            🔔 Open Order Status Board (Preparing / Ready)
+                          </a>
+                        </>
                       )}
                     </>
                   )}
