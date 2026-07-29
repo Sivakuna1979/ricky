@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useWakeLock } from '@/lib/useWakeLock'
+import { speakEnergetic } from '@/lib/speak'
 
 // Public, no-login second screen for the customer facing away from the
 // till — mirrors what staff are ringing up in /dashboard/pos in real time
@@ -31,11 +32,7 @@ export default function PosDisplayPage() {
       })
       .on('broadcast', { event: 'order_ready' }, ({ payload }) => {
         setAnnouncement(payload.text)
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-          const utter = new SpeechSynthesisUtterance(payload.text)
-          utter.rate = 0.95
-          window.speechSynthesis.speak(utter)
-        }
+        speakEnergetic(payload.text)
         setTimeout(() => setAnnouncement(null), 8000)
       })
       .subscribe()

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { sortCategories } from '@/lib/categoryOrder'
+import { speakEnergetic } from '@/lib/speak'
 
 const NAV = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
@@ -57,20 +58,25 @@ export default function PosPage() {
     localStorage.setItem('pos-voice-collection', voiceOn ? '1' : '0')
   }, [voiceOn])
 
-  // Speaks the customer's name (or order number, if no name was taken) out
-  // loud so staff don't have to shout across the counter every time an
-  // order comes off the fryer — the same announcement also plays on the
-  // customer-facing display screen. Reads voiceOnRef/channelRef (not the
-  // state directly) so it stays correct even though it's captured once by
-  // the ready-orders subscription effect below.
+  // Speaks the customer's name (or just the last 2 digits of the order
+  // number — quicker to say and hear than the full "FT-20260729-0033" —
+  // if no name was taken) out loud so staff don't have to shout across the
+  // counter every time an order comes off the fryer. The same announcement
+  // also plays on the customer-facing display screen. Reads voiceOnRef/
+  // channelRef (not the state directly) so it stays correct even though
+  // it's captured once by the ready-orders subscription effect below.
   const announceReady = (order: any) => {
-    const who = order.guest_name && order.guest_name !== 'Walk-in customer' ? order.guest_name : `Order number ${order.order_number}`
-    const text = `${who}, your order is ready for collection`
+    let who: string
+    if (order.guest_name && order.guest_name !== 'Walk-in customer') {
+      who = order.guest_name
+    } else {
+      const digits = String(order.order_number ?? '').replace(/\D/g, '')
+      const last2 = digits ? String(parseInt(digits.slice(-2), 10)) : order.order_number
+      who = `Order ${last2}`
+    }
+    const text = `${who}, your order is ready for collection!`
     channelRef.current?.send({ type: 'broadcast', event: 'order_ready', payload: { text } })
-    if (!voiceOnRef.current || typeof window === 'undefined' || !window.speechSynthesis) return
-    const utter = new SpeechSynthesisUtterance(text)
-    utter.rate = 0.95
-    window.speechSynthesis.speak(utter)
+    if (voiceOnRef.current) speakEnergetic(text)
   }
 
   useEffect(() => {
