@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useWakeLock } from '@/lib/useWakeLock'
 import { sortCategories } from '@/lib/categoryOrder'
-import { speakEnergetic } from '@/lib/speak'
+import { speakAnnouncement } from '@/lib/speak'
 import { shortOrderNumber } from '@/lib/orderNumber'
 
 const NAV = [
@@ -72,7 +72,7 @@ export default function PosPage() {
       : `Order ${shortOrderNumber(order.order_number)}`
     const text = `${who}, your order is ready for collection!`
     channelRef.current?.send({ type: 'broadcast', event: 'order_ready', payload: { text } })
-    if (voiceOnRef.current) speakEnergetic(text)
+    if (voiceOnRef.current) speakAnnouncement(text)
   }
 
   useEffect(() => {

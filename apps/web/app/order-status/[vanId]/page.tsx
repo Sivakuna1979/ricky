@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useWakeLock } from '@/lib/useWakeLock'
-import { speakEnergetic } from '@/lib/speak'
+import { speakAnnouncement } from '@/lib/speak'
 import { shortOrderNumber } from '@/lib/orderNumber'
 
 // Public, no-login order-status board — like the numbered board in a fast
@@ -41,7 +41,7 @@ export default function OrderStatusBoard() {
           for (const o of readyList) {
             if (!seenReadyRef.current.has(o.id)) {
               const who = o.guest_name && o.guest_name !== 'Walk-in customer' ? o.guest_name : `Order ${shortOrderNumber(o.order_number)}`
-              speakEnergetic(`${who}, your order is ready for collection!`)
+              speakAnnouncement(`${who}, your order is ready for collection!`)
             }
           }
         }
