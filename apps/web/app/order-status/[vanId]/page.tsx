@@ -17,8 +17,10 @@ export default function OrderStatusBoard() {
   const [van, setVan] = useState<any>(null)
   const [preparing, setPreparing] = useState<any[]>([])
   const [ready, setReady] = useState<any[]>([])
+  const [online, setOnline] = useState(true)
   const seenReadyRef = useRef<Set<string>>(new Set())
   const firstFetchRef = useRef(true)
+  const failCountRef = useRef(0)
 
   useEffect(() => {
     if (!vanId) return
@@ -33,8 +35,11 @@ export default function OrderStatusBoard() {
     const poll = async () => {
       try {
         const res = await fetch(`/api/orders/board/${vanId}`, { cache: 'no-store' })
+        if (!res.ok) throw new Error('bad response')
         const data = await res.json()
         if (cancelled) return
+        failCountRef.current = 0
+        setOnline(true)
         const preparingList = data.preparing ?? []
         const readyList = data.ready ?? []
         if (!firstFetchRef.current) {
@@ -50,7 +55,12 @@ export default function OrderStatusBoard() {
         setPreparing(preparingList)
         setReady(readyList)
       } catch {
-        // transient network blip — next poll will catch up
+        // Transient blips are normal over Bluetooth tethering — only flag it
+        // as actually offline after a couple of misses in a row, and keep
+        // showing the last known board instead of clearing it.
+        if (cancelled) return
+        failCountRef.current += 1
+        if (failCountRef.current >= 2) setOnline(false)
       }
     }
     poll()
@@ -66,6 +76,12 @@ export default function OrderStatusBoard() {
         <div style={{ fontSize: 16, fontWeight: 800, color: '#f97316', letterSpacing: 1 }}>{van?.name ?? 'FoodTaxi'}</div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Order Status</div>
       </div>
+
+      {!online && (
+        <div style={{ background: '#b45309', color: '#fff', borderRadius: 10, padding: '8px 14px', marginBottom: 16, textAlign: 'center', fontSize: 12, fontWeight: 800 }}>
+          ⚠️ Connection lost — check this screen's Bluetooth/internet link. Showing the last known board.
+        </div>
+      )}
 
       {empty ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'rgba(255,255,255,0.35)' }}>

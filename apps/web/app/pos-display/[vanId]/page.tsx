@@ -16,6 +16,7 @@ export default function PosDisplayPage() {
   const [sale, setSale] = useState<any>(null)
   const [justCompleted, setJustCompleted] = useState<any>(null)
   const [announcement, setAnnouncement] = useState<string | null>(null)
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
     if (!vanId) return
@@ -35,7 +36,7 @@ export default function PosDisplayPage() {
         speakAnnouncement(payload.text)
         setTimeout(() => setAnnouncement(null), 8000)
       })
-      .subscribe()
+      .subscribe((status: string) => setOnline(status === 'SUBSCRIBED'))
 
     return () => { supabase.removeChannel(channel) }
   }, [vanId])
@@ -48,6 +49,12 @@ export default function PosDisplayPage() {
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: '#f97316', letterSpacing: 1 }}>{van?.name ?? 'FoodTaxi'}</div>
       </div>
+
+      {!online && (
+        <div style={{ background: '#b45309', color: '#fff', borderRadius: 10, padding: '8px 14px', marginBottom: 16, textAlign: 'center', fontSize: 12, fontWeight: 800 }}>
+          ⚠️ Connection lost — check this screen's Bluetooth/internet link
+        </div>
+      )}
 
       {announcement && (
         <div style={{ background: '#10b981', color: '#fff', borderRadius: 16, padding: '18px 20px', marginBottom: 20, textAlign: 'center' }}>
