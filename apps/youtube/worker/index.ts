@@ -2,6 +2,8 @@ import 'dotenv/config'
 import { Worker } from 'bullmq'
 import { getRedisConnection } from '@/lib/queue/connection'
 import { QUEUE_NAMES } from '@/lib/queue/queues'
+import { createAdminClient } from '@/lib/supabase/server'
+import { enqueueAnalyticsSync, enqueuePendingUploadPolls } from '@/lib/pipeline/maintenance'
 import { processProduceVideo } from './processors/produce-video'
 import { processPollUploads } from './processors/poll-uploads'
 import { processSyncAnalytics } from './processors/sync-analytics'
@@ -41,8 +43,31 @@ for (const worker of [produceVideoWorker, pollUploadsWorker, syncAnalyticsWorker
 
 console.log('YouTube automation worker started. Listening on queues:', Object.values(QUEUE_NAMES).join(', '))
 
+// Upload-status polling (~15 min) and analytics sync (hourly) run from
+// this always-on process rather than Vercel Cron, since Vercel's free
+// Hobby tier caps projects at 2 cron jobs / once a day each — nowhere
+// near frequent enough for these. Only the twice-daily production-run
+// trigger stays on Vercel Cron (see apps/youtube/vercel.json).
+const adminClient = createAdminClient()
+const POLL_UPLOADS_INTERVAL_MS = 15 * 60 * 1000
+const SYNC_ANALYTICS_INTERVAL_MS = 60 * 60 * 1000
+
+const pollUploadsInterval = setInterval(() => {
+  enqueuePendingUploadPolls(adminClient).catch((err) => console.error('enqueuePendingUploadPolls failed:', err))
+}, POLL_UPLOADS_INTERVAL_MS)
+
+const syncAnalyticsInterval = setInterval(() => {
+  enqueueAnalyticsSync(adminClient).catch((err) => console.error('enqueueAnalyticsSync failed:', err))
+}, SYNC_ANALYTICS_INTERVAL_MS)
+
+// Run once immediately on startup too, rather than waiting a full interval.
+enqueuePendingUploadPolls(adminClient).catch((err) => console.error('enqueuePendingUploadPolls failed:', err))
+enqueueAnalyticsSync(adminClient).catch((err) => console.error('enqueueAnalyticsSync failed:', err))
+
 async function shutdown() {
   console.log('Shutting down worker...')
+  clearInterval(pollUploadsInterval)
+  clearInterval(syncAnalyticsInterval)
   await Promise.all([produceVideoWorker.close(), pollUploadsWorker.close(), syncAnalyticsWorker.close()])
   process.exit(0)
 }

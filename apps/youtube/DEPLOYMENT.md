@@ -5,9 +5,16 @@ Two separate deployments of this one codebase:
 ## 1. Web app → Vercel
 
 1. New Vercel project → import this repo → **Root Directory**: `apps/youtube`.
-   `apps/youtube/vercel.json` supplies the build command and the four cron
-   schedules (production runs at 06:00 & 14:00 UTC, upload-status polling
-   every 15 minutes, analytics sync hourly — adjust to your timezone/cadence).
+   `apps/youtube/vercel.json` supplies the build command and two cron
+   schedules (production runs at 06:00 & 14:00 UTC — adjust to your
+   timezone). That's deliberately all that's on Vercel Cron: the free
+   **Hobby** plan caps projects at 2 cron jobs, each running at most once a
+   day. Upload-status polling (~15 min) and hourly analytics sync run from
+   the worker process's own interval loop instead (see `worker/index.ts`) —
+   they need no Vercel plan upgrade. If you're on Vercel **Pro**, you can
+   optionally also point Cron at `/api/cron/poll-uploads` and
+   `/api/cron/sync-analytics` as a redundant trigger; the worker's loop
+   makes that unnecessary either way.
 2. Set all variables from `.env.local.example` in the Vercel project's
    Environment Variables (Production + Preview). In particular set
    `CRON_SECRET` — Vercel automatically sends it as
