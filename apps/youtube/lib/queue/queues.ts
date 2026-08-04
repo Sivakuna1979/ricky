@@ -1,10 +1,12 @@
 import { Queue } from 'bullmq'
 import { getRedisConnection } from './connection'
 
+// BullMQ queue names cannot contain ":" (it's used internally as the Redis
+// key delimiter) — hyphens only.
 export const QUEUE_NAMES = {
-  produceVideo: 'yt:produce-video',
-  pollUploads: 'yt:poll-uploads',
-  syncAnalytics: 'yt:sync-analytics',
+  produceVideo: 'yt-produce-video',
+  pollUploads: 'yt-poll-uploads',
+  syncAnalytics: 'yt-sync-analytics',
 } as const
 
 const defaultJobOptions = {
