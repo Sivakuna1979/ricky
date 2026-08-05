@@ -123,6 +123,27 @@ async function resolveSharedVan(admin: any, channel: any, from: string, text: st
   return null
 }
 
+// Prices must always come from the actual menu row, never from whatever
+// number the AI happened to write — the model has been wrong about this
+// before (e.g. inventing a price for a "combo" that isn't a real menu
+// item). menu_item_id is trusted only if it actually exists in our menu;
+// otherwise we fall back to matching the AI's item name against the real
+// menu so a slightly-off id still resolves to a correct, real price.
+function normalizeName(s: any) {
+  return String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+function resolveMenuItem(menu: any[], item: any) {
+  if (item.menu_item_id) {
+    const byId = menu.find((m: any) => m.id === item.menu_item_id)
+    if (byId) return byId
+  }
+  const n = normalizeName(item.name)
+  if (!n) return null
+  const exact = menu.find((m: any) => normalizeName(m.name) === n)
+  if (exact) return exact
+  return menu.find((m: any) => n.includes(normalizeName(m.name)) && normalizeName(m.name).length > 2) ?? null
+}
+
 function buildPrompt({ menu, weekSchedule, pendingOrder, profileName, text }: any) {
   const scheduleList = weekSchedule.length
     ? weekSchedule.map((d: any) =>
@@ -151,7 +172,9 @@ Return ONLY valid JSON:
   "notes": ""
 }
 Rules:
-- action "order": the message contains food items to order. Match items to the menu (use its id/name/price); unknown items get menu_item_id null and price 0; "two cod" means quantity 2.
+- action "order": the message contains food items to order. Every item MUST match one exact id from the menu list above — copy its id, name and price exactly, never invent or estimate a price. "two cod" means quantity 2.
+- If a phrase names something that isn't a single menu entry but is really two or more menu items together (e.g. "cod and chips" when "Cod" and a chips size are separate menu entries), split it into SEPARATE entries in "items" — one per real menu id — each with its own real price. Never create one combined item for a price you'd have to guess.
+- Only use menu_item_id null (and price 0) if the item genuinely isn't on the menu at all and can't be decomposed into menu entries — the business will confirm the price with the customer directly in that case.
 - action "pickup_details": no new food items, but the message gives a day, a stop, a time and/or their name for the open order. Examples: "Tesco's at 7", "the 6:30 one", "I want Wednesday", "Wednesday 1st stop", "tomorrow", "it's Sarah".
 - action "chat": anything else (greeting, question).
 - "Wednesday 1st stop" means the FIRST stop listed under Wednesday — set pickup_day, pickup_location and pickup_time from that stop.
@@ -258,13 +281,14 @@ export async function POST(req: NextRequest) {
 
 
 // Best-effort owner ping about a new order (free within the 24h window).
-async function notifyOwner(admin: any, channel: any, van: any, order_number: string, total: number, name: string) {
+async function notifyOwner(admin: any, channel: any, van: any, order_number: string, total: number, name: string, hasUnresolved: boolean) {
   try {
     if (!van?.business_id) return
     const { data: biz } = await admin.from('businesses').select('phone').eq('id', van.business_id).single()
     if (!biz?.phone) return
     const to = String(biz.phone).replace(/[^\d]/g, '').replace(/^0/, '44')
-    await sendWhatsApp(channel, to, `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}. Open your dashboard: https://food-taxi.vercel.app/dashboard/orders`)
+    const warn = hasUnresolved ? ' ⚠️ Contains an item we couldn\'t match to your menu — check the price before the customer collects.' : ''
+    await sendWhatsApp(channel, to, `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}.${warn} Open your dashboard: https://food-taxi.vercel.app/dashboard/orders`)
   } catch {}
 }
 
@@ -366,19 +390,24 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
 
     // ---- New order ----
     if (parsed.action === 'order' && parsed.items?.length) {
-      const items = parsed.items.map((i: any) => ({
-        menu_item_id: i.menu_item_id ?? null,
-        name: String(i.name ?? 'Item'),
-        quantity: Math.max(1, Number(i.quantity) || 1),
-        price: Number(i.price) || 0,
-      }))
+      const items = parsed.items.map((i: any) => {
+        const match = resolveMenuItem(menu ?? [], i)
+        return {
+          menu_item_id: match?.id ?? null,
+          name: match?.name ?? String(i.name ?? 'Item'),
+          quantity: Math.max(1, Number(i.quantity) || 1),
+          price: match ? Number(match.price) : 0,
+          unresolved: !match,
+        }
+      })
       const total = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0)
+      const unresolvedItems = items.filter((i: any) => i.unresolved)
 
       const { data: order, error } = await admin.from('orders').insert({
         van_id: vanId,
         guest_name: knownName || 'WhatsApp customer',
         guest_phone: `+${from}`,
-        notes: `[WhatsApp auto-order]${parsed.notes ? ' ' + parsed.notes : ''}`,
+        notes: `[WhatsApp auto-order]${unresolvedItems.length ? ` ⚠️ Could not match to the menu — confirm price with customer: ${unresolvedItems.map((i: any) => i.name).join(', ')}.` : ''}${parsed.notes ? ' ' + parsed.notes : ''}`,
         pickup_location: parsed.pickup_location || null,
         pickup_time: composedTime || null,
         subtotal: total,
@@ -394,9 +423,10 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         order_id: order.id, menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity, item_total: i.price * i.quantity,
       })))
       await admin.from('whatsapp_messages').update({ outcome: 'ordered', order_id: order.id }).eq('id', msg.id)
-      await notifyOwner(admin, channel, van, order_number, total, knownName)
+      await notifyOwner(admin, channel, van, order_number, total, knownName, unresolvedItems.length > 0)
 
-      const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — £${(i.price * i.quantity).toFixed(2)}`).join('\n')
+      const summary = items.map((i: any) => `• ${i.quantity}x ${i.name} — ${i.unresolved ? 'price to be confirmed' : `£${(i.price * i.quantity).toFixed(2)}`}`).join('\n')
+      const totalLabel = unresolvedItems.length ? `£${total.toFixed(2)} + item(s) to confirm` : `£${total.toFixed(2)}`
       const dayStops = stopsForDay(parsed.pickup_day ?? '')
       const needs = {
         location: !parsed.pickup_location && dayStops.length > 0,
@@ -406,11 +436,11 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
 
       if (!needs.location && !needs.time && !needs.name) {
         await sendWhatsApp(channel, from,
-          `✅ Order received${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: £${total.toFixed(2)}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${composedTime}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
+          `✅ Order received${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: ${totalLabel}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${composedTime}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       } else {
         // Order saved, but ask ONE simple question covering whatever is missing.
         await sendWhatsApp(channel, from,
-          `✅ Got your order${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: £${total.toFixed(2)} · ref #${order_number}\n\n${followUpQuestion(dayStops, needs, parsed.pickup_day)}`)
+          `✅ Got your order${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: ${totalLabel} · ref #${order_number}\n\n${followUpQuestion(dayStops, needs, parsed.pickup_day)}`)
       }
       return
     }
