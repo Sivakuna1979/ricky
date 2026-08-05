@@ -45,21 +45,31 @@ async function sendWhatsApp(channel: any, to: string, body: string) {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
     })
+    const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      const errText = await res.text().catch(() => '')
-      return { ok: false, error: `HTTP ${res.status}: ${errText}`.slice(0, 500) }
+      return { ok: false, error: `HTTP ${res.status}: ${JSON.stringify(data)}`.slice(0, 500) }
     }
-    return { ok: true }
+    // A 200 here only means Meta ACCEPTED the message for delivery — actual
+    // delivery/failure arrives later as an async "statuses" webhook event
+    // (handled below), keyed by this id. Without tracking it, a message
+    // that's accepted but never actually delivered looks identical to one
+    // that worked.
+    return { ok: true, wamid: data?.messages?.[0]?.id ?? null }
   } catch (e: any) {
     return { ok: false, error: String(e?.message ?? e).slice(0, 500) }
   }
 }
 
-// Records a failed reply against the inbound message so it shows up
-// alongside "outcome" in whatsapp_messages instead of vanishing —
-// diagnosable with the same query used to check message history.
-async function recordSendResult(admin: any, msgId: string | undefined, result: { ok: boolean; error?: string }) {
-  if (result.ok || !msgId) return
+// Records the outcome of a reply against the inbound message so it shows up
+// alongside "outcome" in whatsapp_messages instead of vanishing — either an
+// immediate send failure, or (if accepted) the wamid needed to match up the
+// later async delivery status/failure from Meta.
+async function recordSendResult(admin: any, msgId: string | undefined, result: { ok: boolean; error?: string; wamid?: string | null }) {
+  if (!msgId) return
+  if (result.ok) {
+    if (result.wamid) await admin.from('whatsapp_messages').update({ reply_wamid: result.wamid }).eq('id', msgId).catch(() => {})
+    return
+  }
   await admin.from('whatsapp_messages').update({ send_error: result.error }).eq('id', msgId).catch(() => {})
 }
 
@@ -272,6 +282,21 @@ export async function POST(req: NextRequest) {
     for (const entry of payload.entry ?? []) {
       for (const change of entry.changes ?? []) {
         const phoneNumberId = change.value?.metadata?.phone_number_id ?? ''
+
+        // Delivery receipts for OUR outbound replies — a 200 from the send
+        // call above only means Meta accepted it; whether it actually
+        // reached the phone (sent/delivered/read) or silently failed
+        // (recipient not in the app's allowed test list, account
+        // restriction, etc.) only shows up here, async, matched by wamid.
+        for (const status of change.value?.statuses ?? []) {
+          const err = status.errors?.[0]
+          const errText = err ? `${err.code} ${err.title}${err.error_data?.details ? ' — ' + err.error_data.details : ''}`.slice(0, 500) : null
+          await admin.from('whatsapp_messages')
+            .update({ delivery_status: status.status, delivery_error: errText })
+            .eq('reply_wamid', status.id)
+            .catch(() => {})
+        }
+
         for (const msg of change.value?.messages ?? []) {
           const channel = await resolveChannel(admin, phoneNumberId)
           if (!channel) continue
