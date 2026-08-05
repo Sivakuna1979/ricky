@@ -30,15 +30,37 @@ export async function GET(req: NextRequest) {
   return new Response('Forbidden', { status: 403 })
 }
 
+// Used to silently swallow every failure here, which is how a customer
+// could get "ordered" logged for their message and never receive a reply
+// with nobody able to tell why — Meta's actual error (bad/expired token,
+// wrong phone number id, outside the 24h customer-service window, etc.)
+// was thrown away. Now it's returned so callers can record it.
 async function sendWhatsApp(channel: any, to: string, body: string) {
   const token = channel?.access_token ?? process.env.WHATSAPP_TOKEN
   const phoneId = channel?.phone_number_id ?? process.env.WHATSAPP_PHONE_NUMBER_ID
-  if (!token || !phoneId) return
-  await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
-  }).catch(() => {})
+  if (!token || !phoneId) return { ok: false, error: 'missing_whatsapp_credentials' }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
+    })
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      return { ok: false, error: `HTTP ${res.status}: ${errText}`.slice(0, 500) }
+    }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message ?? e).slice(0, 500) }
+  }
+}
+
+// Records a failed reply against the inbound message so it shows up
+// alongside "outcome" in whatsapp_messages instead of vanishing —
+// diagnosable with the same query used to check message history.
+async function recordSendResult(admin: any, msgId: string | undefined, result: { ok: boolean; error?: string }) {
+  if (result.ok || !msgId) return
+  await admin.from('whatsapp_messages').update({ send_error: result.error }).eq('id', msgId).catch(() => {})
 }
 
 async function resolveChannel(admin: any, phoneNumberId: string) {
@@ -379,12 +401,14 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       const name = updates.guest_name ?? (pendingOrder.guest_name !== 'WhatsApp customer' ? pendingOrder.guest_name : '')
       const stillNeeds = { location: !loc && dayStops.length > 0, time: !time, name: !name }
       if (stillNeeds.location || stillNeeds.name) {
-        await sendWhatsApp(channel, from, followUpQuestion(dayStops, stillNeeds, parsed.pickup_day))
+        const result = await sendWhatsApp(channel, from, followUpQuestion(dayStops, stillNeeds, parsed.pickup_day))
+        await recordSendResult(admin, msg.id, result)
         return
       }
       await admin.from('whatsapp_messages').update({ outcome: 'pickup_updated', order_id: pendingOrder.id }).eq('id', msg.id)
-      await sendWhatsApp(channel, from,
+      const confirmResult = await sendWhatsApp(channel, from,
         `Perfect${name ? `, ${name.split(' ')[0]}` : ''}! ✅ Order #${pendingOrder.order_number} confirmed — ${van.name}.\n📍 ${loc ?? 'the van'}${time ? ` · ${time}` : ''}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
+      await recordSendResult(admin, msg.id, confirmResult)
       return
     }
 
@@ -434,21 +458,24 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         name: !knownName,
       }
 
+      let orderReplyResult
       if (!needs.location && !needs.time && !needs.name) {
-        await sendWhatsApp(channel, from,
+        orderReplyResult = await sendWhatsApp(channel, from,
           `✅ Order received${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: ${totalLabel}\n\nOrder ref: #${order_number}\n📍 ${parsed.pickup_location} · ${composedTime}\nPay cash or card at the van. We'll message you when it's ready! 🍟`)
       } else {
         // Order saved, but ask ONE simple question covering whatever is missing.
-        await sendWhatsApp(channel, from,
+        orderReplyResult = await sendWhatsApp(channel, from,
           `✅ Got your order${firstName ? `, ${firstName}` : ''} — ${van.name}!\n\n${summary}\nTotal: ${totalLabel} · ref #${order_number}\n\n${followUpQuestion(dayStops, needs, parsed.pickup_day)}`)
       }
+      await recordSendResult(admin, msg.id, orderReplyResult)
       return
     }
 
     // ---- Anything else ----
     await admin.from('whatsapp_messages').update({ outcome: 'chat' }).eq('id', msg.id)
-    await sendWhatsApp(channel, from,
+    const chatResult = await sendWhatsApp(channel, from,
       `Hi${firstName ? ` ${firstName}` : ''}! 👋 To order, just text what you'd like, e.g. "2 cod and chips". ${van.name ? `${van.name} will` : "We'll"} reply if you need anything else!`)
+    await recordSendResult(admin, msg.id, chatResult)
   } catch (e: any) {
     await admin.from('whatsapp_messages').update({ outcome: `error: ${e.message}`.slice(0, 200) }).eq('id', msg.id).catch(() => {})
     await sendWhatsApp(channel, from, 'Sorry, something went wrong taking your order automatically — the van will reply personally shortly!')
