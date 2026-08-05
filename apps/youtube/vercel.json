@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "crons": [
+    { "path": "/api/cron/enqueue-production-run", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/enqueue-production-run", "schedule": "0 14 * * *" }
+  ]
+}

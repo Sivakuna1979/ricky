@@ -1,0 +1,8 @@
+# Tells Railway's Nixpacks builder to install ffmpeg (with libx264/aac/
+# libass support) and the DejaVu font family (used for burned-in subtitles
+# and thumbnail text) alongside Node, so the worker process can render
+# video without any extra manual setup. Only relevant when this app is
+# deployed with Root Directory = apps/youtube on Railway/Nixpacks-based
+# hosts; Vercel ignores this file entirely.
+[phases.setup]
+nixPkgs = ["ffmpeg", "dejavu_fonts"]
