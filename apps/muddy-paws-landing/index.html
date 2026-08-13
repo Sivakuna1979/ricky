@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muddy Paws Co. — Apparel & Gifts for Dog Owners</title>
+<style>
+  :root {
+    --forest: #2f4a3c;
+    --mud: #8a6a4f;
+    --cream: #faf6ef;
+    --ink: #23261f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--cream);
+    color: var(--ink);
+  }
+  header {
+    padding: 5rem 1.5rem 4rem;
+    text-align: center;
+    background: linear-gradient(180deg, var(--forest), #24392e);
+    color: var(--cream);
+  }
+  header h1 {
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    margin: 0 0 0.75rem;
+    letter-spacing: -0.02em;
+  }
+  header p {
+    font-size: 1.15rem;
+    max-width: 34rem;
+    margin: 0 auto 2rem;
+    opacity: 0.9;
+  }
+  .paw { font-size: 1.5rem; }
+  form.waitlist {
+    display: flex;
+    gap: 0.5rem;
+    max-width: 26rem;
+    margin: 0 auto;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  form.waitlist input[type="email"] {
+    flex: 1 1 14rem;
+    padding: 0.85rem 1rem;
+    border-radius: 999px;
+    border: none;
+    font-size: 1rem;
+  }
+  form.waitlist button {
+    padding: 0.85rem 1.6rem;
+    border-radius: 999px;
+    border: none;
+    background: var(--mud);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  form.waitlist button:hover { background: #74593f; }
+  #waitlist-msg { margin-top: 0.9rem; font-size: 0.95rem; min-height: 1.2rem; }
+
+  main { max-width: 60rem; margin: 0 auto; padding: 4rem 1.5rem; }
+  section { margin-bottom: 4rem; }
+  h2 { font-size: 1.6rem; margin-bottom: 1rem; }
+  .products {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 1.25rem;
+  }
+  .card {
+    background: white;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card .emoji { font-size: 2rem; margin-bottom: 0.5rem; display: block; }
+  .card h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+  .card p { margin: 0; font-size: 0.9rem; color: #5a5a52; }
+  footer {
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    font-size: 0.85rem;
+    color: #7a7a70;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="paw">🐾</div>
+    <h1>Muddy Paws Co.</h1>
+    <p>Apparel and gifts for people whose dogs have ruined their trousers and their hearts.
+       Launching soon — join the waitlist for early access and a launch discount.</p>
+    <form class="waitlist" id="waitlist-form">
+      <input type="email" id="waitlist-email" placeholder="you@example.com" required>
+      <button type="submit">Join the waitlist</button>
+    </form>
+    <div id="waitlist-msg"></div>
+  </header>
+
+  <main>
+    <section>
+      <h2>What's coming</h2>
+      <div class="products">
+        <div class="card">
+          <span class="emoji">🧥</span>
+          <h3>Muddy Paws Hoodie</h3>
+          <p>"Muddy Paws, Happy Heart" — soft, everyday hoodie for after-walk coffee runs.</p>
+        </div>
+        <div class="card">
+          <span class="emoji">👜</span>
+          <h3>Wet Dog Tote</h3>
+          <p>Sturdy canvas tote for kit, treats, and the inevitable extra towel.</p>
+        </div>
+        <div class="card">
+          <span class="emoji">☕</span>
+          <h3>Sunday Best Behaved Mug</h3>
+          <p>For the coffee you drink while your dog absolutely does not behave.</p>
+        </div>
+        <div class="card">
+          <span class="emoji">🐕</span>
+          <h3>Bandana Collection</h3>
+          <p>Seasonal prints for the actual best-dressed member of the family.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Made for dog people</h2>
+      <p>Every design starts with real dog-walk life — the mud, the joy, the hair on
+         everything. Printed to order in the UK, so nothing is made until someone
+         wants it.</p>
+    </section>
+  </main>
+
+  <footer>
+    &copy; 2026 Muddy Paws Co. · Chessington, Surrey
+  </footer>
+
+  <script>
+    // Placeholder waitlist handler — no backend connected yet.
+    // Replace this with a real endpoint (e.g. a Supabase table insert,
+    // Mailchimp/ConvertKit form action, or Formspree) before launch.
+    document.getElementById('waitlist-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var msg = document.getElementById('waitlist-msg');
+      msg.textContent = "Thanks! (Demo page — connect a real signup backend before launch.)";
+    });
+  </script>
+</body>
+</html>
