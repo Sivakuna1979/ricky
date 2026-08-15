@@ -495,7 +495,13 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           const stops = schedule.filter(s => s.day_of_week === dow).slice().sort((a, b) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
           return (
             <div style={{ background: schedViewDay === 0 ? 'color-mix(in srgb, var(--brand, #f97316) 8%, transparent)' : '#0d1427', border: schedViewDay === 0 ? '1px solid color-mix(in srgb, var(--brand, #f97316) 35%, transparent)' : '1px solid #1e2a45', borderRadius:12, padding:'12px 14px' }}>
-              {stops.length === 0 && (
+              {stops.length === 0 && schedViewDay === 0 && anyLive && (
+                <button onClick={() => document.getElementById('menu-top')?.scrollIntoView({ behavior:'smooth' })}
+                  style={{ width:'100%', textAlign:'left', background:'none', border:'none', padding:0, cursor:'pointer', fontSize:13, color:'#6ee7b7', fontWeight:700 }}>
+                  🔴 Not a scheduled stop today, but we're live right now — tap here to order, pickup ASAP!
+                </button>
+              )}
+              {stops.length === 0 && !(schedViewDay === 0 && anyLive) && (
                 <div style={{ fontSize:13, color:'#6b7280', fontStyle:'italic' }}>Not out on this day 🛌</div>
               )}
               {stops.map((stop, i) => (
