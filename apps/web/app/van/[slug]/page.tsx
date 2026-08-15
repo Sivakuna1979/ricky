@@ -43,7 +43,20 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       .then(r => r.json())
       .then(d => {
         setData(d)
-        setSchedule(Array.isArray(d?.schedule) ? d.schedule : [])
+        const sched = Array.isArray(d?.schedule) ? d.schedule : []
+        setSchedule(sched)
+        // Defaulting to "Today" is a dead end if the van isn't out today —
+        // jump to the nearest upcoming day that actually has a stop instead
+        // of leaving the customer stuck on an empty "no stops" screen.
+        if (sched.length) {
+          const todayHasStops = sched.some((s: any) => s.day_of_week === ((new Date().getDay() + 6) % 7))
+          if (!todayHasStops) {
+            for (let i = 1; i <= 7; i++) {
+              const dow = ((new Date().getDay() + 6 + i) % 7)
+              if (sched.some((s: any) => s.day_of_week === dow)) { setPickupDayOffset(i); break }
+            }
+          }
+        }
         setLoading(false)
       })
       .catch(() => setLoading(false))
