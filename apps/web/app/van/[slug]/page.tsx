@@ -127,6 +127,12 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
     window.open(`https://wa.me/${waNum}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
   }
 
+  // Computed early (via optional chaining on `data` directly, not the
+  // `vans` destructured below) because it's needed above the loading/
+  // not-found guards — referencing a `const` declared further down in the
+  // same component before its declaration throws immediately on every load.
+  const anyLive = data?.vans?.some((v: any) => v.tracking_status === 'live')
+
   // What the customer still needs to fill in — pickup is only required when
   // there's actually something to pick: a scheduled stop, or (for a van
   // that's out unscheduled, e.g. an ad-hoc pitch) currently live on the map.
@@ -200,7 +206,6 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   }
 
   const emoji = TYPE_EMOJI[business.business_type] ?? '🍽️'
-  const anyLive = vans?.some((v: any) => v.tracking_status === 'live')
   const mapsQuery = encodeURIComponent([business.name, business.city, business.postcode].filter(Boolean).join(' '))
   const phone = business.phone || vans?.[0]?.phone
   // WhatsApp needs international digits: 07961... -> 447961...
