@@ -10,11 +10,15 @@ const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 // excludes guest_phone/guest_email — those aren't needed there.
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const admin = await createAdminClient()
-  const { data: order } = await admin
+  const { data: order, error } = await admin
     .from('orders')
     .select('id, order_number, status, pickup_location, pickup_time, checked_in_at, total, created_at, guest_name, order_items(name, quantity), vans(name)')
     .eq('id', params.id)
     .maybeSingle()
+  // A real query error (e.g. a column from a migration that hasn't been run
+  // yet) must never be reported as "not found" — that hides the actual
+  // cause and makes a perfectly real order look like it doesn't exist.
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   return NextResponse.json(order)
 }
