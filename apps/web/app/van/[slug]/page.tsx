@@ -94,7 +94,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const orderViaWhatsApp = async () => {
     const waNum = (data?.business?.phone || data?.vans?.[0]?.phone || '').replace(/[^\d]/g, '').replace(/^0/, '44')
     if (!waNum) return
-    const dayBit = pickupDayOffset === 0 ? 'today' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`
+    const dayBit = pickupStop?.id === 'live' ? '' : (pickupDayOffset === 0 ? 'today' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`)
     const lines = [
       `Hi ${data.business.name}! I'd like to order:`,
       ...cartItems.map((i: any) => `• ${cart[i.id]}x ${i.name} — £${(i.price * cart[i.id]).toFixed(2)}`),
@@ -114,7 +114,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         customer_phone: form.phone || 'via WhatsApp',
         notes: `[WhatsApp order] ${form.notes ?? ''}`.trim(),
         pickup_location: pickupStop?.location_name ?? null,
-        pickup_time: pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`),
+        pickup_time: pickupStop?.id === 'live' ? pickupTime : (pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`)),
         items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         subtotal: cartTotal,
         total: cartTotal,
@@ -124,11 +124,15 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
     window.open(`https://wa.me/${waNum}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
   }
 
-  // What the customer still needs to fill in (pickup only required when the van has stops)
+  // What the customer still needs to fill in — pickup is only required when
+  // there's actually something to pick: a scheduled stop, or (for a van
+  // that's out unscheduled, e.g. an ad-hoc pitch) currently live on the map.
   const hasStops = schedule.length > 0
+  const isLivePickup = pickupStop?.id === 'live'
+  const pickupRequired = hasStops || anyLive
   const missingBits = [
-    hasStops && !pickupStop ? '📍 pickup spot' : null,
-    hasStops && pickupStop && !pickupTime ? '⏰ pickup time' : null,
+    pickupRequired && !pickupStop ? '📍 pickup spot' : null,
+    pickupRequired && pickupStop && !isLivePickup && !pickupTime ? '⏰ pickup time' : null,
     !form.name.trim() ? '👤 your name' : null,
     !form.phone.trim() ? '📞 phone number' : null,
   ].filter(Boolean)
@@ -136,11 +140,11 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const placeOrder = async () => {
     if (missingBits.length) {
       setAttempted(true)
-      document.getElementById(hasStops && !pickupStop ? 'pickup-section' : 'contact-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      document.getElementById(pickupRequired && !pickupStop ? 'pickup-section' : 'contact-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
     setPlacing(true)
-    const pickupDayLabel = pickupDayOffset === 0 ? '' : ` on ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`
+    const pickupDayLabel = isLivePickup || pickupDayOffset === 0 ? '' : ` on ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`
     const pickupNote = pickupStop
       ? `Pickup: ${pickupStop.location_name}${pickupDayLabel}${pickupTime ? ` around ${pickupTime}` : ''}`
       : ''
@@ -155,7 +159,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         customer_phone: form.phone,
         notes: combinedNotes || null,
         pickup_location: pickupStop?.location_name ?? null,
-        pickup_time: pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`),
+        pickup_time: isLivePickup ? pickupTime : (pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`)),
         items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         subtotal: cartTotal,
         total: cartTotal,
@@ -209,7 +213,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
       <div style={{ fontSize:28, fontWeight:900, color:'var(--brand, #f97316)', marginBottom:24 }}>#{orderNum}</div>
       {pickupStop && (
         <div style={{ background:'color-mix(in srgb, var(--brand, #f97316) 10%, transparent)', border:'1px solid color-mix(in srgb, var(--brand, #f97316) 30%, transparent)', borderRadius:12, padding:'12px 20px', marginBottom:16, textAlign:'center' }}>
-          <div style={{ fontSize:13, color:'var(--accent, #fdba74)', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupDayOffset > 0 ? ` · ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}` : ''}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
+          <div style={{ fontSize:13, color:'var(--accent, #fdba74)', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupStop.id !== 'live' && pickupDayOffset > 0 ? ` · ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}` : ''}{pickupTime ? ` · ${pickupStop.id === 'live' ? pickupTime : `around ${pickupTime}`}` : ''}</div>
         </div>
       )}
 
@@ -257,10 +261,10 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
           <span>Total</span><span>£{cartTotal.toFixed(2)}</span>
         </div>
 
-        {/* Pickup day + location + time */}
+        {/* Pickup: live-now option and/or scheduled day + location + time */}
         {(() => {
-          if (!schedule.length) return null
-          const pickupMissing = attempted && (!pickupStop || !pickupTime)
+          if (!schedule.length && !anyLive) return null
+          const pickupMissing = attempted && (!pickupStop || (!isLivePickup && !pickupTime))
           const dayStops = schedule.filter((s: any) => s.day_of_week === selectedPickupDay.dow).slice().sort((a: any, b: any) => String(a.arrival_time).localeCompare(String(b.arrival_time)))
           const genSlots = (stop: any) => {
             // 10-minute slots across the stop's window — always at least the
@@ -285,62 +289,81 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
                   ⚠️ {!pickupStop ? 'Please choose where you\'ll collect your order' : 'Please pick a rough collection time'}
                 </div>
               )}
-              <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>🗓️ Which day?</div>
-              <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:8, marginBottom:12 }}>
-                {pickupDays.map(d => {
-                  const hasStops = schedule.some((s: any) => s.day_of_week === d.dow)
-                  const sel = pickupDayOffset === d.offset
-                  return (
-                    <button key={d.offset} disabled={!hasStops}
-                      onClick={() => { setPickupDayOffset(d.offset); setPickupStop(null); setPickupTime('') }}
-                      style={{ flexShrink:0, padding:'8px 12px', borderRadius:10, cursor: hasStops ? 'pointer' : 'default',
-                        border: sel ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45',
-                        background: sel ? 'color-mix(in srgb, var(--brand, #f97316) 20%, transparent)' : '#0d1427',
-                        color: !hasStops ? '#374151' : sel ? 'var(--brand, #f97316)' : '#9ca3af',
-                        opacity: hasStops ? 1 : 0.5, textAlign:'center' }}>
-                      <div style={{ fontSize:12, fontWeight:800 }}>{d.label}</div>
-                      <div style={{ fontSize:10 }}>{d.dateLabel}</div>
-                    </button>
-                  )
-                })}
-              </div>
-              {dayStops.length === 0 && (
-                <div style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', marginBottom:12 }}>No stops on this day — pick another day above</div>
+
+              {anyLive && (
+                <button onClick={() => { setPickupStop(isLivePickup ? null : { id:'live', location_name:"Wherever we're parked right now — check the map above" }); setPickupTime(isLivePickup ? '' : 'ASAP') }}
+                  style={{ width:'100%', textAlign:'left', padding:'14px 16px', borderRadius:12, marginBottom: schedule.length ? 12 : 0,
+                    border: isLivePickup ? '1px solid #10b981' : '1px solid #1e2a45',
+                    background: isLivePickup ? 'rgba(16,185,129,0.12)' : '#0d1427', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ width:9, height:9, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 6px #10b981', flexShrink:0 }} />
+                  <div>
+                    <div style={{ fontWeight:800, fontSize:14, color: isLivePickup ? '#6ee7b7' : '#fff' }}>We're live right now — order for pickup ASAP</div>
+                    <div style={{ fontSize:12, color:'#9ca3af', marginTop:2 }}>{isLivePickup ? 'Selected — see the map above for our exact spot' : 'Skip the schedule, collect wherever we\'re parked'}</div>
+                  </div>
+                </button>
               )}
-              {dayStops.length > 0 && (
-              <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>📍 Where to pick up?</div>
+
+              {schedule.length > 0 && !isLivePickup && (
+                <>
+                  {anyLive && <div style={{ textAlign:'center', fontSize:12, color:'#6b7280', margin:'12px 0' }}>— or pick a scheduled stop instead —</div>}
+                  <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>🗓️ Which day?</div>
+                  <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:8, marginBottom:12 }}>
+                    {pickupDays.map(d => {
+                      const hasStops = schedule.some((s: any) => s.day_of_week === d.dow)
+                      const sel = pickupDayOffset === d.offset
+                      return (
+                        <button key={d.offset} disabled={!hasStops}
+                          onClick={() => { setPickupDayOffset(d.offset); setPickupStop(null); setPickupTime('') }}
+                          style={{ flexShrink:0, padding:'8px 12px', borderRadius:10, cursor: hasStops ? 'pointer' : 'default',
+                            border: sel ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45',
+                            background: sel ? 'color-mix(in srgb, var(--brand, #f97316) 20%, transparent)' : '#0d1427',
+                            color: !hasStops ? '#374151' : sel ? 'var(--brand, #f97316)' : '#9ca3af',
+                            opacity: hasStops ? 1 : 0.5, textAlign:'center' }}>
+                          <div style={{ fontSize:12, fontWeight:800 }}>{d.label}</div>
+                          <div style={{ fontSize:10 }}>{d.dateLabel}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {dayStops.length === 0 && (
+                    <div style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', marginBottom:12 }}>No stops on this day — pick another day above</div>
+                  )}
+                  {dayStops.length > 0 && (
+                  <div style={{ fontSize:13, fontWeight:800, color:'var(--brand, #f97316)', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>📍 Where to pick up?</div>
+                  )}
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {dayStops.map((stop: any) => {
+                      const sel = pickupStop?.id === stop.id
+                      const slots = sel ? genSlots(stop) : []
+                      return (
+                        <div key={stop.id} style={{ border: sel ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45', borderRadius:12, overflow:'hidden' }}>
+                          <button onClick={() => { setPickupStop(sel ? null : stop); setPickupTime('') }} style={{ width:'100%', padding:'12px 14px', background: sel ? 'color-mix(in srgb, var(--brand, #f97316) 12%, transparent)' : '#0d1427', border:'none', color:'#fff', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
+                            <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${sel ? 'var(--brand, #f97316)' : '#374151'}`, background: sel ? 'var(--brand, #f97316)' : 'transparent', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                              {sel && <div style={{ width:8, height:8, borderRadius:'50%', background:'#fff' }} />}
+                            </div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontWeight:700, fontSize:14 }}>{stop.location_name}</div>
+                              <div style={{ fontSize:12, color:'#6b7280' }}>Van here {stop.arrival_time}–{stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</div>
+                            </div>
+                          </button>
+                          {sel && slots.length > 0 && (
+                            <div style={{ padding:'10px 14px 12px', background:'color-mix(in srgb, var(--brand, #f97316) 5%, transparent)', borderTop:'1px solid color-mix(in srgb, var(--brand, #f97316) 15%, transparent)' }}>
+                              <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', marginBottom:8 }}>ROUGHLY WHAT TIME?</div>
+                              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                                {slots.map(slot => (
+                                  <button key={slot} onClick={() => setPickupTime(pickupTime === slot ? '' : slot)} style={{ padding:'6px 12px', borderRadius:8, border: pickupTime === slot ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45', background: pickupTime === slot ? 'color-mix(in srgb, var(--brand, #f97316) 20%, transparent)' : '#0d1427', color: pickupTime === slot ? 'var(--brand, #f97316)' : '#9ca3af', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                                    {slot}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
               )}
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {dayStops.map((stop: any) => {
-                  const sel = pickupStop?.id === stop.id
-                  const slots = sel ? genSlots(stop) : []
-                  return (
-                    <div key={stop.id} style={{ border: sel ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45', borderRadius:12, overflow:'hidden' }}>
-                      <button onClick={() => { setPickupStop(sel ? null : stop); setPickupTime('') }} style={{ width:'100%', padding:'12px 14px', background: sel ? 'color-mix(in srgb, var(--brand, #f97316) 12%, transparent)' : '#0d1427', border:'none', color:'#fff', textAlign:'left', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
-                        <div style={{ width:20, height:20, borderRadius:'50%', border:`2px solid ${sel ? 'var(--brand, #f97316)' : '#374151'}`, background: sel ? 'var(--brand, #f97316)' : 'transparent', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          {sel && <div style={{ width:8, height:8, borderRadius:'50%', background:'#fff' }} />}
-                        </div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:700, fontSize:14 }}>{stop.location_name}</div>
-                          <div style={{ fontSize:12, color:'#6b7280' }}>Van here {stop.arrival_time}–{stop.departure_time}{stop.notes ? ` · ${stop.notes}` : ''}</div>
-                        </div>
-                      </button>
-                      {sel && slots.length > 0 && (
-                        <div style={{ padding:'10px 14px 12px', background:'color-mix(in srgb, var(--brand, #f97316) 5%, transparent)', borderTop:'1px solid color-mix(in srgb, var(--brand, #f97316) 15%, transparent)' }}>
-                          <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', marginBottom:8 }}>ROUGHLY WHAT TIME?</div>
-                          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                            {slots.map(slot => (
-                              <button key={slot} onClick={() => setPickupTime(pickupTime === slot ? '' : slot)} style={{ padding:'6px 12px', borderRadius:8, border: pickupTime === slot ? '1px solid var(--brand, #f97316)' : '1px solid #1e2a45', background: pickupTime === slot ? 'color-mix(in srgb, var(--brand, #f97316) 20%, transparent)' : '#0d1427', color: pickupTime === slot ? 'var(--brand, #f97316)' : '#9ca3af', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                                {slot}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
             </div>
           )
         })()}
