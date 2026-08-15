@@ -51,7 +51,10 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         if (sched.length) {
           const todayHasStops = sched.some((s: any) => s.day_of_week === ((new Date().getDay() + 6) % 7))
           if (!todayHasStops) {
-            for (let i = 1; i <= 7; i++) {
+            // pickupDays only covers offsets 0-6 (a 7-day window) — must not
+            // pick an offset outside that range or selectedPickupDay becomes
+            // undefined and crashes the page.
+            for (let i = 1; i <= 6; i++) {
               const dow = ((new Date().getDay() + 6 + i) % 7)
               if (sched.some((s: any) => s.day_of_week === dow)) { setPickupDayOffset(i); break }
             }
