@@ -94,6 +94,9 @@ export function OrderManageRow({ order, vanName, isLast, isSuperAdmin }: any) {
             {order.guest_name ? `${order.guest_name} · ` : ''}{vanName || 'Van'} · {new Date(order.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}
           </div>
         </div>
+        {order.checked_in_at && ['pending', 'accepted', 'preparing'].includes(status) && (
+          <span style={{ padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:800, background:'#dcfce7', color:'#166534', flexShrink:0 }}>🚗 Checked in</span>
+        )}
         <span style={{ padding:'3px 12px', borderRadius:20, fontSize:12, fontWeight:700, background:s.bg, color:s.color, flexShrink:0 }}>{status}</span>
         <span style={{ fontWeight:800, fontSize:16, color:'#111', flexShrink:0 }}>£{(order.total ?? 0).toFixed(2)}</span>
       </div>

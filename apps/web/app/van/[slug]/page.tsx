@@ -36,6 +36,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
   const [placing, setPlacing]     = useState(false)
   const [attempted, setAttempted] = useState(false)
   const [orderNum, setOrderNum]   = useState('')
+  const [placedOrderId, setPlacedOrderId] = useState('')
 
   useEffect(() => {
     fetch(`/api/van-profile/${params.slug}`)
@@ -150,7 +151,7 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
     })
     const json = await res.json()
     setPlacing(false)
-    if (res.ok) { setOrderNum(json.order_number ?? json.id?.slice(0,8).toUpperCase() ?? 'OK'); setView('done') }
+    if (res.ok) { setOrderNum(json.order_number ?? json.id?.slice(0,8).toUpperCase() ?? 'OK'); setPlacedOrderId(json.id ?? ''); setView('done') }
     else alert(json.error ?? 'Failed to place order')
   }
 
@@ -197,6 +198,13 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         <div style={{ background:'color-mix(in srgb, var(--brand, #f97316) 10%, transparent)', border:'1px solid color-mix(in srgb, var(--brand, #f97316) 30%, transparent)', borderRadius:12, padding:'12px 20px', marginBottom:16, textAlign:'center' }}>
           <div style={{ fontSize:13, color:'var(--accent, #fdba74)', fontWeight:700 }}>📍 Pick up at {pickupStop.location_name}{pickupDayOffset > 0 ? ` · ${selectedPickupDay.label} ${selectedPickupDay.dateLabel}` : ''}{pickupTime ? ` · around ${pickupTime}` : ''}</div>
         </div>
+      )}
+
+      {placedOrderId && (
+        <a href={`/order/${placedOrderId}`} style={{ width:'100%', maxWidth:340, display:'block', padding:'14px 20px', marginBottom:20, borderRadius:14, background:'#0d1427', border:'1px solid #1e2a45', color:'#fff', textDecoration:'none', textAlign:'center' }}>
+          <div style={{ fontSize:14, fontWeight:800 }}>🚗 Check in when you're on your way</div>
+          <div style={{ fontSize:12, color:'#9ca3af', marginTop:3 }}>Orders take just 5-7 minutes — save this link, tap it as you're leaving</div>
+        </a>
       )}
 
       {/* Track the van live while waiting for the order */}

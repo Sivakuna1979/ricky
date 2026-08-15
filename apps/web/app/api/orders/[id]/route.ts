@@ -4,6 +4,21 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 
+// GET /api/orders/[id] — public, no-login. Backs the customer's own order
+// status page (/order/[id]); the id itself (an unguessable UUID) is the only
+// credential, same trust model as the public receipt page. Deliberately
+// excludes guest_phone/guest_email — those aren't needed there.
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const admin = await createAdminClient()
+  const { data: order } = await admin
+    .from('orders')
+    .select('id, order_number, status, pickup_location, pickup_time, checked_in_at, total, created_at, guest_name, order_items(name, quantity), vans(name)')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  return NextResponse.json(order)
+}
+
 // DELETE /api/orders/[id] — permanently removes an order (and its items,
 // via ON DELETE CASCADE). Super-admin only, for wiping test/junk data
 // before a real launch. Not exposed to ordinary business owners: real

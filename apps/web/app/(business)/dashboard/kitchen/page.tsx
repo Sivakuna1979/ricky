@@ -63,7 +63,14 @@ export default function KitchenDisplayPage() {
       .select('*, order_items(*)')
       .eq('van_id', vid).in('status', PREP_STATUSES)
       .order('created_at', { ascending: true })
-    setOrders(data ?? [])
+    // Checked-in customers are actively on their way (5-7 min out) — bump
+    // them to the front so the fryer starts those first, regardless of how
+    // long ago the order itself was placed.
+    const sorted = [...(data ?? [])].sort((a, b) => {
+      if (!!b.checked_in_at !== !!a.checked_in_at) return a.checked_in_at ? -1 : 1
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    })
+    setOrders(sorted)
   }
 
   useEffect(() => {
@@ -174,10 +181,14 @@ export default function KitchenDisplayPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
                     {orders.map(o => {
                       const mins = elapsedMinutes(o.created_at)
-                      const u = urgency(mins)
+                      const checkedInMins = o.checked_in_at ? elapsedMinutes(o.checked_in_at) : null
+                      const u = o.checked_in_at ? { bg: '#ecfdf5', border: '#10b981', badge: '#10b981' } : urgency(mins)
                       const items = o.order_items ?? []
                       return (
                         <div key={o.id} style={{ background: u.bg, border: `2px solid ${u.border}`, borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column' }}>
+                          {o.checked_in_at && (
+                            <div style={{ fontSize: 12, fontWeight: 800, color: '#059669', marginBottom: 8 }}>🚗 Checked in {checkedInMins < 1 ? 'just now' : `${checkedInMins}m ago`} — cook now!</div>
+                          )}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                             <div>
                               <div style={{ fontWeight: 900, fontSize: 18, color: '#111' }}>#{(o.order_number ?? o.id.slice(0, 8)).toUpperCase()}</div>
