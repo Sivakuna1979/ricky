@@ -42,6 +42,7 @@ for (const worker of [produceVideoWorker, pollUploadsWorker, syncAnalyticsWorker
 }
 
 console.log('YouTube automation worker started. Listening on queues:', Object.values(QUEUE_NAMES).join(', '))
+console.log('Node version:', process.version, '| Redis configured:', !!process.env.REDIS_URL)
 
 // Upload-status polling (~15 min) and analytics sync (hourly) run from
 // this always-on process rather than Vercel Cron, since Vercel's free
