@@ -7,6 +7,15 @@ import { sortCategories } from '@/lib/categoryOrder'
 import { speakAnnouncement } from '@/lib/speak'
 import { shortOrderNumber } from '@/lib/orderNumber'
 
+// Never lose a completed sale to a dropped connection: if the till can't
+// reach the server, the sale is saved here and retried automatically once
+// back online, instead of failing outright.
+const OFFLINE_QUEUE_KEY = 'pos-offline-queue'
+const readOfflineQueue = (): any[] => {
+  try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]') } catch { return [] }
+}
+const writeOfflineQueue = (q: any[]) => { try { localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(q)) } catch {} }
+
 const NAV = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
   { icon: '🚐', label: 'My Vans',   href: '/dashboard/vans' },
@@ -45,9 +54,58 @@ export default function PosPage() {
   const [readyOrders, setReadyOrders] = useState<any[]>([])
   const [handingOver, setHandingOver] = useState<string | null>(null)
   const [voiceOn, setVoiceOn] = useState(true)
+  const [offlineQueue, setOfflineQueue] = useState<any[]>([])
+  const [syncing, setSyncing] = useState(false)
   const channelRef = useRef<any>(null)
   const announcedRef = useRef<Set<string>>(new Set())
   const firstReadyFetchRef = useRef(true)
+  const syncingRef = useRef(false)
+
+  // Retries queued offline sales one at a time, stopping at the first
+  // failure (still offline, or a real server error) and leaving the rest
+  // queued for the next attempt — reads straight from localStorage each
+  // time so it's never working off a stale in-memory copy.
+  const syncOfflineQueue = async () => {
+    if (syncingRef.current) return
+    const queue = readOfflineQueue()
+    if (!queue.length) return
+    syncingRef.current = true
+    setSyncing(true)
+    for (const item of queue) {
+      try {
+        const res = await fetch('/api/orders/pos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item.payload),
+        })
+        if (!res.ok) break
+        const data = await res.json().catch(() => ({}))
+        const remaining = readOfflineQueue().filter(q => q.localId !== item.localId)
+        writeOfflineQueue(remaining)
+        setOfflineQueue(remaining)
+        // Swap the placeholder "Pending sync" row for the real synced order
+        // once it exists, so it's no longer marked offline / receipt-less.
+        setRecentSales(prev => prev.map(s => s.id === item.localId
+          ? { ...s, id: data.id, order_number: data.order_number, guest_name: data.guest_name, created_at: data.created_at ?? s.created_at, offline: false }
+          : s))
+      } catch {
+        break
+      }
+    }
+    syncingRef.current = false
+    setSyncing(false)
+  }
+
+  useEffect(() => {
+    setOfflineQueue(readOfflineQueue())
+    syncOfflineQueue()
+    const onOnline = () => syncOfflineQueue()
+    window.addEventListener('online', onOnline)
+    // Bluetooth tethering can reconnect without ever firing the browser's
+    // online event, so also just retry periodically.
+    const interval = setInterval(syncOfflineQueue, 20000)
+    return () => { window.removeEventListener('online', onOnline); clearInterval(interval) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const voiceOnRef = useRef(true)
   useEffect(() => {
@@ -102,11 +160,37 @@ export default function PosPage() {
     setMenuLoading(true)
     setCart({})
     const supabase = createClient()
-    supabase.from('menu_items').select('*').eq('van_id', vanId).eq('available', true)
-      .order('category').order('name')
-      .then(({ data }) => { setMenuItems(data ?? []); setMenuLoading(false) })
-    supabase.from('menu_deals').select('*, menu_deal_items(menu_item_id)').eq('van_id', vanId).eq('active', true)
-      .then(({ data }) => setDeals((data ?? []).map((d: any) => ({ ...d, itemIds: new Set(d.menu_deal_items.map((di: any) => di.menu_item_id)) }))))
+    const itemsKey = `pos-cache-menu-${vanId}`
+    const dealsKey = `pos-cache-deals-${vanId}`
+    // A weak/no signal (common with the Bluetooth-tethered display setup)
+    // can leave a Supabase query hanging far longer than a cashier can
+    // wait — race it against a timeout and fall back to whatever menu/deals
+    // were last cached, so the till still works with no connection at all.
+    const withTimeout = (p: any, ms = 7000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))])
+
+    withTimeout(supabase.from('menu_items').select('*').eq('van_id', vanId).eq('available', true).order('category').order('name'))
+      .then((res: any) => {
+        if (!res?.data) throw new Error('no data')
+        setMenuItems(res.data)
+        try { localStorage.setItem(itemsKey, JSON.stringify(res.data)) } catch {}
+      })
+      .catch(() => {
+        try { const cached = JSON.parse(localStorage.getItem(itemsKey) || 'null'); if (cached) setMenuItems(cached) } catch {}
+      })
+      .finally(() => setMenuLoading(false))
+
+    withTimeout(supabase.from('menu_deals').select('*, menu_deal_items(menu_item_id)').eq('van_id', vanId).eq('active', true))
+      .then((res: any) => {
+        if (!res?.data) throw new Error('no data')
+        setDeals(res.data.map((d: any) => ({ ...d, itemIds: new Set(d.menu_deal_items.map((di: any) => di.menu_item_id)) })))
+        try { localStorage.setItem(dealsKey, JSON.stringify(res.data)) } catch {}
+      })
+      .catch(() => {
+        try {
+          const cached = JSON.parse(localStorage.getItem(dealsKey) || 'null')
+          if (cached) setDeals(cached.map((d: any) => ({ ...d, itemIds: new Set(d.menu_deal_items.map((di: any) => di.menu_item_id)) })))
+        } catch {}
+      })
   }, [vanId])
 
   // Applies "any N of these for £X" deals to the cart: greedily forms as many
@@ -256,21 +340,29 @@ export default function PosPage() {
   const completeSale = async () => {
     if (!cartLines.length || !vanId) return
     setPlacing(true); setError('')
+    const payload = {
+      van_id: vanId,
+      payment_method: paymentMethod,
+      customer_name: customerName || undefined,
+      customer_email: customerEmail || undefined,
+      served_by: servedBy || undefined,
+      cash_tendered: paymentMethod === 'cash_at_van' ? tendered ?? undefined : undefined,
+      discount_amount: dealPricing.discount || undefined,
+      items: cartLines.map(i => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
+    }
     try {
+      // A weak/no signal can leave this hanging far longer than a cashier
+      // can wait at the counter — cap it so a bad connection falls through
+      // to the offline queue instead of just spinning forever.
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
       const res = await fetch('/api/orders/pos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          van_id: vanId,
-          payment_method: paymentMethod,
-          customer_name: customerName || undefined,
-          customer_email: customerEmail || undefined,
-          served_by: servedBy || undefined,
-          cash_tendered: paymentMethod === 'cash_at_van' ? tendered ?? undefined : undefined,
-          discount_amount: dealPricing.discount || undefined,
-          items: cartLines.map(i => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
-        }),
+        body: JSON.stringify(payload),
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data.error?.formErrors?.join?.(', ') ?? data.error ?? 'Could not complete the sale'); setPlacing(false); return }
       setLastSale({ id: data.id, order_number: data.order_number, total: cartTotal, count: cartCount })
@@ -281,7 +373,20 @@ export default function PosPage() {
       })
       setCart({}); setCustomerName(''); setCustomerEmail(''); setCashTendered('')
     } catch {
-      setError('Network error — please try again')
+      // No connection at all (or too slow to matter) — never lose a
+      // completed sale: queue it locally, keep serving customers, and sync
+      // automatically once back online.
+      const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const queued = [...readOfflineQueue(), { localId, payload, queuedAt: new Date().toISOString() }]
+      writeOfflineQueue(queued)
+      setOfflineQueue(queued)
+      setLastSale({ id: null, order_number: 'Pending sync', total: cartTotal, count: cartCount, offline: true })
+      setRecentSales(s => [{ id: localId, order_number: 'Pending sync', guest_name: customerName || undefined, total: cartTotal, created_at: new Date().toISOString(), source: 'pos', offline: true }, ...s])
+      channelRef.current?.send({
+        type: 'broadcast', event: 'sale_complete',
+        payload: { order_number: 'Pending sync', total: cartTotal, changeDue },
+      })
+      setCart({}); setCustomerName(''); setCustomerEmail(''); setCashTendered('')
     }
     setPlacing(false)
   }
@@ -376,6 +481,16 @@ export default function PosPage() {
                     </div>
                   )}
 
+                  {offlineQueue.length > 0 && (
+                    <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>📴 {offlineQueue.length} sale{offlineQueue.length !== 1 ? 's' : ''} saved offline — will sync automatically once connected</div>
+                      <button onClick={syncOfflineQueue} disabled={syncing}
+                        style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: '#f59e0b', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: syncing ? 0.6 : 1 }}>
+                        {syncing ? 'Syncing…' : '🔄 Sync now'}
+                      </button>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                     <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#111' }}>🧾 Till — {van?.name}</h1>
                     <button onClick={() => setShowSales(v => !v)}
@@ -401,7 +516,7 @@ export default function PosPage() {
                             <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid #f3f4f6' }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>
-                                  #{(s.order_number ?? s.id.slice(0, 8)).toUpperCase()}
+                                  {s.offline ? 'Pending sync' : `#${(s.order_number ?? s.id.slice(0, 8)).toUpperCase()}`}
                                   {s.source === 'pos' && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#0e7490', background: '#ecfeff', padding: '1px 6px', borderRadius: 8 }}>TILL</span>}
                                 </div>
                                 <div style={{ fontSize: 11, color: '#999' }}>
@@ -409,8 +524,9 @@ export default function PosPage() {
                                 </div>
                               </div>
                               <div style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>£{Number(s.total).toFixed(2)}</div>
+                              {s.offline && <span style={{ fontSize: 10, fontWeight: 800, color: '#b45309', whiteSpace: 'nowrap' }}>📴 pending</span>}
                               <a href={`/receipt/${s.id}`} target="_blank" rel="noopener noreferrer"
-                                style={{ padding: '6px 12px', borderRadius: 8, background: '#0e7490', color: '#fff', fontWeight: 700, fontSize: 11, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                                style={{ padding: '6px 12px', borderRadius: 8, background: '#0e7490', color: '#fff', fontWeight: 700, fontSize: 11, textDecoration: 'none', whiteSpace: 'nowrap', opacity: s.offline ? 0.4 : 1, pointerEvents: s.offline ? 'none' : 'auto' }}>
                                 🖨️ Receipt
                               </a>
                             </div>
@@ -467,10 +583,10 @@ export default function PosPage() {
                 <div style={{ width: 340, flexShrink: 0, background: '#fff', borderRadius: 14, padding: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', position: 'sticky', top: 76 }}>
                   {lastSale ? (
                     <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                      <div style={{ fontSize: 40, marginBottom: 10 }}>🍳</div>
-                      <div style={{ fontWeight: 800, fontSize: 17, color: '#059669', marginBottom: 4 }}>Payment taken — now preparing</div>
-                      <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>Order #{lastSale.order_number}</div>
-                      <div style={{ fontSize: 11, color: '#999', marginBottom: 2 }}>It'll show on the Kitchen screen, then land in "Ready for Pickup" above once made.</div>
+                      <div style={{ fontSize: 40, marginBottom: 10 }}>{lastSale.offline ? '📴' : '🍳'}</div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: lastSale.offline ? '#b45309' : '#059669', marginBottom: 4 }}>{lastSale.offline ? 'Saved offline — payment taken' : 'Payment taken — now preparing'}</div>
+                      <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>{lastSale.offline ? 'No connection right now' : `Order #${lastSale.order_number}`}</div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 2 }}>{lastSale.offline ? 'This sale will sync to the kitchen and your records automatically once back online.' : 'It\'ll show on the Kitchen screen, then land in "Ready for Pickup" above once made.'}</div>
                       <div style={{ fontSize: 22, fontWeight: 900, color: '#111', margin: '10px 0' }}>£{lastSale.total.toFixed(2)}</div>
                       {lastSale.id && (
                         <a href={`/receipt/${lastSale.id}`} target="_blank" rel="noopener noreferrer"
