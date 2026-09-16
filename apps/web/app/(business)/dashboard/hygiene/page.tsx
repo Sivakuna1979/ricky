@@ -77,6 +77,7 @@ const NAV = [
   { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene', active: true },
   { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
   { icon: '💬', label: 'WhatsApp',  href: '/dashboard/whatsapp' },
+  { icon: '📣', label: 'Marketing', href: '/dashboard/marketing' },
   { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings' },
 ]
 

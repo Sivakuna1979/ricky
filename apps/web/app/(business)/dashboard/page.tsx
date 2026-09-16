@@ -138,6 +138,7 @@ export default async function BusinessDashboardPage() {
     { icon: '💳', label: 'My Plan',      href: '/dashboard/billing',  active: false },
     { icon: '🗺️', label: 'Tracking',     href: '/dashboard/tracking', active: false },
     { icon: '💬', label: 'WhatsApp',     href: '/dashboard/whatsapp', active: false },
+    { icon: '📣', label: 'Marketing', href: '/dashboard/marketing' },
     { icon: '⚙️', label: 'Settings',     href: '/dashboard/settings', active: false },
   ]
 

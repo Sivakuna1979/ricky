@@ -26,6 +26,7 @@ const NAV = [
   { icon: '📋', label: 'Menu',      href: '/dashboard/menu' },
   { icon: '🧼', label: 'Hygiene',   href: '/dashboard/hygiene' },
   { icon: '💬', label: 'WhatsApp',  href: '/dashboard/whatsapp' },
+  { icon: '📣', label: 'Marketing', href: '/dashboard/marketing' },
   { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings' },
 ]
 
