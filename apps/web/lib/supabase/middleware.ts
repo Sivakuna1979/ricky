@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -27,9 +28,11 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
 
-  // Protect /admin/* — ONLY sivakuna@icloud.com
+  // Protect /admin/* — this is the actual, single security boundary for the
+  // whole admin area (it runs before any /admin/* page renders); individual
+  // page-level checks are a secondary safety net, not the primary gate.
   if (path.startsWith('/admin')) {
-    if (!user || user.email !== 'sivakuna@icloud.com') {
+    if (!user || !(await isSuperAdmin(supabase, user))) {
       const url = request.nextUrl.clone()
       url.pathname = !user ? '/login' : '/dashboard'
       const redirectResponse = NextResponse.redirect(url)

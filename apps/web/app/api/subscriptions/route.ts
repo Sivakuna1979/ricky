@@ -1,4 +1,15 @@
 // @ts-nocheck
+// ============================================================================
+// ⚠️ INACTIVE / INCOMPLETE — real FoodTaxi subscription billing (the correct
+// payment model: FoodTaxi charges businesses directly, no Connect). Not
+// called from any frontend page today — the Billing dashboard page only
+// shows a static "email us to upgrade" link. Also requires
+// subscription_plans.stripe_price_id_monthly/yearly, which were seeded NULL
+// and never set — this route will 500 with "Stripe price not configured"
+// until those exist in Stripe and are saved here. This is the intended
+// target for real subscription billing in a future phase — do not build
+// against it yet (Phase A is stabilisation only).
+// ============================================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Stripe from 'stripe'

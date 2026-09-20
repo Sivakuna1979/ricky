@@ -1,4 +1,13 @@
 // @ts-nocheck
+// ============================================================================
+// ✅ ACTIVE — the only real, working Stripe payment flow in FoodTaxi today.
+// Simple mode Stripe Checkout (no Connect): FoodTaxi charges its own flat
+// £29.99 booking fee to a van owner for a confirmed event pitch, straight
+// into FoodTaxi's own Stripe account. This is the working reference pattern
+// for future subscription billing — same "FoodTaxi charges the business
+// directly" model, just a one-off fee instead of a recurring subscription.
+// Do not change this flow without explicit approval.
+// ============================================================================
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/server'

@@ -2,6 +2,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'My Account — FoodTaxi' }
@@ -12,7 +13,7 @@ export default async function AccountPage() {
   if (!user) redirect('/login')
 
   // Super admin shouldn't land here
-  if (user.email === 'sivakuna@icloud.com') redirect('/admin/dashboard')
+  if (await isSuperAdmin(supabase, user)) redirect('/admin/dashboard')
 
   const { data: profile } = await supabase
     .from('users').select('full_name, role, email').eq('auth_id', user.id).maybeSingle()

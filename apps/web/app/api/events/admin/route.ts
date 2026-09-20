@@ -1,14 +1,17 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
+// Used only as the contact email recorded on FoodTaxi-sourced events below —
+// not an authorization check (see isSuperAdmin for that).
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 
 // FoodTaxi staff add events sourced around the UK straight onto the van board.
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+  if (!(await isSuperAdmin(supabase, user))) {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   }
 

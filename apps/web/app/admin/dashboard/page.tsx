@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,9 +38,9 @@ export default async function AdminDashboardPage() {
   const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
   const user = session?.user ?? null
 
-  // Guard: only sivakuna@icloud.com can access admin
+  // Secondary guard (middleware.ts is the primary one for the whole /admin tree)
   if (!user) return redirect('/login')
-  if (user.email !== 'sivakuna@icloud.com') return redirect('/dashboard')
+  if (!(await isSuperAdmin(supabase, user))) return redirect('/dashboard')
 
   const stats = await getStats(supabase).catch(() => ({ totalUsers: 0, totalBusinesses: 0, totalOrders: 0, recentUsers: [], recentBusinesses: [] }))
 

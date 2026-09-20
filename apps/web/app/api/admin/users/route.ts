@@ -1,11 +1,12 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 async function requireSuperAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== 'sivakuna@icloud.com') return null
+  if (!(await isSuperAdmin(supabase, user))) return null
   return user
 }
 

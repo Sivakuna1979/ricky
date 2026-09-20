@@ -1,8 +1,14 @@
 // @ts-nocheck
-// One-shot endpoint: creates/repairs howeandcovan45@gmail.com in Supabase Auth + profile table
-// Only callable by sivakuna@icloud.com
+// One-shot endpoint: creates/repairs a user's Supabase Auth + profile row —
+// can reset any account's password, confirm any email, or create a new
+// account with an attacker-chosen role. PHASE A SECURITY FIX: this had no
+// authorization check at all despite the comment claiming it was admin-only
+// — anyone could call it unauthenticated. Now requires a signed-in super
+// admin, same as every other admin endpoint.
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 const URL  = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -13,7 +19,12 @@ function admin() {
 }
 
 export async function POST(req: NextRequest) {
-  // Verify caller is super admin via Authorization header or body token
+  const supabase = await createClient()
+  const { data: { user: caller } } = await supabase.auth.getUser()
+  if (!(await isSuperAdmin(supabase, caller))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
+
   const body = await req.json().catch(() => ({}))
   const targetEmail = body.email ?? 'howeandcovan45@gmail.com'
   const tempPassword = body.password ?? 'FoodTaxi2025!'

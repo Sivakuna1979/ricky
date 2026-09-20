@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { waitUntil } from '@vercel/functions'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export const maxDuration = 300
@@ -211,7 +211,7 @@ async function finishDiscovery(admin: any, id: string, events: any, raw: string,
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+  if (!(await isSuperAdmin(supabase, user))) {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   }
 
@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+  if (!(await isSuperAdmin(supabase, user))) {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   }
   const id = req.nextUrl.searchParams.get('id')

@@ -3,11 +3,10 @@
 // GET → { role, redirect, profileExists, sessionExists, email }
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
-
-function destFor(role: string, email: string): string {
-  if (email === SUPER_ADMIN_EMAIL || role === 'super_admin') return '/admin'
+function destFor(isAdmin: boolean, role: string): string {
+  if (isAdmin) return '/admin'
   if (role === 'business_owner' || role === 'business_admin' || role === 'owner') return '/business/dashboard'
   return '/account'
 }
@@ -20,8 +19,7 @@ export async function GET() {
     return NextResponse.json({ sessionExists: false, error: 'No session' }, { status: 401 })
   }
 
-  // Super admin is determined by email only — never trust DB for this
-  if (user.email === SUPER_ADMIN_EMAIL) {
+  if (await isSuperAdmin(supabase, user)) {
     return NextResponse.json({
       sessionExists: true, profileExists: true,
       role: 'super_admin', email: user.email, redirect: '/admin',
@@ -53,6 +51,6 @@ export async function GET() {
     profileExists,
     role,
     email: user.email,
-    redirect: destFor(role, user.email ?? ''),
+    redirect: destFor(false, role),
   })
 }

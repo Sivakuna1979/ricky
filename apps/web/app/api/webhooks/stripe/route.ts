@@ -1,4 +1,16 @@
 // @ts-nocheck
+// ============================================================================
+// Signature-verified Stripe webhook. Handler-by-handler status:
+//   ✅ checkout.session.completed (kind === 'event_booking_fee') — ACTIVE,
+//      confirms the £29.99 event booking fee from /api/events/pay.
+//   ⚠️ payment_intent.succeeded / payment_intent.payment_failed — dead in
+//      practice: only ever created by the inactive /api/payments/create-intent
+//      (Stripe Connect experiment). Harmless to leave; nothing calls
+//      create-intent today so these never fire.
+//   ⚠️ customer.subscription.created/updated/deleted — for the inactive
+//      /api/subscriptions route. Will become active once real subscription
+//      billing (Phase B) is wired up; do not remove.
+// ============================================================================
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/server'

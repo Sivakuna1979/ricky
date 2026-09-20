@@ -1,8 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 // All event communication stays inside FoodTaxi.
 // Van owners authenticate a thread with the email they applied with;
@@ -11,7 +10,7 @@ const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 async function isStaff() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  return user?.email === SUPER_ADMIN_EMAIL
+  return isSuperAdmin(supabase, user)
 }
 
 async function canAccess(admin: any, application_id: string, email: string | null) {

@@ -1,8 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 // GET — business owner sees only their connection STATUS (no credentials,
 // no technical ids). Setup itself is done by FoodTaxi staff via /api/admin.
@@ -50,7 +49,7 @@ export async function GET() {
 async function requireStaff() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+  if (!(await isSuperAdmin(supabase, user))) {
     return { error: NextResponse.json({ error: 'Not authorized.' }, { status: 403 }) }
   }
   return {}

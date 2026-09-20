@@ -1,8 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 // Verify the signed-in user owns (or is admin for) the given van.
 // Returns { supabase } on success, or { error } as a NextResponse to return early.
@@ -13,7 +12,7 @@ async function authorizeVan(vanId: string) {
     return { error: NextResponse.json({ error: 'Please sign in to edit the schedule.' }, { status: 401 }) }
   }
 
-  if (user.email === SUPER_ADMIN_EMAIL) return { supabase }
+  if (await isSuperAdmin(supabase, user)) return { supabase }
 
   // my_van_ids() is the database's own ownership function (SECURITY DEFINER):
   // vans owned by my businesses + vans I'm active staff on. Same rule as RLS.

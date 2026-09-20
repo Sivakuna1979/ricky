@@ -2,7 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
+// Used as the outreach signature/reply-to address below — not an
+// authorization check (see isSuperAdmin for that).
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 
 function emailBody(e: any) {
@@ -28,7 +31,7 @@ ${SUPER_ADMIN_EMAIL}`
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+  if (!(await isSuperAdmin(supabase, user))) {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   }
 

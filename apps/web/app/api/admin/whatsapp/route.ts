@@ -1,14 +1,13 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 // Staff-only overview: pending requests, existing channels, all businesses+vans.
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+  if (!(await isSuperAdmin(supabase, user))) {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   }
 

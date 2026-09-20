@@ -1,8 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 // GET /api/orders/[id] — public, no-login. Backs the customer's own order
 // status page (/order/[id]); the id itself (an unguessable UUID) is the only
@@ -31,10 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
-
-  const { data: userData } = await supabase.from('users').select('role').eq('auth_id', user.id).maybeSingle()
-  if (user.email !== SUPER_ADMIN_EMAIL && userData?.role !== 'super_admin') {
+  if (!(await isSuperAdmin(supabase, user))) {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   }
 

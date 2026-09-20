@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 export async function POST(request: NextRequest) {
   const { email, password } = await request.json()
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 401 })
   }
 
-  const dest = data.user?.email === 'sivakuna@icloud.com' ? '/admin/dashboard' : '/dashboard'
+  const dest = (await isSuperAdmin(supabase, data.user)) ? '/admin/dashboard' : '/dashboard'
   const response = NextResponse.redirect(new URL(dest, request.url))
 
   cookiesToSet.forEach(({ name, value, options }) => {

@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
 const ALLOWED_STATUS = ['pending', 'accepted', 'preparing', 'ready', 'collected', 'cancelled']
 const ALLOWED_PAYMENT = ['cash_at_van', 'card_at_van']
 
@@ -61,7 +61,7 @@ export async function PUT(req: NextRequest) {
       .single()
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    if (user.email !== SUPER_ADMIN_EMAIL) {
+    if (!(await isSuperAdmin(supabase, user))) {
       const { data: myVans } = await supabase.rpc('my_van_ids')
       const ids = (myVans ?? []).map((v: any) => (typeof v === 'string' ? v : v.my_van_ids ?? v.id))
       if (!ids.includes(order.van_id)) {

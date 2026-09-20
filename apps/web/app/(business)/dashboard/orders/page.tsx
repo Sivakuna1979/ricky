@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { OrderManageRow } from '@/components/orders/OrderManageRow'
 import { WhatsAppImport } from '@/components/orders/WhatsAppImport'
 import { NewOrderWatcher } from '@/components/orders/NewOrderWatcher'
+import { isSuperAdmin as checkSuperAdmin } from '@/lib/isSuperAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,19 +32,13 @@ const STATUS_COLORS = {
   cancelled:  { bg:'#fee2e2', color:'#991b1b' },
 }
 
-const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
-
 export default async function OrdersPage() {
   const supabase = await createClient()
   const { data: { user }, error: userErr } = await supabase.auth.getUser()
   if (userErr || !user) redirect('/login')
 
   let { data: userData } = await supabase.from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
-  // Match either the known admin email or the DB role directly (whichever
-  // this account actually has) — RLS itself only ever checks the role, so
-  // relying on email alone could silently disagree with what the database
-  // will actually allow.
-  const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL || userData?.role === 'super_admin'
+  const isSuperAdmin = await checkSuperAdmin(supabase, user)
 
   let biz: any = null
   try {
