@@ -151,6 +151,7 @@ export default async function BusinessDashboardPage() {
     { icon: '🧼', label: 'Hygiene',      href: '/dashboard/hygiene',  active: false },
     { icon: '🗓️', label: 'Schedule',     href: '/dashboard/schedule', active: false },
     { icon: '📋', label: 'Menu',         href: '/dashboard/menu',     active: false },
+    { icon: '🤖', label: 'FoodTaxi AI',  href: '/dashboard/ai',       active: false },
     { icon: '🚐', label: 'My Vans',      href: '/dashboard/vans',     active: false },
     { icon: '📦', label: 'Stock',        href: '/dashboard/stock',    active: false },
     { icon: '🚚', label: 'Suppliers',    href: '/dashboard/suppliers',active: false },
@@ -257,6 +258,16 @@ export default async function BusinessDashboardPage() {
                 </div>
               </div>
             )}
+
+            {/* FoodTaxi AI */}
+            <a href="/dashboard/ai" style={{ display:'flex', alignItems:'center', gap:14, background:'linear-gradient(135deg,#111827,#374151)', borderRadius:14, padding:'16px 20px', marginBottom:20, textDecoration:'none', boxShadow:'0 2px 8px rgba(17,24,39,0.25)' }}>
+              <span style={{ fontSize:28 }}>🤖</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:800, fontSize:14, color:'#fff' }}>Ask FoodTaxi AI</div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,0.65)', marginTop:2 }}>"How are we doing today?" · "What needs my attention?"</div>
+              </div>
+              <span style={{ color:'#fff', fontSize:18 }}>→</span>
+            </a>
 
             <OperationsSummary />
 

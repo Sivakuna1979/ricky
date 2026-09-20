@@ -176,6 +176,21 @@ Existed since `20240001`, RLS already correct (`user_id = auth_user_id()`), neve
 
 ---
 
+## FoodTaxi AI (Phase E)
+
+### `ai_conversations` 🟢
+One row per chat thread. `business_id` + `user_id` — personal to the person who had it (same pattern as `notifications`), not shared across a business's staff. RLS: `user_id = auth_user_id()`.
+
+### `ai_messages` 🟢
+`role` (`user`/`assistant`), `content` (text), `tool_calls` (jsonb — tool name, the validated arguments actually executed, and a truncated result summary; never hidden reasoning, never a full raw tool payload). RLS via the parent conversation's `user_id`.
+
+### `ai_pending_actions` 🟢
+Server-controlled write-action proposals (currently only `create_purchase_order`). `status`: `PENDING → CONFIRMED → EXECUTED`, or `EXPIRED`/`CANCELLED`/`FAILED`. Claude can only ever create a `PENDING` row (via the `propose_purchase_order` tool); only an authenticated user's own `POST /api/ai/actions/[id]/confirm` can advance it, and that route's `UPDATE ... WHERE status = 'PENDING'` is what makes confirmation exactly-once (see baseline doc §56). RLS: `user_id = auth_user_id()`.
+
+**No `ai_usage` or `ai_tool_runs` tables** — usage is rate-limited by counting `ai_messages` directly, and tool-call records live in `ai_messages.tool_calls` rather than a separate table, since they're one-to-one with the message that produced them.
+
+---
+
 ## Ownership / tenant isolation summary
 
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).
