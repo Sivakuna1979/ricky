@@ -17,6 +17,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ex
     .from('users').select('id, role').eq('auth_id', user.id).maybeSingle()
 
   let business: any = null
+  let isStaffViewer = false
   try {
     if (userData?.id) {
       const { data: b } = await supabase
@@ -24,6 +25,20 @@ export default async function BillingPage({ searchParams }: { searchParams: { ex
         .select('*, subscriptions(status, trial_ends_at, current_period_end, grandfathered, cancelled_at, stripe_subscription_id)')
         .eq('owner_id', userData.id).maybeSingle()
       business = b
+    }
+    // Phase C: a staff account has no owned business, but still needs to
+    // see (read-only) why the dashboard sent them here if the owner's
+    // subscription has lapsed — see middleware.ts.
+    if (!business && userData?.id) {
+      const { data: staffRow } = await supabase.from('staff').select('business_id').eq('user_id', userData.id).eq('is_active', true).limit(1).maybeSingle()
+      if (staffRow?.business_id) {
+        const { data: b } = await supabase
+          .from('businesses')
+          .select('*, subscriptions(status, trial_ends_at, current_period_end, grandfathered, cancelled_at, stripe_subscription_id)')
+          .eq('id', staffRow.business_id).maybeSingle()
+        business = b
+        isStaffViewer = !!b
+      }
     }
     if (!business) { const { data: r } = await supabase.rpc('get_my_business'); if (r) business = r }
   } catch (_e) {}
@@ -45,6 +60,10 @@ export default async function BillingPage({ searchParams }: { searchParams: { ex
     { icon: '🧾', label: 'POS',        href: '/dashboard/pos',      active: false },
     { icon: '🍳', label: 'Kitchen',    href: '/dashboard/kitchen',  active: false },
     { icon: '📋', label: 'Menu',       href: '/dashboard/menu',     active: false },
+    { icon: '📦', label: 'Stock',      href: '/dashboard/stock',    active: false },
+    { icon: '🚚', label: 'Suppliers',  href: '/dashboard/suppliers',active: false },
+    { icon: '👥', label: 'Team',       href: '/dashboard/team',     active: false },
+    { icon: '🔧', label: 'Fleet',      href: '/dashboard/fleet',    active: false },
     { icon: '📈', label: 'Analytics',  href: '/dashboard/analytics',active: false },
     { icon: '💳', label: 'My Plan',    href: '/dashboard/billing',  active: true  },
     { icon: '🎪', label: 'Events',     href: '/van/events',         active: false },
@@ -142,7 +161,13 @@ export default async function BillingPage({ searchParams }: { searchParams: { ex
               </div>
             </div>
 
-            {!hasAccess && (
+            {!hasAccess && isStaffViewer && (
+              <div style={{ background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:12, padding:'14px 18px', marginBottom:20, color:'#991b1b', fontSize:13, fontWeight:600 }}>
+                This business's FoodTaxi subscription has ended. Only the business owner can reactivate it — please contact them.
+              </div>
+            )}
+
+            {!hasAccess && !isStaffViewer && (
               <div style={{ background:'linear-gradient(135deg,#f97316,#dc2626)', borderRadius:14, padding:'24px', color:'#fff', marginBottom:20 }}>
                 <div style={{ fontWeight:800, fontSize:18, marginBottom:8 }}>
                   {sub ? 'Reactivate your FoodTaxi subscription' : 'Start your free trial'}
@@ -156,7 +181,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ex
               </div>
             )}
 
-            {sub?.grandfathered && (
+            {sub?.grandfathered && !isStaffViewer && (
               <div style={{ background:'#fff', borderRadius:14, padding:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:20 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:'#111', marginBottom:8 }}>Want to start real billing anyway?</div>
                 <p style={{ fontSize:13, color:'#666', margin:'0 0 16px' }}>
@@ -166,7 +191,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ex
               </div>
             )}
 
-            {(hasAccess || hasSubscribedBefore) && !!sub?.stripe_subscription_id && !sub?.grandfathered && (
+            {(hasAccess || hasSubscribedBefore) && !!sub?.stripe_subscription_id && !sub?.grandfathered && !isStaffViewer && (
               <div style={{ background:'#fff', borderRadius:14, padding:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:20 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:'#111', marginBottom:8 }}>Manage your subscription</div>
                 <p style={{ fontSize:13, color:'#666', margin:'0 0 16px' }}>

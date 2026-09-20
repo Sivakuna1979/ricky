@@ -68,10 +68,20 @@ export async function updateSession(request: NextRequest) {
     if (!(await isSuperAdmin(supabase, user))) {
       const { data: userData } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
       if (userData?.id) {
-        const { data: business } = await supabase
-          .from('businesses').select('id').eq('owner_id', userData.id).maybeSingle()
-        if (business?.id) {
-          const sub = await getSubscriptionState(supabase, business.id)
+        let businessId: string | null = null
+        const { data: owned } = await supabase.from('businesses').select('id').eq('owner_id', userData.id).maybeSingle()
+        if (owned?.id) {
+          businessId = owned.id
+        } else {
+          // Phase C: a staff account has no owned business, but the
+          // subscription still belongs to the business they work for — a
+          // lapsed owner subscription must gate staff dashboard access too
+          // (Phase C31: staff tools are covered by the same subscription).
+          const { data: staffRow } = await supabase.from('staff').select('business_id').eq('user_id', userData.id).eq('is_active', true).limit(1).maybeSingle()
+          businessId = staffRow?.business_id ?? null
+        }
+        if (businessId) {
+          const sub = await getSubscriptionState(supabase, businessId)
           if (!computeHasAccess(sub)) {
             const url = request.nextUrl.clone()
             url.pathname = '/dashboard/billing'

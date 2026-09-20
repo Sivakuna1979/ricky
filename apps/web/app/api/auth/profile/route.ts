@@ -5,9 +5,10 @@ import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
+const STAFF_ROLES = ['business_owner', 'business_admin', 'owner', 'van_manager', 'driver', 'staff']
 function destFor(isAdmin: boolean, role: string): string {
   if (isAdmin) return '/admin'
-  if (role === 'business_owner' || role === 'business_admin' || role === 'owner') return '/business/dashboard'
+  if (STAFF_ROLES.includes(role)) return '/business/dashboard'
   return '/account'
 }
 
@@ -43,6 +44,14 @@ export async function GET() {
     }).select('id, role').maybeSingle()
     profile = created
     profileExists = false // it was missing, now created
+  }
+
+  // First-login acceptance for an invited Phase C staff member (C16) — the
+  // account and `staff` row already exist from the invite; this just marks
+  // that they've actually signed in and set their password.
+  if (profile?.id) {
+    const admin = await createAdminClient()
+    await admin.from('staff').update({ joined_at: new Date().toISOString() }).eq('user_id', profile.id).is('joined_at', null)
   }
 
   const role = profile?.role ?? 'customer'

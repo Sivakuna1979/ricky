@@ -318,3 +318,191 @@ orders. Not built; flagged for a future phase.
    events to (it already receives `checkout.session.completed` for the
    £29.99 event flow, so this is normally just confirming the event types
    are enabled on that same endpoint in the Stripe Dashboard).
+
+---
+
+## 15. Business Operations (Phase C)
+
+**Same subscription, no add-ons.** All of §16–§24 below are covered by the
+one £19.99/month FoodTaxi Business subscription — nothing here is gated by
+a separate plan or add-on.
+
+### 16. Stock architecture
+
+`stock_items` (catalogue, no hard-coded products) → `stock_locations`
+(warehouse/van/other) → `stock_levels` (quantity **per location** — this is
+why a transfer or a per-van "low stock" view is possible at all).
+`stock_movements` is an append-only ledger; the only thing that ever
+changes `stock_levels` is `apply_stock_movement()`, a `SECURITY DEFINER`
+Postgres function that row-locks the level, records
+`previous_quantity`/`new_quantity`, and inserts the movement row —
+atomically, so two concurrent writes (two staff recording wastage at once,
+a retried webhook) can never lose an update. `REVOKE`d from `authenticated`/
+`anon` — only callable from server routes using the service-role client,
+after that route has already checked the caller's permission.
+
+### 17. Stock movement rules
+
+Movement types: `PURCHASE`, `TRANSFER_IN`, `TRANSFER_OUT`, `SALE`,
+`WASTAGE`, `ADJUSTMENT`, `RETURN`. A transfer is always a linked
+`TRANSFER_OUT`/`TRANSFER_IN` pair sharing a `reference_id` — never a single
+row that silently moves quantity. Every write is auditable via
+`stock_movements` (business-scoped, read-only for owners/staff via RLS).
+
+### 18. Automatic stock deduction (`lib/stockDeduction.ts`)
+
+**Deduction point: order status → `collected`**, via the single existing
+`PATCH /api/orders/[id]/status` route every channel (online, POS, WhatsApp)
+already goes through — not order creation (could be cancelled before
+anything leaves the van) and not payment (POS cash sales have no separate
+payment event). Entirely optional per business: no `menu_stock_components`
+rows for a menu item, or no `stock_locations` row for that van, means
+nothing happens — it must never block fulfilling an order.
+
+**Idempotency:** `orders.stock_deducted_at` / `stock_restored_at` are
+compare-and-set guards enforced by the `UPDATE ... WHERE ... IS NULL`
+clause at the database level (not an application-level check-then-act,
+which would have a race window). A retried webhook, a repeated offline-POS
+sync, or the same status transition firing twice all no-op safely.
+
+**Restoration policy:** cancelling an order after its stock was deducted
+creates a `RETURN` movement that puts back exactly what was taken —
+guarded the same way, so a second cancel or a cancel that never actually
+deducted anything is also a safe no-op.
+
+### 19. Wastage
+
+`wastage_records` (reason/quantity/cost/location/staff/notes) + an
+automatic `WASTAGE` movement. Today/week/month totals are computed
+server-side in `GET /api/wastage`.
+
+### 20. Suppliers & purchase orders
+
+`supplier_records` (existed since the initial schema, confirmed unused by
+any code before Phase C) is the real supplier directory now — extended
+with `website`/`account_reference`/`is_active`, not duplicated into a new
+table. `supplier_products` links a supplier to a `stock_item` with cost/
+pack-size/preferred. `purchase_orders` states: `DRAFT → ORDERED →
+PARTIALLY_RECEIVED/RECEIVED`, or `CANCELLED` (enforced server-side, not
+just in the UI). Receiving a delivery (`POST
+/api/purchase-orders/[id]/receive`) increases stock via
+`apply_stock_movement()` (`PURCHASE`) and updates
+`supplier_products.latest_cost`. Does **not** auto-create a hygiene
+delivery-check record — those stay a separate, unrelated workflow; nothing
+is duplicated between them.
+
+### 21. Staff & permissions
+
+**Reused, not rebuilt:** the `staff` table has existed since the initial
+schema and was already UNIONed into `my_van_ids()` — Phase C activates it
+rather than building a parallel system. Its old
+`UNIQUE(business_id, user_id)` constraint (safe to drop — nothing had ever
+written to the table) is gone, so one person can have several `staff` rows,
+one per assigned van; a single row with `van_id = NULL` means "all vans",
+which `my_van_ids()` was extended to understand (purely additive — every
+case it granted before, it still grants identically).
+
+**Roles:** `OWNER` (implicit — `businesses.owner_id`, never a `staff` row,
+always has every permission), `BUSINESS_ADMIN`, `VAN_MANAGER`, `DRIVER`,
+`STAFF`. `SUPER_ADMIN` stays platform-level and entirely separate (handled
+by `lib/isSuperAdmin.ts`, untouched by any of this).
+
+**Central permissions architecture:** `lib/permissions.ts` (the
+role → permission map, one place, not scattered `if (role === ...)` checks)
++ `lib/staffContext.ts` (`getStaffContext()` resolves who the caller is —
+owner or which `staff` role/vans — from their session, never from a
+client-supplied `business_id`). Every Phase C write route calls
+`hasPermission(ctx.role, '...')` before writing.
+
+**RLS vs API split (deliberate, documented):** every new table's RLS
+policy is a coarse tenant boundary (`my_business_ids()` OR
+`my_staff_business_ids()` OR `is_super_admin()`) — any active staff role
+can *see* these rows. *Which* actions a role may *take* is enforced in the
+API layer, not by per-role RLS policies (that would mean 15+ tables × 5
+roles of policies for no real safety gain, since the API layer already
+gates every write). This mirrors how `/admin/*` routes already work.
+**Known simplification:** RLS visibility is business-wide, not narrowed to
+a van-restricted staff member's assigned vans, for the new operational
+tables (shifts, vehicles, etc.) — e.g. a driver assigned to one van can
+still *see* another van's shift list, though they can't *act* on business
+functions their role lacks permission for. Not a tenant-isolation gap
+(never crosses businesses); a candidate for tightening later.
+
+**Invitations (`app/api/staff/route.ts`):** uses Supabase Auth's own
+`inviteUserByEmail` — an unconfirmed auth user is created and emailed a
+secure link to set their own password. No shared or hardcoded password is
+ever created (unlike `/api/admin/fix-user`'s default-password pattern,
+deliberately not reused here). `staff.joined_at` is set on the invited
+person's first successful login (hooked into the existing
+`/api/auth/profile` auto-provision flow).
+
+**Subscription gate now covers staff too:** the Phase B middleware gate
+originally only checked the *owner's* business. Phase C extended it —
+`middleware.ts` now also resolves a staff account's employer business and
+gates on that business's subscription, since Phase C features are covered
+by the same subscription (§31 in the original brief). A staff account
+whose employer's subscription has lapsed sees a read-only message on
+`/dashboard/billing` ("contact your business owner") rather than the
+owner's Start/Manage actions.
+
+### 22. Shifts & timesheets
+
+`shifts` (scheduled) and `time_entries` (actual clock-in/out) are separate
+— a shift is a plan, a time entry is what happened. Clock in/out is
+available to any active staff account for their own time (not
+permission-gated — it's their own attendance, not a management action).
+Manual corrections (`PATCH /api/time-entries/[id]`) require
+`manage_shifts` and are audit-logged with the reason.
+
+### 23. Vehicles & equipment
+
+`vehicle_details` is a **1:1 extension of `vans`** (`van_id` is its primary
+key) — it does not duplicate `vans.registration_plate` or create a second
+vehicle identity. `vehicle_maintenance` and `equipment_maintenance` both
+update their parent's `next_service_date` when a maintenance entry sets
+one, so the reminder engine stays current.
+
+**`vehicle_documents` is metadata-only** (document type + expiry date +
+optional external `file_url`) — there is no Supabase Storage
+bucket/upload architecture anywhere in FoodTaxi yet (confirmed: zero
+`.storage.from(` calls in `apps/web` before or after Phase C), and building
+one from scratch, safely, with correct private-bucket access rules, is
+exactly the kind of unreviewed security surface this phase should not
+introduce casually. The reminder engine (§24) doesn't need the file — only
+the expiry date. Real upload is real Phase D/E work, once a Storage
+convention exists (ideally also retrofitted to `hygiene_documents`, which
+has the same gap).
+
+### 24. Reminders & operations dashboard
+
+Reminder logic lives in `GET /api/operations/summary` (30-day window,
+configurable via `REMINDER_WINDOW_DAYS` in that file) — MOT/insurance/road
+tax/service-due dates within the window, or already passed. The operations
+dashboard **extends** the existing main `/dashboard` page (a new
+"Operations" card above the existing stats — see `components/operations/
+OperationsSummary.tsx`) rather than replacing it, per the Phase C brief.
+Hygiene "outstanding" reuses the existing `hygiene_logs` opening-checklist
+data (a live van with no `opening_checklist` row logged today counts as
+outstanding) — no new hygiene tracking was built.
+
+### 25. Audit trail
+
+`audit_logs` existed since the initial schema and was documented as a
+Phase A recommendation but never written to. `lib/auditLog.ts` is the
+first real writer, called from: stock adjustments, stocktake confirmation,
+purchase-order status changes, staff role changes, timesheet corrections,
+vehicle detail changes. Deliberately not wired into read paths or routine
+CRUD that doesn't need an audit trail.
+
+### 26. Not built in Phase C (see the completion report for the full list)
+
+- Camera-based barcode scanning — `stock_items.barcode` exists and a
+  manual barcode-entry lookup is the supported path today; a maintained
+  scanning library was not integrated (Phase C's own instructions
+  explicitly allow this — "create the architecture and manual
+  barcode-entry fallback").
+- Vehicle/hygiene document file upload (see §23).
+- A dedicated recipe-editing screen inside the Menu page —
+  `menu_stock_components` and its API
+  (`app/api/menu/stock-components/route.ts`) are fully functional, but
+  there is no UI wired into `/dashboard/menu` yet to use them.

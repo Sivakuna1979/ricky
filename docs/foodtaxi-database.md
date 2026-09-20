@@ -114,6 +114,54 @@ Seeded with three plans (Starter £29, Pro £59, Enterprise £99/mo) but `stripe
 
 ---
 
+## Business Operations (Phase C)
+
+### `staff` 🟢 (activated in Phase C — table existed since `20240001`, unused before)
+`business_id`, `user_id`, `van_id` (nullable — NULL means "all vans"), `role` (`user_role` enum, now including `business_admin`), `is_active`, `invited_at`, `joined_at`. One row per assigned van (the old `UNIQUE(business_id, user_id)` was dropped in Phase C to allow this). `my_van_ids()` already UNIONed this table in from Phase A/2 — Phase C only changed it to treat a NULL `van_id` row as "all vans" instead of granting nothing.
+
+### `stock_locations` / `stock_items` / `stock_levels` / `stock_movements` 🟢
+A business's own stock catalogue (`stock_items`, no hard-coded products), locations (`stock_locations` — warehouse/van/other; a `van`-type location is 1:1 with a `vans` row), and current quantity **per location** (`stock_levels`). `stock_movements` is the append-only ledger — quantity never changes any other way than through the `apply_stock_movement()` Postgres function (service-role only), which row-locks and records `previous_quantity`/`new_quantity` atomically.
+
+### `stocktakes` / `stocktake_items` 🟢
+A stocktake snapshots `stock_levels` as `expected_quantity` at a location, staff enter `counted_quantity`, and confirming creates one `ADJUSTMENT` movement per difference — counts never silently overwrite stock.
+
+### `menu_stock_components` 🟢
+Optional per-`menu_item` recipe — links to `stock_items` with a `quantity_per_item`. No rows for a menu item = automatic deduction does nothing for it.
+
+### `wastage_records` 🟢
+Reason/quantity/cost, automatically creates a `WASTAGE` stock movement.
+
+### `supplier_records` 🟢 (extended in Phase C, existed since `20240001`, previously unused)
+Now the real supplier directory — added `website`, `account_reference`, `is_active`. Same table the Hygiene page's schema referenced but never queried.
+
+### `supplier_products` 🟢
+Supplier ↔ `stock_items` link: product code, pack size, latest cost, preferred flag.
+
+### `purchase_orders` / `purchase_order_items` 🟢
+`DRAFT → ORDERED → PARTIALLY_RECEIVED/RECEIVED`, or `CANCELLED`. Receiving increases `stock_levels` via `apply_stock_movement()` (`PURCHASE` type) and updates `supplier_products.latest_cost`.
+
+### `shifts` / `time_entries` 🟢
+Shift scheduling and clock-in/out. `time_entries.is_manual_adjustment` + `adjustment_reason` + `adjusted_by` make corrections auditable (also logged to `audit_logs`).
+
+### `vehicle_details` 🟢
+1:1 extension of `vans` (`van_id` primary key) — make/model/year/fuel/VIN/MOT/insurance/road tax/service due/mileage. Does not duplicate `vans.registration_plate`.
+
+### `vehicle_documents` 🟢 (metadata only — see baseline doc "Known issues")
+Document type + expiry date + optional external `file_url`, same convention as the pre-existing `hygiene_documents`. No file upload UI in Phase C.
+
+### `vehicle_maintenance` / `equipment` / `equipment_maintenance` 🟢
+Maintenance history per van/equipment; `equipment.next_service_date`/`warranty_expiry` feed the reminder engine.
+
+### `orders.stock_deducted_at` / `orders.stock_restored_at` 🟢 (columns added in Phase C)
+Idempotency guards for automatic stock deduction on order collection / restoration on cancellation. See baseline doc for the full rule.
+
+### `audit_logs` 🟢 (first real writer — Phase C)
+Existed since `20240001`, documented as a Phase A recommendation, never written to until Phase C's `lib/auditLog.ts`. Used for: stock adjustments, stocktake confirmation, purchase-order status changes, staff role changes, timesheet corrections, vehicle detail changes.
+
+---
+
 ## Ownership / tenant isolation summary
 
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).
+
+**Phase C addition:** a new function, `my_staff_business_ids()`, returns businesses where the caller has an *active* `staff` row (any role). Every new Phase C table's RLS policy is `business_id IN (my_business_ids()) OR business_id IN (my_staff_business_ids()) OR is_super_admin()` — this is the tenant-isolation boundary (no business ever sees another business's rows). It is deliberately coarse: it does not itself distinguish which *role* may take which *action* — that's enforced in the API layer by `lib/permissions.ts` + `lib/staffContext.ts`, the same "RLS = tenant boundary, API = permission boundary" split already used for super-admin routes. It also does not narrow a van-restricted staff member's *visibility* of business-wide records (e.g. a driver assigned to one van can still see all shifts/vehicle records for the business, not just their own) — documented as a known simplification in the baseline doc, not a tenant-isolation gap.

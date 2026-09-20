@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { NewOrderWatcher } from '@/components/orders/NewOrderWatcher'
 import { FOODTAXI_MONTHLY_PRICE_GBP } from '@/lib/subscriptionConfig'
 import { computeHasAccess, trialDaysRemaining } from '@/lib/subscriptionAccess'
+import { OperationsSummary } from '@/components/operations/OperationsSummary'
 
 const PLAN_FEATURES = ['Unlimited Vans', 'QR Menu', 'GPS Tracking', 'Online Orders', 'WhatsApp Ordering', 'POS & Kitchen Display']
 
@@ -151,6 +152,10 @@ export default async function BusinessDashboardPage() {
     { icon: '🗓️', label: 'Schedule',     href: '/dashboard/schedule', active: false },
     { icon: '📋', label: 'Menu',         href: '/dashboard/menu',     active: false },
     { icon: '🚐', label: 'My Vans',      href: '/dashboard/vans',     active: false },
+    { icon: '📦', label: 'Stock',        href: '/dashboard/stock',    active: false },
+    { icon: '🚚', label: 'Suppliers',    href: '/dashboard/suppliers',active: false },
+    { icon: '👥', label: 'Team',         href: '/dashboard/team',     active: false },
+    { icon: '🔧', label: 'Fleet',        href: '/dashboard/fleet',    active: false },
     { icon: '📈', label: 'Analytics',    href: '/dashboard/analytics',active: false },
     { icon: '💳', label: 'My Plan',      href: '/dashboard/billing',  active: false },
     { icon: '🗺️', label: 'Tracking',     href: '/dashboard/tracking', active: false },
@@ -250,6 +255,8 @@ export default async function BusinessDashboardPage() {
                 </div>
               </div>
             )}
+
+            <OperationsSummary />
 
             {/* Stats */}
             <div className="stat-grid">

@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
+import { deductStockForOrder, restoreStockForOrder } from '@/lib/stockDeduction'
 
 const schema = z.object({
   status: z.enum(['accepted', 'preparing', 'ready', 'collected', 'cancelled']),
@@ -42,6 +43,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Automatic stock deduction (Phase C8) — optional per business, and a
+  // no-op if nothing is configured; must never fail the status update.
+  if (status === 'collected' || status === 'cancelled') {
+    const admin = await createAdminClient()
+    try {
+      const { data: actor } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
+      if (status === 'collected') await deductStockForOrder(admin, params.id, actor?.id)
+      if (status === 'cancelled') await restoreStockForOrder(admin, params.id, actor?.id)
+    } catch (_e) {}
+  }
 
   // Notify customer
   await supabase.functions.invoke('send-notification', {
