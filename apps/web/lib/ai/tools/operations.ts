@@ -2,6 +2,8 @@
 // get_attention_summary is the direct implementation of E18 ("what needs
 // my attention today") — it only ever reports items a real query found;
 // it never invents urgency for a quiet day.
+import { scheduleDayOfWeek } from '@/lib/schedule/dayOfWeek'
+
 export const operationsTools = [
   {
     name: 'get_automation_alerts',
@@ -19,7 +21,9 @@ export const operationsTools = [
     input_schema: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD, defaults to today.' }, van_id: { type: 'string' } } },
     async handler(admin: any, ctx: any, args: any) {
       const date = args.date ?? new Date().toISOString().slice(0, 10)
-      const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
+      // Fixed during the Phase G data audit (G1) — was querying
+      // van_schedule (0=Mon) with a raw JS getUTCDay() (0=Sun) value.
+      const dow = scheduleDayOfWeek(new Date(`${date}T00:00:00Z`))
       let vansQuery = admin.from('vans').select('id, name').eq('business_id', ctx.businessId).eq('is_active', true)
       if (args.van_id) vansQuery = vansQuery.eq('id', args.van_id)
       const { data: vans } = await vansQuery

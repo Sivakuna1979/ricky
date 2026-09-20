@@ -85,11 +85,14 @@ export function FoodTaxiAI() {
     setLoading(false)
   }
 
-  const confirmAction = async (id: string) => {
+  const confirmAction = async (id: string, actionType?: string) => {
     const res = await fetch(`/api/ai/actions/${id}/confirm`, { method: 'POST' })
     const data = await res.json()
     setPendingActions(p => p.filter(a => a.id !== id))
-    setMessages(m => [...m, { role: 'assistant', content: res.ok ? '✅ Done — purchase order created as a draft for you to review under Suppliers.' : `❌ ${data.error}` }])
+    const successMessage = actionType === 'create_stock_transfer'
+      ? '✅ Done — stock transfer created for you to review under Stock → Movements.'
+      : '✅ Done — purchase order created as a draft for you to review under Suppliers.'
+    setMessages(m => [...m, { role: 'assistant', content: res.ok ? successMessage : `❌ ${data.error}` }])
   }
   const cancelAction = async (id: string) => {
     await fetch(`/api/ai/actions/${id}/cancel`, { method: 'POST' })
@@ -149,12 +152,14 @@ export function FoodTaxiAI() {
         ))}
         {pendingActions.map(a => (
           <div key={a.id} style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>📋 Draft purchase order — {a.params.supplier_name}</div>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
+              {a.action_type === 'create_stock_transfer' ? '🚐 Draft stock transfer to van' : `📋 Draft purchase order — ${a.params.supplier_name}`}
+            </div>
             <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
               {a.params.items.map((i: any) => `${i.quantity} × ${i.name}`).join(', ')}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => confirmAction(a.id)} style={{ padding: '8px 16px', borderRadius: 8, background: '#059669', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Confirm</button>
+              <button onClick={() => confirmAction(a.id, a.action_type)} style={{ padding: '8px 16px', borderRadius: 8, background: '#059669', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Confirm</button>
               <button onClick={() => cancelAction(a.id)} style={{ padding: '8px 16px', borderRadius: 8, background: '#f5f6fa', color: '#374151', border: '1px solid #e5e7eb', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>

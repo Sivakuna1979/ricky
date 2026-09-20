@@ -12,6 +12,7 @@ export type AutomationType =
   | 'daily_briefing' | 'end_of_day_summary' | 'weekly_summary'
   | 'marketing_suggestion'
   | 'event_tomorrow'
+  | 'end_of_route_review'
 
 export const DEFAULT_IN_APP_ONLY = { in_app: true, email: false, sms: false, whatsapp: false }
 export const DEFAULT_IN_APP_EMAIL = { in_app: true, email: true, sms: false, whatsapp: false }
@@ -41,6 +42,7 @@ export const AUTOMATIONS: Record<AutomationType, {
   weekly_summary:         { label: 'Weekly summary',           description: 'Revenue, orders and operational comparison vs the previous week.', category: 'reports', defaultEnabled: false, defaultChannels: DEFAULT_IN_APP_EMAIL, permission: 'view_analytics' },
   marketing_suggestion:   { label: 'Marketing suggestions',    description: 'Suggested (not sent) campaigns, e.g. lapsed regular customers.', category: 'marketing', defaultEnabled: false, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_analytics' },
   event_tomorrow:         { label: 'Event tomorrow',           description: 'A preparation reminder the day before your confirmed event.', category: 'events', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_orders' },
+  end_of_route_review:    { label: 'End-of-route review',      description: "A summary sent when a route session is ended: revenue, orders and how it compared to recent same-weekday trading (G55).", category: 'reports', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_analytics' },
 }
 
 export const AUTOMATION_TYPE_LIST = Object.keys(AUTOMATIONS) as AutomationType[]

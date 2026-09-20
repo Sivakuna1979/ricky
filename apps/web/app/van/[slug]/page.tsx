@@ -30,7 +30,8 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
     const dow = (d.getDay() + 6) % 7
     const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'short' })
     const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-    return { offset: i, dow, label, dateLabel }
+    const date = d.toISOString().slice(0, 10)
+    return { offset: i, dow, label, dateLabel, date }
   })
   const selectedPickupDay = pickupDays[pickupDayOffset]
   const [placing, setPlacing]     = useState(false)
@@ -117,6 +118,8 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         customer_phone: form.phone || 'via WhatsApp',
         notes: `[WhatsApp order] ${form.notes ?? ''}`.trim(),
         pickup_location: pickupStop?.location_name ?? null,
+        pickup_stop_id: pickupStop && pickupStop.id !== 'live' ? pickupStop.id : null,
+        service_date: pickupStop?.id === 'live' ? undefined : selectedPickupDay.date,
         pickup_time: pickupStop?.id === 'live' ? pickupTime : (pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`)),
         items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         subtotal: cartTotal,
@@ -168,6 +171,8 @@ export default function VanProfilePage({ params }: { params: { slug: string } })
         customer_phone: form.phone,
         notes: combinedNotes || null,
         pickup_location: pickupStop?.location_name ?? null,
+        pickup_stop_id: pickupStop && !isLivePickup ? pickupStop.id : null,
+        service_date: isLivePickup ? undefined : selectedPickupDay.date,
         pickup_time: isLivePickup ? pickupTime : (pickupTime ? `${pickupDayOffset === 0 ? '' : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel} `}${pickupTime}` : (pickupDayOffset === 0 ? null : `${selectedPickupDay.label} ${selectedPickupDay.dateLabel}`)),
         items: cartItems.map((i: any) => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
         subtotal: cartTotal,

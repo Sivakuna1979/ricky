@@ -368,7 +368,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
 
     const [{ data: menu }, { data: allStops }] = await Promise.all([
       admin.from('menu_items').select('id, name, price').eq('van_id', vanId).limit(200),
-      admin.from('van_schedule').select('location_name, arrival_time, departure_time, day_of_week').eq('van_id', vanId).order('day_of_week').order('arrival_time'),
+      admin.from('van_schedule').select('id, location_name, arrival_time, departure_time, day_of_week').eq('van_id', vanId).order('day_of_week').order('arrival_time'),
     ])
 
     // Next 7 days with their stops — so "Wednesday", "tomorrow" etc. work.
@@ -378,13 +378,27 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       const dow = (d.getDay() + 6) % 7
       const dateBit = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
       const dayLabel = i === 0 ? `Today (${dateBit})` : i === 1 ? `Tomorrow (${dateBit})` : dateBit
-      return { dayLabel, stops: (allStops ?? []).filter((s: any) => s.day_of_week === dow) }
+      return { dayLabel, date: d.toISOString().slice(0, 10), stops: (allStops ?? []).filter((s: any) => s.day_of_week === dow) }
     })
     const todayStops = weekSchedule[0].stops
-    const stopsForDay = (dayLabel: string) =>
-      (weekSchedule.find(d => d.dayLabel === dayLabel) ?? weekSchedule.find(d => dayLabel && d.dayLabel.toLowerCase().includes(String(dayLabel).toLowerCase().split(' ')[0])))?.stops ?? todayStops
+    const scheduleDayFor = (dayLabel: string) =>
+      weekSchedule.find(d => d.dayLabel === dayLabel) ?? weekSchedule.find(d => dayLabel && d.dayLabel.toLowerCase().includes(String(dayLabel).toLowerCase().split(' ')[0]))
+    const stopsForDay = (dayLabel: string) => scheduleDayFor(dayLabel)?.stops ?? todayStops
     // Store the day inside pickup_time so the dashboard shows it: "Wednesday 9 Jul · 16:30"
     const dayForRecord = (dayLabel: string) => !dayLabel || dayLabel.startsWith('Today') ? '' : dayLabel.replace(/^Tomorrow \((.+)\)$/, '$1')
+
+    // Phase G — resolve the AI's free-text pickup_location + pickup_day
+    // back to a real van_schedule row server-side. The AI is instructed
+    // to use the exact stop name, but its output is never trusted as an
+    // id directly (G7) — only an exact (case-insensitive) match against
+    // that day's real schedule counts.
+    const resolvePickupStop = (dayLabel: string, locationText: string | null | undefined) => {
+      const day = scheduleDayFor(dayLabel) ?? weekSchedule[0]
+      const serviceDate = day?.date ?? weekSchedule[0].date
+      if (!locationText) return { stopId: null, serviceDate }
+      const match = (day?.stops ?? todayStops).find((s: any) => s.location_name.trim().toLowerCase() === locationText.trim().toLowerCase())
+      return { stopId: match?.id ?? null, serviceDate }
+    }
 
     // Open order from this customer still missing details (last 3h)
     const { data: pendingOrder } = await admin
@@ -414,7 +428,12 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
     // ---- Customer is answering the follow-up question for an open order ----
     if (parsed.action === 'pickup_details' && pendingOrder) {
       const updates: any = {}
-      if (parsed.pickup_location) updates.pickup_location = parsed.pickup_location
+      if (parsed.pickup_location) {
+        updates.pickup_location = parsed.pickup_location
+        const resolved = resolvePickupStop(parsed.pickup_day ?? '', parsed.pickup_location)
+        updates.pickup_stop_id = resolved.stopId
+        updates.service_date = resolved.serviceDate
+      }
       if (composedTime) updates.pickup_time = composedTime
       if (parsed.customer_name?.trim()) updates.guest_name = parsed.customer_name.trim()
       if (Object.keys(updates).length) {
@@ -451,6 +470,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
       })
       const total = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0)
       const unresolvedItems = items.filter((i: any) => i.unresolved)
+      const resolvedPickup = resolvePickupStop(parsed.pickup_day ?? '', parsed.pickup_location)
 
       const { data: order, error } = await admin.from('orders').insert({
         van_id: vanId,
@@ -458,6 +478,8 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
         guest_phone: `+${from}`,
         notes: `[WhatsApp auto-order]${unresolvedItems.length ? ` ⚠️ Could not match to the menu — confirm price with customer: ${unresolvedItems.map((i: any) => i.name).join(', ')}.` : ''}${parsed.notes ? ' ' + parsed.notes : ''}`,
         pickup_location: parsed.pickup_location || null,
+        pickup_stop_id: resolvedPickup.stopId,
+        service_date: resolvedPickup.serviceDate,
         pickup_time: composedTime || null,
         subtotal: total,
         total,

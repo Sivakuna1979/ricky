@@ -6,6 +6,7 @@ import { useWakeLock } from '@/lib/useWakeLock'
 import { sortCategories } from '@/lib/categoryOrder'
 import { speakAnnouncement } from '@/lib/speak'
 import { shortOrderNumber } from '@/lib/orderNumber'
+import { CurrentStopBanner } from '@/components/routes/CurrentStopBanner'
 
 // Never lose a completed sale to a dropped connection: if the till can't
 // reach the server, the sale is saved here and retried automatically once
@@ -57,6 +58,7 @@ export default function PosPage() {
   const [voiceOn, setVoiceOn] = useState(true)
   const [offlineQueue, setOfflineQueue] = useState<any[]>([])
   const [syncing, setSyncing] = useState(false)
+  const [pickupStopId, setPickupStopId] = useState<string | null>(null)
   const channelRef = useRef<any>(null)
   const announcedRef = useRef<Set<string>>(new Set())
   const firstReadyFetchRef = useRef(true)
@@ -349,6 +351,7 @@ export default function PosPage() {
       served_by: servedBy || undefined,
       cash_tendered: paymentMethod === 'cash_at_van' ? tendered ?? undefined : undefined,
       discount_amount: dealPricing.discount || undefined,
+      pickup_stop_id: pickupStopId || undefined,
       items: cartLines.map(i => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
     }
     try {
@@ -491,6 +494,8 @@ export default function PosPage() {
                       </button>
                     </div>
                   )}
+
+                  <CurrentStopBanner vanId={vanId} onStopChange={setPickupStopId} />
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                     <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#111' }}>🧾 Till — {van?.name}</h1>

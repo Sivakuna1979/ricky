@@ -13,6 +13,7 @@ export const NAV_ITEMS = [
   { icon: '📋', label: 'Menu',       href: '/dashboard/menu' },
   { icon: '🤖', label: 'FoodTaxi AI', href: '/dashboard/ai' },
   { icon: '🧠', label: 'Memory',     href: '/dashboard/memory' },
+  { icon: '🗺️', label: 'Routes',     href: '/dashboard/routes' },
   { icon: '📦', label: 'Stock',      href: '/dashboard/stock' },
   { icon: '🚚', label: 'Suppliers',  href: '/dashboard/suppliers' },
   { icon: '👥', label: 'Team',       href: '/dashboard/team' },

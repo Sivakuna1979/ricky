@@ -6,11 +6,10 @@ import { claimRun, completeRun, notify } from '../engine'
 import { getResolvedSettings } from '../settings'
 import { getRecipients } from '../recipients'
 import { nowInTimezone, todayDateInTimezone } from '../timezone'
+import { scheduleDayOfWeek } from '@/lib/schedule/dayOfWeek'
 
 const CLOCK_IN_GRACE_MINUTES = 15
 const MISSING_CLOCKOUT_HOURS = 12
-
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export async function runStaffAutomations(admin: any, business: { id: string; timezone: string }) {
   const settings = await getResolvedSettings(admin, business.id)
@@ -21,7 +20,9 @@ export async function runStaffAutomations(admin: any, business: { id: string; ti
 
   // D15 — tomorrow's scheduled van has no shift assigned.
   if (settings.staff_unassigned_shift.enabled) {
-    const tomorrowDow = tomorrow.getUTCDay()
+    // Fixed during the Phase G data audit (G1) — was querying
+    // van_schedule (0=Mon) with a raw JS getUTCDay() (0=Sun) value.
+    const tomorrowDow = scheduleDayOfWeek(tomorrow)
     const { data: vans } = await admin.from('vans').select('id, name').eq('business_id', business.id).eq('is_active', true)
     for (const van of vans ?? []) {
       const { data: schedule } = await admin.from('van_schedule').select('id').eq('van_id', van.id).eq('day_of_week', tomorrowDow).limit(1)

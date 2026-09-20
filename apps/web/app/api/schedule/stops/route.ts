@@ -38,6 +38,30 @@ function isPermissionError(err: any) {
   return err?.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')
 }
 
+// Read-only stop list for a van (all days, or one day_of_week) — added for
+// Phase G's Route Intelligence dashboard, which needs to let staff pick a
+// template stop (e.g. for a future date's loading plan) without touching
+// the existing POST/PUT/DELETE schedule-editing logic above.
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const vanId = searchParams.get('van_id')
+    const dayOfWeek = searchParams.get('day_of_week')
+    if (!vanId) return NextResponse.json({ error: 'van_id required' }, { status: 400 })
+
+    const { supabase, error } = await authorizeVan(vanId)
+    if (error) return error
+
+    let query = supabase.from('van_schedule').select('*').eq('van_id', vanId).order('day_of_week').order('sort_order').order('arrival_time')
+    if (dayOfWeek !== null && dayOfWeek !== '') query = query.eq('day_of_week', Number(dayOfWeek))
+    const { data, error: selErr } = await query
+    if (selErr) throw new Error(selErr.message)
+    return NextResponse.json({ stops: data ?? [] })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? 'Failed to load schedule' }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { van_id, stops } = await req.json()

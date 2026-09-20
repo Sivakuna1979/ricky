@@ -6,6 +6,8 @@ import { claimRun, completeRun, notify } from '../engine'
 import { getResolvedSettings } from '../settings'
 import { getRecipients } from '../recipients'
 import { nowInTimezone, todayDateInTimezone, isDueNow, isoWeekKey } from '../timezone'
+import { scheduleDayOfWeek } from '@/lib/schedule/dayOfWeek'
+import { getLoadingPlan } from '@/lib/routes/demand'
 
 function round2(n: number) { return Math.round((n ?? 0) * 100) / 100 }
 const REVENUE_EXCLUDED_STATUSES = ['cancelled'] // same definition as /api/analytics/summary (Phase B)
@@ -22,18 +24,34 @@ export async function runDailyBriefing(admin: any, business: { id: string; timez
   if (!runId) return
 
   try {
-    const todayDow = nowInTimezone(business.timezone).weekday
-    const dowIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(todayDow)
+    // Fixed during the Phase G data audit (G1) — this previously computed
+    // a JS-convention (0=Sun) day index and queried van_schedule (which
+    // uses 0=Mon) with it directly, off by one for every day but Sunday.
+    const dowIndex = scheduleDayOfWeek(new Date())
 
     const { data: vans } = await admin.from('vans').select('id, name').eq('business_id', business.id).eq('is_active', true)
     const vanIds = (vans ?? []).map((v: any) => v.id)
 
     const [{ data: scheduledToday }, { data: shiftsToday }, { data: items }, { count: eventCount }] = await Promise.all([
-      vanIds.length ? admin.from('van_schedule').select('van_id').in('van_id', vanIds).eq('day_of_week', dowIndex) : { data: [] },
+      vanIds.length ? admin.from('van_schedule').select('id, van_id, sort_order, arrival_time').in('van_id', vanIds).eq('day_of_week', dowIndex).order('sort_order').order('arrival_time') : { data: [] },
       admin.from('shifts').select('staff_id').eq('business_id', business.id).eq('shift_date', date),
       admin.from('stock_items').select('id, minimum_quantity').eq('business_id', business.id).eq('active', true),
       admin.from('event_requests').select('id', { count: 'exact', head: true }).eq('admin_status', 'new'),
     ])
+
+    // G54 — a shortfall count for each van's first stop today, reusing the
+    // same lib/routes/demand.ts loading-plan calculation the dashboard and
+    // FoodTaxi AI use. Best-effort per van: a business with no route
+    // sessions/recipes configured yet just gets 0 here, not an error.
+    let loadingShortfallCount = 0
+    const firstStopByVan = new Map<string, any>()
+    for (const s of scheduledToday ?? []) if (!firstStopByVan.has(s.van_id)) firstStopByVan.set(s.van_id, s)
+    for (const [vanIdForStop, stop] of firstStopByVan) {
+      try {
+        const plan = await getLoadingPlan(admin, business.id, vanIdForStop, stop.id, date, 10)
+        loadingShortfallCount += (plan.items ?? []).filter((i: any) => i.shortfall && i.shortfall > 0).length
+      } catch (_e) {}
+    }
 
     const { data: levels } = await admin.from('stock_levels').select('stock_item_id, quantity')
     const totals: Record<string, number> = {}
@@ -61,7 +79,8 @@ export async function runDailyBriefing(admin: any, business: { id: string; timez
       `🧼 ${hygieneDue} hygiene check${hygieneDue === 1 ? '' : 's'} due`,
       `🔧 ${vehicleAlerts} vehicle reminder${vehicleAlerts === 1 ? '' : 's'}`,
       `🎉 ${eventCount ?? 0} event enquir${(eventCount ?? 0) === 1 ? 'y' : 'ies'} awaiting response`,
-    ]
+      loadingShortfallCount > 0 ? `🚐📦 ${loadingShortfallCount} stock item${loadingShortfallCount === 1 ? '' : 's'} suggested below today's loading plan for the first stop — see Route Intelligence` : null,
+    ].filter(Boolean)
     const body = lines.join('\n')
 
     const recipients = await getRecipients(admin, business.id, 'view_analytics')

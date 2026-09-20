@@ -201,6 +201,33 @@ Cosine-similarity search, explicitly filtered by `business_id` and **not** `SECU
 
 ---
 
+## Route Intelligence (Phase G)
+
+### `orders.pickup_stop_id` / `orders.service_date` 🟢 (columns added in Phase G)
+`pickup_stop_id` is a nullable FK to `van_schedule` (`ON DELETE SET NULL`) — resolved and verified server-side on every order-creation path (POS, guest/online, WhatsApp), never trusted from the client directly. `service_date` is a plain `DATE`, safely backfilled for existing orders from `created_at::date`. `pickup_stop_id` is **not** backfilled — no historical stop attribution is ever guessed (G57).
+
+### `route_sessions` 🟢
+"What actually happened on a specific date" for a van, as distinct from `van_schedule` (the recurring template). `UNIQUE(van_id, service_date)` — one session per van per day, and the idempotency guarantee behind `startRouteSession()`. `status`: `active`/`completed`/`cancelled`. Starting a session is entirely optional — no other Phase G/A–F feature requires one to exist.
+
+### `route_session_stops` 🟢
+One row per stop visited within a session. `location_name`/`scheduled_arrival`/`scheduled_departure` are copied from `van_schedule` **at session start** (denormalised on purpose, same principle as `order_items`), so a later schedule edit never rewrites a historical session. `actual_arrival_at`/`actual_departure_at` are only ever set by an explicit manual action. `van_schedule_id` is nullable (an ad-hoc stop can still be logged).
+
+### `demand_estimates` 🟢
+One row per `(van_id, target_date, stock_item_id)` — `UNIQUE` constraint, and the reason a demand calculation is never silently redone or rewritten for a day once computed. `sample_values` (jsonb) holds the exact historical quantities the estimate was built from, for full explainability. `feedback_status`/`feedback_quantity`/`feedback_at`/`feedback_by` are appended after the fact, never overwriting `baseline_quantity`/`suggested_quantity`.
+
+### `ai_pending_actions.action_type = 'create_stock_transfer'` 🟢 (new action type, Phase G)
+No new table — reuses Phase E's `ai_pending_actions` exactly. `params` holds `{ van_id, from_location_id, to_location_id, items: [{ stock_item_id, quantity, ... }] }`. Confirming it calls Phase C's `apply_stock_movement()` RPC twice (a linked `TRANSFER_OUT`/`TRANSFER_IN` pair), identical to a manual transfer via `/api/stock/transfer`.
+
+### `automation_settings` / `automation_runs` — new type `end_of_route_review` 🟢 (Phase G)
+No schema change — `automation_type` was already free text (Phase D). Event-triggered from `endRouteSession()` rather than the hourly cron sweep; still goes through the same `claimRun()`/`UNIQUE(business_id, trigger_key)` exactly-once guarantee as every other automation.
+
+### `business_memory` — route notes 🟢 (Phase G usage of the Phase F table)
+A note added to a route stop (`PATCH /api/routes/sessions/[id]/stops/[stopId]`) is written here with `category: 'route_note'` and `related_entity_type: 'route_session_stop'` — no separate notes table was created for this.
+
+RLS on `route_sessions`, `route_session_stops`, and `demand_estimates`: the same `my_business_ids() OR my_staff_business_ids() OR is_super_admin()` pattern as every table since Phase C.
+
+---
+
 ## Ownership / tenant isolation summary
 
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).

@@ -40,7 +40,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'This proposal has expired — ask FoodTaxi AI again to create a fresh one.' }, { status: 410 })
   }
 
-  const requiredPermission = pending.action_type === 'create_purchase_order' ? 'manage_purchase_orders' : null
+  const PERMISSION_BY_ACTION: Record<string, string> = {
+    create_purchase_order: 'manage_purchase_orders',
+    create_stock_transfer: 'manage_stock',
+  }
+  const requiredPermission = PERMISSION_BY_ACTION[pending.action_type]
   if (requiredPermission && !hasPermission(ctx.role, requiredPermission)) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
   }
@@ -65,6 +69,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         items.map((i: any) => ({ purchase_order_id: po.id, stock_item_id: i.stock_item_id, quantity_ordered: i.quantity, unit_cost: i.unit_cost ?? null }))
       )
       result = { purchase_order_id: po.id }
+    } else if (pending.action_type === 'create_stock_transfer') {
+      // G26 — reuses Phase C's apply_stock_movement exactly as an owner
+      // manually transferring stock would (app/api/stock/transfer),
+      // recorded as a linked TRANSFER_OUT/TRANSFER_IN pair, never a
+      // silent quantity overwrite.
+      const { from_location_id, to_location_id, items } = pending.params
+      const referenceId = pending.id
+      for (const item of items) {
+        await admin.rpc('apply_stock_movement', {
+          p_business_id: ctx.businessId, p_stock_item_id: item.stock_item_id, p_location_id: from_location_id,
+          p_movement_type: 'TRANSFER_OUT', p_delta: -item.quantity, p_user_id: ctx.userId,
+          p_reference_type: 'transfer', p_reference_id: referenceId,
+        })
+        await admin.rpc('apply_stock_movement', {
+          p_business_id: ctx.businessId, p_stock_item_id: item.stock_item_id, p_location_id: to_location_id,
+          p_movement_type: 'TRANSFER_IN', p_delta: item.quantity, p_user_id: ctx.userId,
+          p_reference_type: 'transfer', p_reference_id: referenceId,
+        })
+      }
+      result = { transferred_items: items.length, reference_id: referenceId }
     } else {
       throw new Error('unknown_action_type')
     }

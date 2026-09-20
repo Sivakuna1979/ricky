@@ -28,6 +28,20 @@ function addDays(dateStr: string, days: number): string {
 // resolution for day/week/month bucketing without pulling in a timezone
 // library; the same tradeoff Phase B/D's date bucketing already makes,
 // documented there and here rather than silently assumed perfect.
+// For DATE-only columns (Phase G's orders.service_date), not TIMESTAMP
+// columns (Phase E's orders.created_at). resolveDateRange()'s `end` is
+// exclusive ("today" means [midnight today, midnight tomorrow)) — for an
+// inclusive plain-date range that means subtracting a day. Using
+// resolveDateRange()'s raw end directly against a DATE column with a
+// `<=` comparison would silently include one extra day (found and fixed
+// during Phase G — see routes.ts).
+export function resolveInclusiveDateRange(option: DateRangeOption, timezone: string): { label: string; startDate: string; endDate: string } {
+  const { label, start, end } = resolveDateRange(option, timezone)
+  const startDate = start.slice(0, 10)
+  const endDate = addDays(end.slice(0, 10), -1)
+  return { label, startDate, endDate }
+}
+
 export function resolveDateRange(option: DateRangeOption, timezone: string): { label: string; start: string; end: string } {
   const today = nowInTimezone(timezone).date // 'YYYY-MM-DD' in business-local terms
 

@@ -1139,3 +1139,281 @@ road, not in the office.
 **Not built:** document/receipt upload or OCR, email memory, any
 write-capable memory-driven action (memory is read-only context, it
 cannot trigger anything).
+
+---
+
+## 67. Route Intelligence, Stop Performance & Demand Planning (Phase G)
+
+### G1 data audit — what was found before anything was built
+
+- `orders.stop_id` references the legacy `route_stops` table, superseded
+  by `van_schedule` since Phase A and never written to by any live code
+  path. Not reused, not migrated.
+- `orders.pickup_location` is free text. The public van ordering page
+  (`app/van/[slug]/page.tsx`) already resolved a real `van_schedule` row
+  client-side (a `pickupStop` object with a real `.id`) but only ever
+  sent `pickupStop.location_name` to the order API — the real id was
+  computed and then discarded before reaching the server.
+- The WhatsApp ordering AI (`app/api/webhooks/whatsapp/route.ts`) matched
+  a customer's stated pickup against `van_schedule.location_name` text
+  and stored only that text, never resolving/storing the real id.
+- POS sales had no stop concept captured at all.
+- **Conclusion:** historical orders cannot be reliably attributed to a
+  specific stop. Per G57, this is never fixed retroactively — no
+  historical `pickup_stop_id` is guessed or fabricated. Stop-level
+  analytics is honestly scoped to "available from the date this phase's
+  code shipped", not backfilled. `service_date` (unlike `pickup_stop_id`)
+  *is* safely backfilled for existing orders, from `created_at::date` —
+  a factual date every order genuinely already had, not a guess.
+- **Also found in this audit:** three call sites from Phases D/E queried
+  `van_schedule.day_of_week` (0=Monday) using a raw JavaScript
+  `getDay()`/`getUTCDay()` value (0=Sunday) directly — off by one every
+  day but Sunday. Fixed via a new shared helper,
+  `lib/schedule/dayOfWeek.ts`'s `scheduleDayOfWeek()`, applied to
+  `lib/automations/evaluators/reports.ts` (daily briefing),
+  `lib/automations/evaluators/staff.ts` (tomorrow's unassigned-shift
+  check), and `lib/ai/tools/operations.ts` (`get_van_schedule`). This is
+  an application-code fix, not a schema change — a real regression found
+  and corrected as part of Phase G, not new Phase G behaviour.
+
+### Canonical route/stop identity (G2)
+
+`van_schedule` (the existing weekly recurring template table) is reused
+**as-is** as "the stop template" — no competing stops table was created.
+Two new tables express "what actually happened on a specific date" as
+something distinct from the template:
+
+- **`route_sessions`** — one row per `(van_id, service_date)`
+  (`UNIQUE` constraint), `status` `active`/`completed`/`cancelled`,
+  `started_at`/`by`, `ended_at`/`by`. Starting a session is entirely
+  optional (G9) — POS, guest ordering and WhatsApp ordering all work
+  identically whether or not a business ever starts one.
+- **`route_session_stops`** — one row per stop visited in a session,
+  snapshotting `location_name`/`scheduled_arrival`/`scheduled_departure`
+  from `van_schedule` **at the moment the session starts** (deliberately
+  denormalised, the same principle `order_items` already uses for menu
+  item name/price, so a later schedule edit never rewrites a historical
+  session's record). `van_schedule_id` is nullable so an ad-hoc stop can
+  still be logged. `actual_arrival_at`/`actual_departure_at` are set only
+  by an explicit manual action (G10) — never inferred from the scheduled
+  time.
+
+`lib/routes/sessions.ts`: `getSessionForDate()` (read-only),
+`startRouteSession()` (idempotent — the `UNIQUE(van_id, service_date)`
+constraint backs this at the database level too; calling it twice the
+same day returns the existing session), `endRouteSession()`,
+`markStopStatus()`, `currentStopFor()` (the sensible-default stop for a
+fresh POS sale: the first `arrived` stop, else the first `pending` one —
+staff can always override).
+
+### Future order stop attribution (G3–G7)
+
+`orders.pickup_stop_id` (nullable FK to `van_schedule`, `ON DELETE SET
+NULL`) and `orders.service_date` (nullable `DATE`) were added. Every
+order-creation path now resolves and verifies a stop id server-side
+before storing it — **never trusts a client-sent id directly**:
+
+- **POS** (`app/api/orders/pos/route.ts`) — accepts an optional
+  `pickup_stop_id`, re-verified against `van_schedule` for that exact
+  `van_id` before use. The POS till (`app/(business)/dashboard/pos/page.tsx`)
+  shows a `CurrentStopBanner` (only when a route session exists for
+  today) defaulting to the session's current stop, always overridable,
+  never required.
+- **Guest/online ordering** (`app/api/orders/guest/route.ts`,
+  `app/van/[slug]/page.tsx`) — the pickup-day picker already resolved a
+  real `van_schedule.id` client-side; it's now actually sent and
+  re-verified server-side against `van_id`, alongside a bounded
+  (today .. +13 days) `service_date`.
+- **WhatsApp ordering** (`app/api/webhooks/whatsapp/route.ts`) — a new
+  `resolvePickupStop(dayLabel, locationText)` matches the customer's
+  stated day/location against that day's real `van_schedule` rows
+  case-insensitively, never trusting the AI's free-text extraction
+  directly. Wired into both the "pickup details" follow-up and the
+  "new order" insert path.
+
+### Route/stop performance analytics (G12–G20, G37, G38)
+
+`lib/routes/analytics.ts` — one shared module used by **both** the
+dashboard (`/api/routes/analytics`, `?type=route|stop|compare|
+day-of-week|time-of-day|products|anomalies`) and the FoodTaxi AI route
+tools, so the two surfaces can never disagree.
+
+- Revenue rule: identical to Phase B (`sum(orders.total)` excluding only
+  `status='cancelled'`) — but dated by `orders.service_date`, not
+  `created_at`. This is a deliberate, documented difference from Phase
+  B/D's own analytics, which are untouched and still use `created_at`;
+  retrofitting those is a separate, riskier change outside this phase's
+  scope.
+- Stop-level functions (`getStopPerformance`, `compareStops`,
+  `getProductByStop`) query by `pickup_stop_id`, so they are only
+  populated from the date this phase's code shipped — consistent with
+  the G1 audit's conclusion.
+- `revenue_per_hour` is computed **only** from real recorded
+  `actual_arrival_at`/`actual_departure_at` durations in
+  `route_session_stops` — never from the scheduled template time as a
+  stand-in. Returns `null` with an explanatory message when no session
+  data exists for the period, rather than a misleading number.
+- `getDayOfWeekPerformance()` — average revenue/orders/AOV per weekday
+  with an explicit sample size (`trading_days_sampled`) always shown, and
+  a trading-day distinction (G37): a date only counts as sampled if it
+  had a real order or a non-cancelled route session — a day with
+  neither is excluded entirely, never silently counted as a "£0 day".
+- `getAnomalies()` (G38) — this date's revenue/orders vs the plain
+  average of the last (up to 12 weeks of) comparable same-weekday dates.
+  Requires at least 3 comparable days before offering a comparison at
+  all; returns a measured percentage difference only, with
+  `is_notable: true` only as a ≥20% threshold flag — **never** a claimed
+  cause. `compareStops()` never assigns a good/bad label (G15) — the same
+  metrics, side by side, full stop.
+
+### Demand planning & loading plans (G21–G26, G41–G45)
+
+`lib/routes/demand.ts` — **transparent statistics only**, per the
+explicit instruction to start with a plain method rather than a
+black-box model:
+
+- **Method:** the plain average of up to the last 6 comparable days
+  (same van, same stop, same weekday) with sales recorded, plus a
+  configurable buffer percentage (default 10%). `sample_values` (the
+  exact historical quantities used) is persisted alongside every
+  estimate — full explainability (G41), not just a final number.
+- **Stock quantity per order** is derived via Phase C's optional
+  `menu_stock_components` recipe link. No recipe configured for an item
+  returns `null` (a distinct fact from "zero sold, no recipe needed") —
+  demand for that item simply cannot be estimated until a recipe exists,
+  and the UI/AI tool says so explicitly rather than showing a
+  misleading `0`.
+- **Idempotent & never rewritten (G44):** `demand_estimates` has
+  `UNIQUE(van_id, target_date, stock_item_id)` — the first calculation
+  for a given day is what's stored; repeated calls the same day return
+  the existing row rather than recomputing (and never silently changing)
+  it. Feedback (`feedback_status`/`feedback_quantity`/`feedback_at`/
+  `feedback_by`, G45 — `used`/`adjusted`/`ignored`, recorded via
+  `POST /api/routes/demand/feedback`) is appended in separate columns,
+  never overwriting the original `baseline_quantity`/`suggested_quantity`.
+- **`getLoadingPlan()`** — every recipe-linked stock item for a van's
+  stop on a future date: suggested quantity, current van stock, current
+  warehouse stock, and the shortfall (`max(0, suggested - van -
+  warehouse)`) — a number, never an automatic transfer.
+- **Turning a shortfall into action (G26):** `propose_stock_transfer`
+  (the FoodTaxi AI tool, `lib/ai/tools/routes.ts`) and
+  `POST /api/routes/demand/propose-transfer` (the plain dashboard button
+  in `/dashboard/routes` → Demand & Loading) both create exactly the same
+  kind of row — a `PENDING` `ai_pending_actions` row with
+  `action_type: 'create_stock_transfer'` — reusing Phase E's existing
+  confirmation framework exactly as instructed (G63), not a second
+  parallel mechanism. Confirming it (`POST /api/ai/actions/[id]/confirm`,
+  extended with a `create_stock_transfer` branch) calls Phase C's
+  `apply_stock_movement()` RPC twice (a `TRANSFER_OUT` from the
+  warehouse, a `TRANSFER_IN` to the van), exactly as a manual transfer
+  already does via `/api/stock/transfer` — never a direct quantity
+  overwrite.
+
+### FoodTaxi AI route tools (G39, G40)
+
+`lib/ai/tools/routes.ts`, registered into `ALL_TOOLS`
+(`lib/ai/tools/index.ts`): `get_route_performance`,
+`get_stop_performance`, `compare_stops`, `get_day_performance`,
+`get_product_sales_by_stop`, `get_route_anomalies`,
+`get_loading_suggestion`, `get_stock_shortfall`,
+`propose_stock_transfer`. All nine call the exact same
+`lib/routes/analytics.ts`/`lib/routes/demand.ts` functions the dashboard
+uses. Date-range tools use a new `resolveInclusiveDateRange()`
+(`lib/ai/dateRange.ts`) rather than Phase E's `resolveDateRange()`
+directly — the latter returns a timestamp-EXCLUSIVE end suited to
+`created_at` queries; Phase G's analytics filter a plain `DATE` column
+(`service_date`) inclusively, and reusing the exclusive value directly
+would have silently included one extra day in every range (found and
+fixed before shipping — see the code comment in `dateRange.ts`). The
+assistant's system prompt (`lib/ai/assistant.ts`) gained rule 10:
+route/demand results are factual measurements only — never "good"/"bad"
+day labels, never "lost sales" as fact for an unmet shortfall, never the
+word "profit" (route tools only ever surface revenue, known costs, or an
+estimated gross contribution), and a loading suggestion is explicitly a
+draft based on past averages, not a guarantee.
+
+### Route Intelligence dashboard (G12 suggested location)
+
+`/dashboard/routes` (`components/routes/RouteIntelligence.tsx`) — three
+tabs, van-scoped:
+
+- **Sessions** — start/end a route session for a chosen date, mark each
+  stop arrived/departed/skipped, add a note per stop (mirrored into
+  Business Memory, see below).
+- **Performance** — route KPIs for a date range, the day-of-week table
+  with sample sizes, and the "was this day unusual" anomaly check.
+- **Demand & Loading** — pick a future date and stop, see the suggested
+  loading plan with shortfalls, and propose a draft stock transfer for
+  any shortfall (routes into the same confirmation flow as above).
+
+### Route notes via Business Memory (G50–G52)
+
+No separate "route notes" table was created. A note entered against a
+stop in the Sessions tab (`PATCH
+/api/routes/sessions/[id]/stops/[stopId]`) is written into Phase F's
+`business_memory` table using its generic `related_entity_type`/
+`related_entity_id` link (`route_session_stop`), with `category:
+'route_note'`. It is retrievable the same way any other memory is — via
+`/dashboard/memory` or FoodTaxi AI's `search_business_memory` — and is
+treated identically to every other memory entry: unverified context, not
+a fact, and any instruction-like text inside it is data, never a
+command (G52).
+
+### Automation integration (G53–G55)
+
+Reuses Phase D's `claimRun`/`notify`/`completeRun` engine exactly — one
+more entry in the central `AutomationType` registry
+(`lib/automations/types.ts`), not a parallel notification path:
+
+- **`end_of_route_review`** (new automation type) — event-triggered from
+  `endRouteSession()`, not part of the hourly cron sweep (a route can end
+  at any time of day). Summarises that van's revenue/orders for the day
+  and, when ≥3 comparable same-weekday days exist, how it compared
+  (`lib/automations/evaluators/routes.ts`). Idempotent via the same
+  `trigger_key` claim pattern as every other automation.
+- **Daily briefing enhancement** — `runDailyBriefing()` now also computes
+  a stock-loading shortfall count for each scheduled van's first stop of
+  the day (reusing `getLoadingPlan()`) and adds a line to the briefing
+  only when there's something to flag.
+
+### Security, permissions & scope boundaries
+
+- RLS on all three new tables (`route_sessions`, `route_session_stops`,
+  `demand_estimates`) follows the exact same
+  `business_id IN (my_business_ids()) OR business_id IN
+  (my_staff_business_ids()) OR is_super_admin()` pattern as every table
+  since Phase C.
+- Van-restricted staff (G62) are enforced at the API layer via
+  `assertVanAllowed()`/`allowedVanIds()` (`lib/ai/context.ts`, already
+  built in Phase E) — every Phase G API route and AI tool that takes a
+  `van_id` checks it before querying.
+- The only write action anywhere in Phase G (`create_stock_transfer`)
+  requires `manage_stock` permission and goes through Phase E's existing
+  pending-action confirmation exactly (G63/G64) — nothing here executes
+  autonomously.
+- Subscription (`£19.99/month`, 3-day trial, one tier), customer-side
+  pricing, and every existing feature are unchanged (G65).
+
+### Not built in Phase G (see the completion report for the full list)
+
+- **GPS geofencing / automatic arrival detection (G11)** — `van_schedule`
+  stores a stop as free-text `location_name` with no coordinates; arrival/
+  departure stays a manual action only. Documented, not attempted.
+- **Travel time / route efficiency / route optimisation (G30–G32)** —
+  same root cause: no stop coordinates exist to compute a distance or
+  ETA from. No fabricated coordinates were introduced to work around
+  this.
+- **Route map / heatmap visualisation (G47–G48)** — depends on the same
+  missing coordinate data.
+- **Weather integration (G35)** — no architecture beyond noting the same
+  extension point Phase D's automation settings already provide (a new
+  automation type reading an external API) would be where this belongs;
+  no external weather call is made.
+- **Any historical `pickup_stop_id` backfill** — explicitly forbidden by
+  G57; only `service_date` was safely backfilled from `created_at`.
+- **Full accounting / true profit** — route figures are revenue, known
+  costs, and an estimated gross contribution only, never "profit" (G29,
+  G66 — no general ledger, no full accounting).
+- **Autonomous route changes** — route optimisation suggestions, stop
+  removal, and stock transfers all require explicit owner confirmation;
+  nothing in Phase G ever writes without it (G32, G33, G67).

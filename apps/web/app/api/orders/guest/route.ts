@@ -75,11 +75,27 @@ async function sbPost(table: string, body: any) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { van_id, business_id, customer_name, customer_phone, notes, pickup_location, pickup_time, items, subtotal, total, payment_method } = await req.json()
+    const { van_id, business_id, customer_name, customer_phone, notes, pickup_location, pickup_time, pickup_stop_id, service_date, items, subtotal, total, payment_method } = await req.json()
 
     if (!customer_name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     if (!customer_phone) return NextResponse.json({ error: 'Phone is required' }, { status: 400 })
     if (!items?.length) return NextResponse.json({ error: 'No items in order' }, { status: 400 })
+
+    // Phase G — never trust a stop id without checking it actually
+    // belongs to this van's own schedule.
+    let verifiedStopId: string | null = null
+    if (pickup_stop_id && van_id) {
+      const stops = await sbGet(`van_schedule?id=eq.${pickup_stop_id}&van_id=eq.${van_id}&select=id`)
+      verifiedStopId = stops?.[0]?.id ?? null
+    }
+    // service_date: trust the client's chosen pickup day only if it's a
+    // plausible near-future date (matches the 7-day picker window with a
+    // little margin) — otherwise fall back to today rather than storing
+    // an arbitrary client-supplied date.
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const maxIso = new Date(Date.now() + 13 * 86400000).toISOString().slice(0, 10)
+    const resolvedServiceDate = typeof service_date === 'string' && service_date >= todayIso && service_date <= maxIso
+      ? service_date : todayIso
 
     // Try with guest columns first, fall back to notes-only.
     // order_number is left unset so the DB trigger fills it in (daily-reset
@@ -93,6 +109,8 @@ export async function POST(req: NextRequest) {
         notes: notes || null,
         pickup_location: pickup_location || null,
         pickup_time: pickup_time || null,
+        pickup_stop_id: verifiedStopId,
+        service_date: resolvedServiceDate,
         subtotal: subtotal ?? 0,
         total: total ?? 0,
         payment_method: payment_method ?? 'cash_at_van',
