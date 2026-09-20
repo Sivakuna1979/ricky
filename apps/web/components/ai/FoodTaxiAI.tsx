@@ -91,6 +91,8 @@ export function FoodTaxiAI() {
     setPendingActions(p => p.filter(a => a.id !== id))
     const successMessage = actionType === 'create_stock_transfer'
       ? '✅ Done — stock transfer created for you to review under Stock → Movements.'
+      : actionType === 'create_expense'
+      ? '✅ Done — expense recorded under Finance → Expenses.'
       : '✅ Done — purchase order created as a draft for you to review under Suppliers.'
     setMessages(m => [...m, { role: 'assistant', content: res.ok ? successMessage : `❌ ${data.error}` }])
   }
@@ -153,10 +155,14 @@ export function FoodTaxiAI() {
         {pendingActions.map(a => (
           <div key={a.id} style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
-              {a.action_type === 'create_stock_transfer' ? '🚐 Draft stock transfer to van' : `📋 Draft purchase order — ${a.params.supplier_name}`}
+              {a.action_type === 'create_stock_transfer' ? '🚐 Draft stock transfer to van'
+                : a.action_type === 'create_expense' ? '💰 Draft expense'
+                : `📋 Draft purchase order — ${a.params.supplier_name}`}
             </div>
             <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
-              {a.params.items.map((i: any) => `${i.quantity} × ${i.name}`).join(', ')}
+              {a.action_type === 'create_expense'
+                ? `${a.params.description} — £${Number(a.params.gross_amount).toFixed(2)} (${a.params.category.replace('_', ' ')})`
+                : a.params.items.map((i: any) => `${i.quantity} × ${i.name}`).join(', ')}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => confirmAction(a.id, a.action_type)} style={{ padding: '8px 16px', borderRadius: 8, background: '#059669', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Confirm</button>

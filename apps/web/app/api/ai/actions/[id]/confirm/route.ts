@@ -43,6 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const PERMISSION_BY_ACTION: Record<string, string> = {
     create_purchase_order: 'manage_purchase_orders',
     create_stock_transfer: 'manage_stock',
+    create_expense: 'create_expense',
   }
   const requiredPermission = PERMISSION_BY_ACTION[pending.action_type]
   if (requiredPermission && !hasPermission(ctx.role, requiredPermission)) {
@@ -89,6 +90,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         })
       }
       result = { transferred_items: items.length, reference_id: referenceId }
+    } else if (pending.action_type === 'create_expense') {
+      // H60/H65 — the AI never inserts an expense itself; this confirm
+      // step (a real authenticated click, never the model) is the only
+      // place the row is actually created, identical in shape to a
+      // manual expense entry (POST /api/finance/expenses).
+      const { description, category, net_amount, vat_amount, gross_amount, expense_date, supplier_id, van_id } = pending.params
+      const { data: expense, error } = await admin.from('expenses').insert({
+        business_id: ctx.businessId, expense_date, supplier_id, van_id,
+        description, category, net_amount, vat_amount, gross_amount,
+        payment_method: 'other', source: 'manual', status: 'CONFIRMED', created_by: ctx.userId,
+      }).select().single()
+      if (error) throw error
+      result = { expense_id: expense.id }
     } else {
       throw new Error('unknown_action_type')
     }

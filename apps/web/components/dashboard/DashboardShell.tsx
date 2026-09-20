@@ -21,6 +21,7 @@ export const NAV_ITEMS = [
   { icon: '🔔', label: 'Notifications', href: '/dashboard/notifications' },
   { icon: '⚡', label: 'Automations', href: '/dashboard/automations' },
   { icon: '📈', label: 'Analytics',  href: '/dashboard/analytics' },
+  { icon: '💰', label: 'Finance',    href: '/dashboard/finance' },
   { icon: '💳', label: 'My Plan',    href: '/dashboard/billing' },
   { icon: '🎪', label: 'Events',     href: '/van/events' },
   { icon: '🧼', label: 'Hygiene',    href: '/dashboard/hygiene' },

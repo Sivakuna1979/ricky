@@ -38,6 +38,7 @@ import { runStaffAutomations } from '@/lib/automations/evaluators/staff'
 import { runDailyBriefing, runEndOfDaySummary, runWeeklySummary } from '@/lib/automations/evaluators/reports'
 import { runMarketingSuggestions } from '@/lib/automations/evaluators/marketing'
 import { runEventTomorrowReminders } from '@/lib/automations/evaluators/events'
+import { runInvoiceDueReminders, runFinanceReviewDigest, runVatPeriodReminder, runDailyFinanceSummary } from '@/lib/automations/evaluators/finance'
 
 export async function GET(req: NextRequest) {
   // Named exactly CRON_SECRET (not a FoodTaxi-specific name) because
@@ -72,6 +73,10 @@ export async function GET(req: NextRequest) {
       await runEndOfDaySummary(admin, business)
       await runWeeklySummary(admin, business)
       await runMarketingSuggestions(admin, business)
+      await runInvoiceDueReminders(admin, business)
+      await runFinanceReviewDigest(admin, business)
+      await runVatPeriodReminder(admin, business)
+      await runDailyFinanceSummary(admin, business)
       results.push({ business_id: business.id, ok: true })
     } catch (e: any) {
       // One business's failure must never block the others.

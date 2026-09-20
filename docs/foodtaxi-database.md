@@ -228,6 +228,54 @@ RLS on `route_sessions`, `route_session_stops`, and `demand_estimates`: the same
 
 ---
 
+## Finance (Phase H)
+
+### `businesses.currency` 🟢 (column added in Phase H)
+Defaults `'GBP'`. Architecture-only multi-currency hook — every current UI surface still hard-codes £.
+
+### `user_role` — new enum value `'accountant'` 🟢 (Phase H)
+Additive (`ALTER TYPE ... ADD VALUE IF NOT EXISTS`), the same safe pattern Phase C used for `'business_admin'`. Finance-scoped permissions only (`lib/permissions.ts`) — no operational-admin grants.
+
+### `expenses` 🟢
+`status` is `CONFIRMED`/`VOID` only — no in-between draft state lives here (an unconfirmed document extraction lives in `finance_documents` instead). `category` is a plain CHECK-constrained label list, never implying a VAT treatment. `document_id` links back to the `finance_documents` row it was confirmed from, if any.
+
+### `finance_documents` 🟢
+Receipt/invoice extraction staging (`extraction_status`: `PENDING → EXTRACTED → CONFIRMED`/`FAILED`). `extracted_data` (jsonb) holds Claude vision's structured result; `file_url` is an optional external link only — **no file is ever stored by FoodTaxi itself** (no Storage bucket exists in this app). Links forward to whichever of `expenses`/`supplier_invoices` it was confirmed into.
+
+### `supplier_invoices` / `supplier_invoice_payments` 🟢
+Header-level invoice totals (net/VAT/gross), `UNIQUE(business_id, supplier_id, invoice_number)` where a number is present. `status` (`UNPAID`/`PARTIALLY_PAID`/`PAID`) is derived from `supplier_invoice_payments`, computed at query time — never stored, so it can't drift. Optionally linked to a `purchase_orders` row for three-way PO/goods-received/invoice matching, reusing Phase C's existing `purchase_order_items` quantities — no per-line invoice items table exists.
+
+### `refunds` 🟢
+A separate factual record, never a mutation of `orders.status` — the pre-existing `order_status` enum is completely untouched. Revenue queries subtract matching refunds explicitly. `status` is currently only ever `'RECORDED'` — no real payment-provider refund integration exists.
+
+### `cash_reconciliations` / `card_reconciliations` 🟢
+One row per `(van_id, service_date)` each. Cash figures (`cash_sales_recorded`, `cash_refunds_recorded`, `recorded_cash_expenses`, `expected_cash`) are **snapshots taken at count time**, never live-recomputed later. Card reconciliation's `foodtaxi_card_recorded_total` vs a manually-entered `external_terminal_total` — `provider` is free text; nothing here is a real payment-provider integration.
+
+### `vat_settings` 🟢
+One row per business. `is_registered` defaults `false` — never assumed. `default_rate` is the single place a VAT percentage is configured.
+
+### `finance_periods` 🟢
+Optional lock/audit foundation (`locked`/`locked_by`/`locked_at`). No write route currently checks it before writing — a documented foundation, not yet enforcement.
+
+### `customer_invoices` / `customer_invoice_items` / `customer_invoice_payments` 🟢
+Professional catering/event invoices, entirely separate from `event_applications.foodtaxi_fee` (the £29.99 platform booking fee), which these tables never read or write. `UNIQUE(business_id, invoice_number)` for duplicate-safe numbering.
+
+### `finance_account_mappings` 🟢
+Provider-neutral category→external-account label only (H46–H53). No Xero/QuickBooks API is called anywhere — this table only adds a `mapped_account` column to the expenses CSV export when a mapping is set.
+
+### `finance_review_items` 🟢
+One generic queue table (`item_type` + a pointer to the flagged record) covering duplicate expenses, uncategorised expenses, missing suppliers, unknown VAT, and cash/card variances — created automatically where the underlying fact is recorded. Never auto-resolved or auto-deleted; only a person can mark an item `RESOLVED`/`DISMISSED`.
+
+### `ai_pending_actions.action_type = 'create_expense'` 🟢 (new action type, Phase H)
+No new table — reuses Phase E's `ai_pending_actions` exactly, the same pattern Phase G's `create_stock_transfer` already established. This — and nothing else — is the only finance action FoodTaxi AI can ever propose; there is no AI tool at all for a payment, a void, a refund, a VAT change, or a period lock.
+
+### `automation_settings`/`automation_runs` — new types `invoice_due_reminder`, `finance_review_digest`, `vat_period_reminder`, `daily_finance_summary` 🟢 (Phase H)
+No schema change — `automation_type` is free text (Phase D). All four reuse the existing hourly cron sweep and `claimRun()` exactly-once guarantee.
+
+RLS on every new Phase H table: the same `my_business_ids() OR my_staff_business_ids() OR is_super_admin()` pattern as every table since Phase C.
+
+---
+
 ## Ownership / tenant isolation summary
 
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).

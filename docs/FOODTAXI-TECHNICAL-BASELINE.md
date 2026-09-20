@@ -1417,3 +1417,342 @@ more entry in the central `AutomationType` registry
 - **Autonomous route changes** — route optimisation suggestions, stop
   removal, and stock transfers all require explicit owner confirmation;
   nothing in Phase G ever writes without it (G32, G33, G67).
+
+---
+
+## 68. Finance, Expenses, Reconciliation & Accounting Hub (Phase H)
+
+### H1 data audit — what already exists and is never duplicated
+
+- `orders.total`/`subtotal`/`vat_amount`/`status`/`payment_method`/
+  `source` — the one source of sales revenue. Phase H's finance module
+  reads these directly and never re-derives or re-stores a sales figure.
+- `subscriptions`/`subscription_plans` (the £19.99/month FoodTaxi
+  platform subscription) and `event_applications.foodtaxi_fee` (the
+  £29.99 event booking fee) are both structurally separate from a
+  business's own food revenue already — Phase H's finance queries never
+  read either as business income (H2).
+- `purchase_orders`/`purchase_order_items` (Phase C) had no invoice
+  number, VAT split, or payment tracking — that gap is exactly what the
+  new `supplier_invoices` table fills, linked to a PO via
+  `purchase_order_id`, never replacing it.
+- `stock_items.cost_price`, `wastage_records.cost`,
+  `vehicle_maintenance.cost`, `equipment_maintenance.cost` — already
+  authoritative. Vehicle/equipment costs are read directly from those
+  tables in Phase H's reports, never re-entered as an `expenses` row
+  (that would be exactly the "second financial truth" this audit warns
+  against). An `expenses` row in category `vehicle`/`repairs`/`equipment`
+  is only for a cost NOT already captured there (e.g. a parking fine).
+- No file/document storage infrastructure (a Supabase Storage bucket,
+  signed URLs) exists anywhere in the app — see "Not built" below.
+- **Conclusion (H7):** no ledger abstraction table was created. Each
+  money-moving fact (a sale, a refund, an expense, a supplier invoice, a
+  cash count) keeps its own single source-of-truth table; reporting
+  composes these at query time in `lib/finance/*`, exactly the way Phase
+  G's route analytics compose `orders` + `route_session_stops` without a
+  separate materialised table.
+
+### Money precision & rounding (H79)
+
+Every money column is `NUMERIC(12,2)` (exact decimal, never a float
+column) — the same convention every existing money column in the schema
+already uses (`orders.total` is `DECIMAL(10,2)`). `lib/finance/money.ts`'s
+`round2()` is the one rounding function every calculation in Phase H
+goes through, mirroring the `round2()` already used by Phase B/D/G. An
+integer-minor-units convention was deliberately NOT introduced — it
+would be inconsistent with 50+ existing DECIMAL columns across the app
+for no real precision gain (`NUMERIC` has no floating-point error).
+`businesses.currency` (new column, default `'GBP'`) documents the
+single-currency assumption at the schema level without building
+multi-currency conversion (H80).
+
+### Revenue & payment categorisation (H4–H6, H19–H21)
+
+`lib/finance/revenue.ts` reuses Phase B's exact rule (`sum(orders.total)`
+excluding only `status='cancelled'`, dated by `created_at`) and adds one
+thing Phase B never needed: subtracting recorded `refunds` to get net
+revenue. Payment method is categorised as `cash` / `card_recorded`
+(POS card — recorded only, never claimed verified or settled — no
+card-terminal integration exists) / `verified_online` (Stripe-captured)
+/ `other` — the exact provider-neutral distinction H21 asks for.
+
+### Expenses & receipt extraction (H8–H11)
+
+`expenses` (status `CONFIRMED`/`VOID` only — a correction is a new edit
+or a void, never a silent rewrite, H56). Categories
+(`food_stock`/`drinks`/`packaging`/`fuel`/`vehicle`/`repairs`/
+`equipment`/`insurance`/`rent_storage`/`phone_internet`/`marketing`/
+`staff`/`cleaning`/`professional_fees`/`other`) are plain labels — they
+never imply a VAT treatment (H9); net/VAT/gross are entered or reviewed
+explicitly per expense.
+
+**Receipt → extract → review → confirm → expense (H11):** reuses the
+exact pattern `app/api/menu/scan` already established — a base64 image
+sent to Claude vision, a structured JSON result back
+(`POST /api/finance/documents/extract`). The result is staged in
+`finance_documents.extracted_data` as `PENDING`/`EXTRACTED`, never
+authoritative until a person reviews the pre-filled form in
+`/dashboard/finance` → Expenses and explicitly saves it — only then does
+a real `expenses` row exist (`finance_documents.extraction_status` moves
+to `CONFIRMED`). **The source image itself is never persisted** — no new
+file storage/signed-URL infrastructure was introduced in this phase (see
+"Not built").
+
+Duplicate detection (`findPossibleDuplicateExpense`) flags a same-
+supplier/same-date/same-amount match into `finance_review_items` — it
+never blocks or auto-merges the new entry (H54).
+
+### Supplier invoices, payments & PO matching (H12–H15)
+
+`supplier_invoices` is header-level only (net/VAT/gross totals, not
+per-line items) — matched against a linked PO's own already-line-level
+`purchase_order_items` (`quantity_ordered`/`quantity_received`/
+`unit_cost`) for the three-way PO-vs-goods-received-vs-invoice review
+(`lib/finance/matching.ts`'s `getPoInvoiceMatch`, surfaced on
+`GET /api/finance/supplier-invoices/[id]`). A >5% difference is flagged,
+everything is still shown regardless of the flag. Duplicate-safe
+numbering: `UNIQUE(business_id, supplier_id, invoice_number)` where an
+invoice number is present (a receipt with no number is never treated as
+a duplicate).
+
+`amount_paid`/`outstanding_balance` are computed at query time from
+`supplier_invoice_payments`, never stored — there is exactly one place a
+payment total can be. Overpayment is prevented by the API checking the
+outstanding balance before insert (H13); `status`
+(`UNPAID`/`PARTIALLY_PAID`/`PAID`) is derived automatically from the
+actual payment total, never set independently, so it can never drift.
+
+### Cash & card reconciliation (H16–H21)
+
+`lib/finance/cash.ts` implements the formula exactly as specified:
+`opening float + cash sales − cash refunds − recorded cash expenses =
+expected cash`, `actual − expected = variance`. Figures
+(`cash_sales_recorded`, etc.) are **snapshots taken at count time**, not
+live-recomputed later — a correction made afterwards to an order or
+expense never silently rewrites a historical count (H56). A count
+accepts either a direct total or a UK denomination breakdown (£50 down
+to 1p, `totalFromDenominations()`). One count per `(van_id,
+service_date)`; a `route_session_id` link is optional, for forward
+compatibility with per-session granularity, not required.
+
+Card reconciliation compares FoodTaxi's own card-recorded total against
+a manually-entered external terminal total, with a free-text `provider`
+field (SumUp/Square/Zettle/Stripe/Other) — never labelled a "settlement"
+or "bank receipt" anywhere, since no provider integration exists (H19).
+
+A ≥£5 variance on either flags a `finance_review_items` row.
+
+### Refunds (H22/H23)
+
+A dedicated `refunds` table, never a mutation of `orders.status` — the
+`order_status` enum and every existing order-status UI is completely
+untouched. Revenue queries subtract matching refunds explicitly instead.
+No real provider refund is ever issued (no approved payment-provider
+integration exists to call) — `status` is a single `'RECORDED'` value.
+Overpayment beyond the order total is prevented by the API.
+
+### COGS, gross contribution & wastage (H24–H27)
+
+`lib/finance/cogs.ts` — **chosen method: "latest confirmed cost"**
+(`stock_items.cost_price`), the simpler of the two explicitly-permitted
+options, since no per-sale historical cost exists anywhere in the schema
+(`stock_movements` has no `unit_cost` column) to average over. This is a
+documented, deliberate limitation: editing a stock item's cost price
+changes the cost basis a past period's report uses the next time it's
+generated — nothing stored is ever silently rewritten (every call
+recomputes fresh from the current recipe + current cost). A true
+point-in-time cost snapshot would require adding a cost column to
+`stock_movements` — judged out of scope for this phase.
+
+Revenue is split into known-cost (every recipe component has a
+`cost_price`) and unknown-cost (no recipe at all, or an incomplete one).
+**Gross contribution is only ever computed over the known-cost portion**,
+with `coverage_pct` always shown alongside it, and is never called "net
+profit" or "profit" anywhere in the code or UI (H24). Wastage cost
+(`wastage_records.cost`, already authoritative) is reported as its own
+line, never netted into gross contribution automatically — so nothing is
+silently double-counted or hidden (H27).
+
+### Vehicle/equipment/van/route finance (H28–H31)
+
+`lib/finance/reports.ts`'s `getVehicleCosts`/`getEquipmentCosts` read
+directly from `vehicle_maintenance`/`equipment_maintenance` (by date) —
+never duplicated into `expenses`. Equipment with no `van_id` (business-
+wide) is included in the business total but never arbitrarily allocated
+to a van (H31). `getVanFinance()` combines revenue, known gross
+contribution and a van's own directly-attributed vehicle/equipment costs
+only. Route-level finance is available by combining this with Phase G's
+existing `getRoutePerformance` (same revenue figures, already van/stop
+scoped) — no separate route-cost table was introduced.
+
+### VAT (H32–H37)
+
+`vat_settings` (one row per business): `is_registered` defaults `false`
+— **never assumed** — with an optional VAT number and a single
+`default_rate` (the one place a VAT percentage is configured; nothing
+else in Phase H hard-codes a rate, H32). `lib/finance/vat.ts`'s
+`getVatSummary()` computes output VAT (`orders.vat_amount` for the
+period) and input VAT (`expenses.vat_amount` + `supplier_invoices.
+vat_amount`, accrual basis — invoice/expense date, not payment date).
+**Explicitly labelled everywhere** — API response, dashboard, and the AI
+tool — as "a FoodTaxi record summary for review, not a filed VAT
+return." Nothing is submitted to HMRC, no Making Tax Digital connection
+exists, no tax return is filed (H37, final safety check). A documented
+limitation: output VAT is not reduced for refunds, since `refunds`
+carries no VAT split of its own.
+
+### Management report & cash flow (H38–H40)
+
+`getManagementReport()`: sales net revenue → known COGS → gross
+contribution → recorded operating expenses (expenses + vehicle +
+equipment costs) → recorded operating result, with an explicit
+`disclosure` string on every response stating this is not statutory
+accounts and that low-coverage revenue is excluded from gross
+contribution, not estimated. `getCashFlowView()` distinguishes an actual
+payment date (`supplier_invoice_payments.paid_at`, `customer_invoice_
+payments.paid_at`) from an invoice/expense's own accrual date — expense
+outflow uses `expense_date` as a documented proxy for payment date (no
+separate "paid on" field exists for a manual/receipt expense).
+
+### Payables, receivables & customer invoices (H41–H45)
+
+Supplier invoice payables are the `supplier_invoices` list filtered by
+status. `customer_invoices`/`customer_invoice_items`/`customer_invoice_
+payments` are professional catering/event invoices — **entirely separate
+from the £29.99 FoodTaxi event booking fee** (`event_applications.
+foodtaxi_fee`), which this feature never reads or writes.
+Business-scoped duplicate-safe numbering with an optional prefix
+(`UNIQUE(business_id, invoice_number)`). PDF generation reuses the exact
+`window.print()` pattern the existing receipt page
+(`app/receipt/[id]`) already uses — no new PDF-rendering dependency was
+introduced (a dedicated printable invoice page was judged lower priority
+than the core ledger/reconciliation work within this phase's scope — see
+"Not built").
+
+### Accountant export & accounting integration architecture (H46–H53)
+
+`GET /api/finance/export?type=...` — CSV only (no XLSX dependency was
+judged worth adding for this). Types: `sales`, `expenses`,
+`supplier_invoices`, `payments`, `refunds`, `cash`, `vat`, `cogs`. Sales
+rows never include `guest_name`/`guest_email`/`guest_phone` — only an
+order number, date, van, payment category, and amounts (H51). Custom
+date range required on every export (H49).
+
+`finance_account_mappings` is a **provider-neutral architecture only** —
+a business can label an expense category with an external chart-of-
+accounts code/name, surfaced as an extra `mapped_account` column on the
+expenses export. **No real Xero/QuickBooks connection exists or is
+called anywhere** — editing a mapping is explicitly documented as not
+tax advice (H53), identical in nature to choosing an expense category.
+
+### Finance review queue, duplicates, audit & period locking (H54–H57)
+
+`finance_review_items` — one generic queue table (`item_type` + a
+pointer to the record) rather than one table per reason:
+`duplicate_expense`, `uncategorised_expense`, `missing_supplier`,
+`unknown_vat`, `cash_variance`, `card_variance` are all created
+automatically at the point the underlying fact is recorded;
+`invoice_po_mismatch` and `extraction_review` are computed on demand
+(surfaced via the PO-match/extraction endpoints) rather than scanned for
+on a schedule. **Nothing is ever auto-deleted or auto-merged** — a
+duplicate is flagged, never silently removed (H54). Every financially
+meaningful action (`expense_created`, `expense_edited`, `expense_voided`,
+`supplier_invoice_created`, `supplier_payment_recorded`, `refund_recorded`,
+`cash_reconciliation_recorded`, `card_reconciliation_recorded`,
+`vat_settings_changed`, `period_locked`/`unlocked`, ...) is written to
+`audit_logs` via the existing `logAuditEvent()` (Phase C), the same audit
+trail every prior phase's higher-risk changes already use.
+
+`finance_periods` provides an optional lock/unlock foundation
+(`POST /api/finance/periods`) — locking is itself an authorised, audited
+action. **Known limitation:** no write route currently checks whether its
+target date falls inside a locked period and refuses the write; this
+phase ships the lock as a foundation and audit record, not yet full
+write-blocking enforcement (see "Not built").
+
+### Permissions & the ACCOUNTANT role (H58/H59)
+
+Thirteen new granular permissions (`view_finance_summary`,
+`view_sales_finance`, `view_expenses`, `create_expense`,
+`approve_expense`, `manage_supplier_invoices`, `record_supplier_payment`,
+`perform_cash_count`, `view_cash_variance`, `view_vat`, `edit_vat`,
+`export_finance`, `manage_finance_settings`) added to the existing
+central `lib/permissions.ts` registry — no separate finance-permission
+system. **New `ACCOUNTANT` role** (`ALTER TYPE user_role ADD VALUE
+'accountant'`, the same safe additive pattern Phase C used for
+`business_admin`): finance permissions only, **zero** operational-admin
+grants (no `manage_stock`, `manage_staff`, `use_pos`, etc.) — exactly
+H58's "no automatic operational-admin rights." `BUSINESS_ADMIN` gained
+full finance access (a trusted manager already gets nearly everything
+else); `VAN_MANAGER`/`DRIVER`/`STAFF` gained only enough to log an
+expense and perform a cash count at their own van — "minimal finance
+access by default" (H59).
+
+### FoodTaxi AI finance tools (H60–H65)
+
+`lib/ai/tools/finance.ts` — nine tools, registered into `ALL_TOOLS`:
+`get_finance_summary`, `get_expenses_summary`, `get_gross_contribution`,
+`get_vehicle_costs`, `get_supplier_invoice_status`, `get_cash_variance`,
+`get_vat_summary`, `get_finance_review_items`, `get_management_report`,
+plus **one** write-capable tool, `propose_expense` — which, exactly like
+Phase E's `propose_purchase_order` and Phase G's `propose_stock_transfer`,
+only ever creates a `PENDING` `ai_pending_actions` row for the user to
+confirm themselves (`create_expense` extends the existing
+`/api/ai/actions/[id]/confirm` switch, the one place any AI-proposed
+action ever actually executes). **The AI has no tool at all** — gated or
+otherwise — for recording a payment, voiding an invoice, issuing a
+refund, changing VAT registration, locking a period, or deleting
+anything (H65): those actions simply don't exist as callable tools. The
+system prompt (`lib/ai/assistant.ts`, rule 11) requires the assistant to
+distinguish recorded fact from calculation from a data gap, never call a
+VAT summary a filed return, and never give authoritative tax/legal
+advice.
+
+### Automation integration (H66)
+
+Four new automation types (`lib/automations/evaluators/finance.ts`,
+reusing Phase D's `claimRun`/`notify`/`completeRun` engine exactly, run
+from the existing hourly cron sweep): `invoice_due_reminder`
+(7/1-day-before + daily-overdue, same exact-day-threshold pattern as
+Phase D's vehicle reminders), `finance_review_digest` (one daily
+notification summarising the whole open review queue by type, not one
+notification per item), `vat_period_reminder` (monthly, only for
+VAT-registered businesses, never assumed), and `daily_finance_summary`
+(optional, default OFF — same convention as Phase D's
+`end_of_day_summary`). Business Memory (Phase F) and Route Intelligence
+(Phase G) are referenced only through existing shared data (van/route
+figures) — no new coupling was added into either of those tables.
+
+### Completeness indicators & month-end checklist (H66/H71)
+
+`GET /api/finance/checklist` — COGS cost coverage %, receipt coverage %
+(expenses with a linked document vs without), open review-item count,
+unpaid supplier invoice count, and a simple checklist of whether each is
+clear — read-only, informational; it never locks anything itself.
+
+### Not built in Phase H (see the completion report for the full list)
+
+- **File/document storage + signed URLs** — no Supabase Storage bucket
+  exists anywhere in the app yet; receipt/invoice images are sent
+  directly to Claude vision for extraction and never persisted server-
+  side. `finance_documents.file_url` stays an optional external link
+  only, the same convention `vehicle_documents`/`hygiene_documents`
+  already use.
+- **Per-line supplier invoice items** — invoices are header-level
+  totals only, matched against the PO's existing line items.
+- **A true historical cost snapshot for COGS** — "latest confirmed cost"
+  is used instead; see the COGS section above.
+- **Write-blocking period-lock enforcement** — `finance_periods` is a
+  lock/audit foundation; no write route yet refuses a write because its
+  date falls inside a locked period.
+- **A dedicated printable customer-invoice page** — PDF generation via
+  `window.print()` (the receipt pattern) is architected but no dedicated
+  print-layout page was built in this pass.
+- **Real Xero/QuickBooks/bank-feed/open-banking integration** — mapping
+  architecture only; nothing is called, no bank credentials are ever
+  requested or stored (final safety check).
+- **HMRC/Making Tax Digital submission** — never built, never planned
+  for this phase; VAT is a recorded summary only.
+- **Stripe Connect / real card-provider settlement verification** —
+  explicitly not activated; card-recorded sales are never claimed
+  verified.

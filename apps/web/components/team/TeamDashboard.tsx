@@ -7,7 +7,7 @@ const CARD = { background: '#fff', borderRadius: 14, padding: '18px 20px', boxSh
 const LABEL = { fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase' as const, marginBottom: 8 }
 const INPUT = { padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, width: '100%', boxSizing: 'border-box' as const }
 const BTN = { padding: '10px 18px', borderRadius: 8, background: '#f97316', color: '#fff', fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }
-const ROLES = ['BUSINESS_ADMIN', 'VAN_MANAGER', 'DRIVER', 'STAFF']
+const ROLES = ['BUSINESS_ADMIN', 'VAN_MANAGER', 'DRIVER', 'STAFF', 'ACCOUNTANT']
 
 const TABS = ['Staff', 'Shifts', 'Clock In/Out', 'Timesheets'] as const
 

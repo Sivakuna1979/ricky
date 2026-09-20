@@ -16,11 +16,12 @@ import { operationsTools } from './operations'
 import { actionTools } from './actions'
 import { memoryTools } from './memory'
 import { routeTools } from './routes'
+import { financeTools } from './finance'
 
 export const ALL_TOOLS = [
   ...salesTools, ...stockTools, ...supplierTools, ...staffTools, ...hygieneTools,
   ...vehicleTools, ...eventTools, ...operationsTools, ...actionTools, ...memoryTools,
-  ...routeTools,
+  ...routeTools, ...financeTools,
 ]
 
 export const TOOLS_BY_NAME = Object.fromEntries(ALL_TOOLS.map(t => [t.name, t]))
@@ -31,4 +32,4 @@ export function claudeToolDefinitions() {
   return ALL_TOOLS.map(t => ({ name: t.name, description: t.description, input_schema: t.input_schema }))
 }
 
-export const WRITE_TOOL_NAMES = new Set(['propose_purchase_order', 'propose_stock_transfer'])
+export const WRITE_TOOL_NAMES = new Set(['propose_purchase_order', 'propose_stock_transfer', 'propose_expense'])

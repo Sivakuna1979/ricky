@@ -13,6 +13,7 @@ export type AutomationType =
   | 'marketing_suggestion'
   | 'event_tomorrow'
   | 'end_of_route_review'
+  | 'invoice_due_reminder' | 'finance_review_digest' | 'vat_period_reminder' | 'daily_finance_summary'
 
 export const DEFAULT_IN_APP_ONLY = { in_app: true, email: false, sms: false, whatsapp: false }
 export const DEFAULT_IN_APP_EMAIL = { in_app: true, email: true, sms: false, whatsapp: false }
@@ -43,6 +44,11 @@ export const AUTOMATIONS: Record<AutomationType, {
   marketing_suggestion:   { label: 'Marketing suggestions',    description: 'Suggested (not sent) campaigns, e.g. lapsed regular customers.', category: 'marketing', defaultEnabled: false, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_analytics' },
   event_tomorrow:         { label: 'Event tomorrow',           description: 'A preparation reminder the day before your confirmed event.', category: 'events', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_orders' },
   end_of_route_review:    { label: 'End-of-route review',      description: "A summary sent when a route session is ended: revenue, orders and how it compared to recent same-weekday trading (G55).", category: 'reports', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_analytics' },
+  // Phase H — finance automations.
+  invoice_due_reminder:   { label: 'Supplier invoice due/overdue', description: 'Alert at 7/1 days before a supplier invoice is due, and if overdue.', category: 'reports', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_expenses' },
+  finance_review_digest:  { label: 'Finance review queue digest', description: 'A daily alert when there are open items in the finance review queue (duplicates, unknown VAT, variances, mismatches).', category: 'reports', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_finance_summary' },
+  vat_period_reminder:    { label: 'VAT period reminder',      description: "A monthly reminder to review last month's recorded VAT summary, for VAT-registered businesses.", category: 'reports', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_vat' },
+  daily_finance_summary:  { label: 'Daily finance summary',    description: "Yesterday's net revenue, expenses and gross contribution.", category: 'reports', defaultEnabled: false, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_finance_summary' },
 }
 
 export const AUTOMATION_TYPE_LIST = Object.keys(AUTOMATIONS) as AutomationType[]
