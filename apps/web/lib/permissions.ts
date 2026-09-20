@@ -12,7 +12,7 @@ export const PERMISSIONS = [
   'manage_business', 'manage_vans', 'manage_menu', 'manage_stock', 'stocktake',
   'record_wastage', 'manage_suppliers', 'manage_purchase_orders', 'manage_staff',
   'manage_shifts', 'manage_vehicles', 'manage_hygiene', 'use_pos', 'view_orders',
-  'manage_orders', 'view_analytics', 'manage_billing',
+  'manage_orders', 'view_analytics', 'manage_billing', 'manage_business_memory',
 ] as const
 export type Permission = typeof PERMISSIONS[number]
 
@@ -26,16 +26,21 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     'manage_business', 'manage_vans', 'manage_menu', 'manage_stock', 'stocktake',
     'record_wastage', 'manage_suppliers', 'manage_purchase_orders', 'manage_staff',
     'manage_shifts', 'manage_vehicles', 'manage_hygiene', 'use_pos', 'view_orders',
-    'manage_orders', 'view_analytics',
+    'manage_orders', 'view_analytics', 'manage_business_memory',
   ],
   // Runs the operational side of the van(s) they're assigned to.
   VAN_MANAGER: [
     'manage_vans', 'manage_menu', 'manage_stock', 'stocktake', 'record_wastage',
     'manage_suppliers', 'manage_purchase_orders', 'manage_shifts', 'manage_vehicles',
     'manage_hygiene', 'use_pos', 'view_orders', 'manage_orders', 'view_analytics',
+    'manage_business_memory',
   ],
-  DRIVER: ['use_pos', 'view_orders', 'record_wastage', 'stocktake'],
-  STAFF: ['use_pos', 'view_orders'],
+  // Business memory notes are deliberately low-stakes (operational
+  // observations, not financial/destructive actions), so every active
+  // role — including DRIVER/STAFF — can add one: they're the people
+  // actually on the road who'd note "sold out of cod" or "road closed".
+  DRIVER: ['use_pos', 'view_orders', 'record_wastage', 'stocktake', 'manage_business_memory'],
+  STAFF: ['use_pos', 'view_orders', 'manage_business_memory'],
 }
 
 export function permissionsForRole(role: BusinessRole | null | undefined): Permission[] {

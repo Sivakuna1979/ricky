@@ -191,6 +191,16 @@ Server-controlled write-action proposals (currently only `create_purchase_order`
 
 ---
 
+## Business Memory (Phase F)
+
+### `business_memory` 🟢
+Free-text notes (`category`, `title`, `content`) plus an optional `embedding VECTOR(512)` (Voyage AI `voyage-3-lite`; `NULL` when no `VOYAGE_API_KEY` is configured — search then simply returns no results rather than erroring). `related_entity_type`/`related_entity_id` are a generic optional link — Phase G's route notes reuse this table via that link rather than creating a second notes system. RLS: same `my_business_ids() OR my_staff_business_ids() OR is_super_admin()` pattern as every Phase C/D table.
+
+### `match_business_memory()` (function)
+Cosine-similarity search, explicitly filtered by `business_id` and **not** `SECURITY DEFINER` — the table's own RLS still applies even if called directly, on top of the explicit filter. No ANN index yet (ivfflat/hnsw) — each business's note set is small and always scoped by `business_id` first.
+
+---
+
 ## Ownership / tenant isolation summary
 
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).

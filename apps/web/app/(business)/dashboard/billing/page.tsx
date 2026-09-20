@@ -61,6 +61,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ex
     { icon: '🍳', label: 'Kitchen',    href: '/dashboard/kitchen',  active: false },
     { icon: '📋', label: 'Menu',       href: '/dashboard/menu',     active: false },
     { icon: '🤖', label: 'FoodTaxi AI', href: '/dashboard/ai',      active: false },
+    { icon: '🧠', label: 'Memory',     href: '/dashboard/memory',   active: false },
     { icon: '📦', label: 'Stock',      href: '/dashboard/stock',    active: false },
     { icon: '🚚', label: 'Suppliers',  href: '/dashboard/suppliers',active: false },
     { icon: '👥', label: 'Team',       href: '/dashboard/team',     active: false },

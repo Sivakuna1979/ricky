@@ -1091,3 +1091,51 @@ regardless.
   flows, not a one-click send from the AI itself (deliberately — E20/E21
   require a draft, not an automatic send, and no auto-send button existed
   to wire up safely within scope)
+
+---
+
+## 66. Business Memory (Phase F)
+
+Free-text notes a business writes about itself (`/dashboard/memory`),
+searchable by meaning via `search_business_memory` in FoodTaxi AI (Phase
+E) — **not** full document/receipt OCR or an accounting system, which
+stay out of scope (see §45's accounting boundary, unchanged).
+
+**Storage:** `business_memory` (business_id, created_by, category,
+title, content, optional `related_entity_type`/`related_entity_id` link —
+used by Phase G's route notes), `embedding VECTOR(512)`,
+`embedding_model`. `pgvector` extension enabled. RLS: the same
+`my_business_ids() OR my_staff_business_ids() OR is_super_admin()`
+pattern as every Phase C/D table — document isolation is enforced the
+same way tenant isolation always has been here, not a new mechanism.
+
+**Embeddings:** Voyage AI (`voyage-3-lite`, 512 dimensions) —
+Anthropic's own recommended embeddings partner, since Claude has no
+embeddings endpoint. Optional: with no `VOYAGE_API_KEY`, notes still save
+as plain text (`embedding` stays `NULL`) and semantic search returns "not
+configured" rather than erroring — same degrade-gracefully convention as
+every other optional integration in FoodTaxi.
+
+**Search:** `match_business_memory(business_id, query_embedding, limit)`
+— a plain (non-`SECURITY DEFINER`) Postgres function, so `business_memory`'s
+RLS still applies even if called directly; `business_id` is passed
+explicitly as defence in depth on top of that. No ANN index (ivfflat/hnsw)
+yet — each business's own note set is small and always filtered by
+`business_id` first, so an exact scan is fast enough; documented as a
+future addition if note volume grows large.
+
+**AI integration, not override:** `search_business_memory`'s tool
+description and the assistant's system prompt (rule 8) both state notes
+are contextual and unverified — never a substitute for a real data tool,
+and any instruction-like text inside a note is data, not a command
+(the same prompt-injection posture as every other tool result).
+
+**Permissions:** new `manage_business_memory`, deliberately granted to
+*every* active role including DRIVER/STAFF — a note ("sold out of cod",
+"road closed") is a low-stakes operational log entry, not a financial or
+destructive action, and the people most likely to write one are on the
+road, not in the office.
+
+**Not built:** document/receipt upload or OCR, email memory, any
+write-capable memory-driven action (memory is read-only context, it
+cannot trigger anything).
