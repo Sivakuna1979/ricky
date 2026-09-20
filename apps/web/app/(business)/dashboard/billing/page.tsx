@@ -1,11 +1,14 @@
 // @ts-nocheck
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { FOODTAXI_MONTHLY_PRICE_GBP, FOODTAXI_TRIAL_DAYS } from '@/lib/subscriptionConfig'
+import { computeHasAccess, trialDaysRemaining } from '@/lib/subscriptionAccess'
+import { StartSubscriptionButton, ManageSubscriptionButton } from '@/components/billing/SubscriptionActions'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Billing & Plan — FoodTaxi' }
 
-export default async function BillingPage() {
+export default async function BillingPage({ searchParams }: { searchParams: { expired?: string; subscribed?: string } }) {
   const supabase = await createClient()
   const { data: { user }, error: userErr } = await supabase.auth.getUser()
   if (userErr || !user) redirect('/login')
@@ -18,7 +21,7 @@ export default async function BillingPage() {
     if (userData?.id) {
       const { data: b } = await supabase
         .from('businesses')
-        .select('*, subscriptions(status, trial_ends_at, subscription_plans(name))')
+        .select('*, subscriptions(status, trial_ends_at, current_period_end, grandfathered, cancelled_at, stripe_subscription_id)')
         .eq('owner_id', userData.id).maybeSingle()
       business = b
     }
@@ -26,12 +29,14 @@ export default async function BillingPage() {
   } catch (_e) {}
   if (!business) redirect('/register/business')
 
-  const sub = (business.subscriptions as any)?.[0]
-  const planName = sub?.subscription_plans?.name ?? 'starter'
-  const planPrice = 0
-  const subStatus = sub?.status ?? 'active'
+  const sub = (business.subscriptions as any)?.[0] ?? null
+  const status = sub?.status ?? null
+  const hasAccess = computeHasAccess(sub)
+  const isTrialing = status === 'trialing' && !sub?.grandfathered
+  const daysRemaining = isTrialing ? trialDaysRemaining(sub?.trial_ends_at) : 0
   const trialEnd = sub?.trial_ends_at ? new Date(sub.trial_ends_at) : null
-  const isTrialing = subStatus === 'trialing'
+  const periodEnd = sub?.current_period_end ? new Date(sub.current_period_end) : null
+  const hasSubscribedBefore = !!sub && (status === 'active' || status === 'past_due' || status === 'cancelled' || status === 'unpaid')
 
   const NAV = [
     { icon: '📊', label: 'Dashboard',  href: '/dashboard',          active: false },
@@ -40,6 +45,7 @@ export default async function BillingPage() {
     { icon: '🧾', label: 'POS',        href: '/dashboard/pos',      active: false },
     { icon: '🍳', label: 'Kitchen',    href: '/dashboard/kitchen',  active: false },
     { icon: '📋', label: 'Menu',       href: '/dashboard/menu',     active: false },
+    { icon: '📈', label: 'Analytics',  href: '/dashboard/analytics',active: false },
     { icon: '💳', label: 'My Plan',    href: '/dashboard/billing',  active: true  },
     { icon: '🎪', label: 'Events',     href: '/van/events',         active: false },
     { icon: '🧼', label: 'Hygiene',    href: '/dashboard/hygiene',  active: false },
@@ -47,6 +53,20 @@ export default async function BillingPage() {
     { icon: '📣', label: 'Marketing', href: '/dashboard/marketing' },
     { icon: '⚙️', label: 'Settings',  href: '/dashboard/settings', active: false },
   ]
+
+  const statusLabel: Record<string, string> = {
+    trialing: '⏳ Free Trial',
+    active: '✅ Active',
+    past_due: '⚠️ Payment Issue',
+    cancelled: '⛔ Cancelled',
+    unpaid: '⚠️ Payment Issue',
+  }
+  const statusColor: Record<string, string> = {
+    trialing: '#92400e', active: '#065f46', past_due: '#991b1b', cancelled: '#991b1b', unpaid: '#991b1b',
+  }
+  const statusBg: Record<string, string> = {
+    trialing: '#fef3c7', active: '#d1fae5', past_due: '#fee2e2', cancelled: '#fee2e2', unpaid: '#fee2e2',
+  }
 
   return (
     <>
@@ -83,40 +103,76 @@ export default async function BillingPage() {
           </div>
           <div className="biz-main">
             <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#111' }}>Billing & Plan</h1>
-            <p style={{ color:'#888', margin:'0 0 24px', fontSize:13 }}>Manage your subscription and billing details</p>
+            <p style={{ color:'#888', margin:'0 0 24px', fontSize:13 }}>Manage your FoodTaxi Business subscription</p>
+
+            {searchParams?.expired === '1' && !hasAccess && (
+              <div style={{ background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:12, padding:'14px 18px', marginBottom:20, color:'#991b1b', fontSize:13, fontWeight:600 }}>
+                Your FoodTaxi subscription has ended, so the business dashboard is limited to this billing page for now. Reactivate below to get back to full access — nothing about your business, vans, menu, or order history has been touched.
+              </div>
+            )}
+            {searchParams?.subscribed === '1' && (
+              <div style={{ background:'#d1fae5', border:'1px solid #6ee7b7', borderRadius:12, padding:'14px 18px', marginBottom:20, color:'#065f46', fontSize:13, fontWeight:600 }}>
+                🎉 Subscription started — welcome to FoodTaxi Business.
+              </div>
+            )}
 
             <div style={{ background:'#fff', borderRadius:14, padding:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:20 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'#888', textTransform:'uppercase', marginBottom:8 }}>Current Plan</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#888', textTransform:'uppercase', marginBottom:8 }}>FoodTaxi Business</div>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
                 <div>
-                  <div style={{ fontSize:24, fontWeight:800, color:'#111' }}>{planName.charAt(0).toUpperCase() + planName.slice(1)} Plan</div>
-                  <div style={{ fontSize:13, color:'#888', marginTop:4 }}>
-                    Status: <span style={{ color: subStatus === 'active' ? '#059669' : '#f59e0b', fontWeight:700 }}>{subStatus}</span>
-                    {planPrice > 0 && <span> · £{(planPrice / 100).toFixed(2)}/mo</span>}
-                  </div>
+                  <div style={{ fontSize:24, fontWeight:800, color:'#111' }}>£{FOODTAXI_MONTHLY_PRICE_GBP.toFixed(2)}<span style={{ fontSize:14, fontWeight:500, color:'#888' }}>/month</span></div>
+                  <div style={{ fontSize:13, color:'#888', marginTop:4 }}>First {FOODTAXI_TRIAL_DAYS} days free</div>
+                  {sub?.grandfathered && (
+                    <div style={{ fontSize:12, color:'#6366f1', marginTop:6, fontWeight:600 }}>This account was active before FoodTaxi billing launched, so access continues as normal until you choose to subscribe.</div>
+                  )}
                   {isTrialing && trialEnd && (
-                    <div style={{ fontSize:13, color:'#b45309', marginTop:4 }}>Trial ends {trialEnd.toLocaleDateString('en-GB')}</div>
+                    <div style={{ fontSize:13, color:'#b45309', marginTop:6, fontWeight:600 }}>
+                      FoodTaxi Free Trial — {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining (ends {trialEnd.toLocaleDateString('en-GB')})
+                    </div>
+                  )}
+                  {status === 'active' && periodEnd && (
+                    <div style={{ fontSize:13, color:'#065f46', marginTop:6, fontWeight:600 }}>Next renewal {periodEnd.toLocaleDateString('en-GB')}</div>
                   )}
                 </div>
-                <div style={{ padding:'8px 20px', borderRadius:10, background: isTrialing ? '#fef3c7' : '#d1fae5', color: isTrialing ? '#92400e' : '#065f46', fontWeight:700, fontSize:13 }}>
-                  {isTrialing ? '⏳ Trial Active' : '✅ Active'}
-                </div>
+                {status && (
+                  <div style={{ padding:'8px 20px', borderRadius:10, background: statusBg[status] ?? '#eef2ff', color: statusColor[status] ?? '#3730a3', fontWeight:700, fontSize:13 }}>
+                    {statusLabel[status] ?? status}
+                  </div>
+                )}
               </div>
             </div>
 
-            {isTrialing && (
+            {!hasAccess && (
               <div style={{ background:'linear-gradient(135deg,#f97316,#dc2626)', borderRadius:14, padding:'24px', color:'#fff', marginBottom:20 }}>
-                <div style={{ fontWeight:800, fontSize:18, marginBottom:8 }}>Upgrade to unlock full access</div>
-                <p style={{ fontSize:14, color:'rgba(255,255,255,0.8)', margin:'0 0 16px', lineHeight:1.6 }}>
-                  Your trial gives you access to all features. Upgrade before it ends to keep your account running.
-                </p>
-                <div style={{ background:'rgba(255,255,255,0.15)', borderRadius:10, padding:'16px', marginBottom:16 }}>
-                  <div style={{ fontSize:13, color:'rgba(255,255,255,0.7)', marginBottom:4 }}>FoodTaxi Plan</div>
-                  <div style={{ fontSize:28, fontWeight:900 }}>£49<span style={{ fontSize:14, fontWeight:400 }}>/month</span></div>
+                <div style={{ fontWeight:800, fontSize:18, marginBottom:8 }}>
+                  {sub ? 'Reactivate your FoodTaxi subscription' : 'Start your free trial'}
                 </div>
-                <a href="mailto:hello@foodtaxi.co.uk?subject=Upgrade my plan" style={{ display:'inline-block', padding:'12px 24px', borderRadius:10, background:'#fff', color:'#f97316', fontWeight:800, fontSize:14, textDecoration:'none' }}>
-                  Upgrade Now →
-                </a>
+                <p style={{ fontSize:14, color:'rgba(255,255,255,0.85)', margin:'0 0 16px', lineHeight:1.6 }}>
+                  {sub
+                    ? `£${FOODTAXI_MONTHLY_PRICE_GBP.toFixed(2)}/month, billed through Stripe. Your business data is untouched — this just restores dashboard access.`
+                    : `${FOODTAXI_TRIAL_DAYS} days free, then £${FOODTAXI_MONTHLY_PRICE_GBP.toFixed(2)}/month. Cancel any time.`}
+                </p>
+                <StartSubscriptionButton label={sub ? 'Reactivate Subscription' : 'Start Free Trial'} />
+              </div>
+            )}
+
+            {sub?.grandfathered && (
+              <div style={{ background:'#fff', borderRadius:14, padding:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:15, color:'#111', marginBottom:8 }}>Want to start real billing anyway?</div>
+                <p style={{ fontSize:13, color:'#666', margin:'0 0 16px' }}>
+                  Your access doesn't depend on this — it's completely optional. If you'd like to move onto real Stripe billing (£{FOODTAXI_MONTHLY_PRICE_GBP.toFixed(2)}/month) now, you can start it here.
+                </p>
+                <StartSubscriptionButton label="Start Subscription" />
+              </div>
+            )}
+
+            {(hasAccess || hasSubscribedBefore) && !!sub?.stripe_subscription_id && !sub?.grandfathered && (
+              <div style={{ background:'#fff', borderRadius:14, padding:'24px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)', marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:15, color:'#111', marginBottom:8 }}>Manage your subscription</div>
+                <p style={{ fontSize:13, color:'#666', margin:'0 0 16px' }}>
+                  Update your payment method, view invoices, or cancel — handled securely by Stripe.
+                </p>
+                <ManageSubscriptionButton />
               </div>
             )}
 

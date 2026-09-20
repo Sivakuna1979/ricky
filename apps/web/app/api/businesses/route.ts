@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { FOODTAXI_PLAN_NAME, FOODTAXI_TRIAL_DAYS } from '@/lib/subscriptionConfig'
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -80,22 +81,25 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Create default subscription (14-day trial)
+  // Start the FoodTaxi Business subscription's 3-day free trial (Phase B3).
+  // A new business created after Phase B is never grandfathered — it goes
+  // through the real trial → paid flow via /api/subscriptions/checkout.
   const { data: plan } = await admin
     .from('subscription_plans')
     .select('id')
-    .eq('name', 'Starter')
+    .eq('name', FOODTAXI_PLAN_NAME)
     .single()
 
   if (plan) {
     const trialEnd = new Date()
-    trialEnd.setDate(trialEnd.getDate() + 14)
+    trialEnd.setDate(trialEnd.getDate() + FOODTAXI_TRIAL_DAYS)
 
     await admin.from('subscriptions').insert({
       business_id: business.id,
       plan_id: plan.id,
       status: 'trialing',
       trial_ends_at: trialEnd.toISOString(),
+      grandfathered: false,
     })
   }
 

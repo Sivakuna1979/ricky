@@ -2,14 +2,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { NewOrderWatcher } from '@/components/orders/NewOrderWatcher'
+import { FOODTAXI_MONTHLY_PRICE_GBP } from '@/lib/subscriptionConfig'
+import { computeHasAccess, trialDaysRemaining } from '@/lib/subscriptionAccess'
 
-export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Business Dashboard — FoodTaxi' }
-
-const PLAN_FEATURES: Record<string, string[]> = {
-  starter:    ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews', 'Email Support'],
-  foodtaxi:   ['1 Van', 'QR Menu', 'GPS Tracking', 'Online Orders', 'Customer Reviews', 'Email Support'],
-}
+const PLAN_FEATURES = ['Unlimited Vans', 'QR Menu', 'GPS Tracking', 'Online Orders', 'WhatsApp Ordering', 'POS & Kitchen Display']
 
 export default async function BusinessDashboardPage() {
   const supabase = await createClient()
@@ -59,7 +55,7 @@ export default async function BusinessDashboardPage() {
     if (bizData) {
       const { data: bizWithSub } = await supabase
         .from('businesses')
-        .select('*, subscriptions(status, trial_ends_at, subscription_plans(name))')
+        .select('*, subscriptions(status, trial_ends_at, current_period_end, grandfathered)')
         .eq('owner_id', userData.id)
         .maybeSingle()
       if (bizWithSub) business = bizWithSub
@@ -92,6 +88,16 @@ export default async function BusinessDashboardPage() {
   const { data: vans } = await supabase
     .from('vans').select('*').eq('business_id', business.id)
 
+  // Onboarding progress (Phase B10) — reuses data already fetched elsewhere
+  // for other features, no new tables.
+  const vanIdsForOnboarding = (vans ?? []).map(v => v.id)
+  const { count: menuItemCount } = vanIdsForOnboarding.length
+    ? await supabase.from('menu_items').select('id', { count: 'exact', head: true }).in('van_id', vanIdsForOnboarding)
+    : { count: 0 }
+  const { count: scheduleCount } = vanIdsForOnboarding.length
+    ? await supabase.from('van_schedule').select('id', { count: 'exact', head: true }).in('van_id', vanIdsForOnboarding)
+    : { count: 0 }
+
   const today = new Date().toISOString().split('T')[0]
   const vanIds = (vans ?? []).map(v => v.id)
 
@@ -118,12 +124,22 @@ export default async function BusinessDashboardPage() {
   const pendingOrders = (todayOrders ?? []).filter(o => ['pending','accepted','preparing'].includes(o.status)).length
   const liveVans      = (vans ?? []).filter(v => v.tracking_status === 'live').length
 
-  const sub         = (business.subscriptions as any)?.[0]
-  const planName    = sub?.subscription_plans?.name ?? 'starter'
-  const subStatus   = sub?.status ?? 'active'
+  const sub         = (business.subscriptions as any)?.[0] ?? null
+  const subStatus   = sub?.status ?? null
   const trialEnd    = sub?.trial_ends_at ? new Date(sub.trial_ends_at) : null
-  const isTrialing  = subStatus === 'trialing'
-  const features    = PLAN_FEATURES[planName.toLowerCase()] ?? PLAN_FEATURES.starter
+  const isTrialing  = subStatus === 'trialing' && !sub?.grandfathered
+  const daysRemaining = isTrialing ? trialDaysRemaining(sub?.trial_ends_at) : 0
+  const hasAccess   = computeHasAccess(sub)
+  const features    = PLAN_FEATURES
+
+  const onboarding = [
+    { label: 'Business created',    done: true },
+    { label: 'Subscription/trial started', done: !!sub },
+    { label: 'First van added',     done: (vans?.length ?? 0) > 0 },
+    { label: 'Menu created',        done: (menuItemCount ?? 0) > 0 },
+    { label: 'Weekly schedule added', done: (scheduleCount ?? 0) > 0 },
+  ]
+  const onboardingComplete = onboarding.every(s => s.done)
 
   const NAV = [
     { icon: '📊', label: 'Dashboard',    href: '/dashboard',          active: true  },
@@ -135,6 +151,7 @@ export default async function BusinessDashboardPage() {
     { icon: '🗓️', label: 'Schedule',     href: '/dashboard/schedule', active: false },
     { icon: '📋', label: 'Menu',         href: '/dashboard/menu',     active: false },
     { icon: '🚐', label: 'My Vans',      href: '/dashboard/vans',     active: false },
+    { icon: '📈', label: 'Analytics',    href: '/dashboard/analytics',active: false },
     { icon: '💳', label: 'My Plan',      href: '/dashboard/billing',  active: false },
     { icon: '🗺️', label: 'Tracking',     href: '/dashboard/tracking', active: false },
     { icon: '💬', label: 'WhatsApp',     href: '/dashboard/whatsapp', active: false },
@@ -175,8 +192,8 @@ export default async function BusinessDashboardPage() {
             </div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ background: isTrialing ? '#fef3c7' : '#d1fae5', color: isTrialing ? '#92400e' : '#065f46', fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, textTransform:'uppercase' }}>
-              {isTrialing ? '⏳ Trial' : `✅ ${planName}`}
+            <span style={{ background: hasAccess ? (isTrialing ? '#fef3c7' : '#d1fae5') : '#fee2e2', color: hasAccess ? (isTrialing ? '#92400e' : '#065f46') : '#991b1b', fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, textTransform:'uppercase' }}>
+              {isTrialing ? `⏳ Trial · ${daysRemaining}d left` : hasAccess ? '✅ FoodTaxi Business' : '⚠️ Subscription needed'}
             </span>
             <a href="/" className="pub-site-link" style={{ fontSize:12, color:'#6366f1', textDecoration:'none', padding:'5px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontWeight:600 }}>← Public Site</a>
           </div>
@@ -202,14 +219,35 @@ export default async function BusinessDashboardPage() {
               <p style={{ color:'#888', margin:0, fontSize:13 }}>Welcome back — {business.name}</p>
             </div>
 
-            {/* Trial banner */}
+            {/* Trial / subscription banner */}
             {isTrialing && (
               <div style={{ background:'#fef3c7', border:'1px solid #fcd34d', borderRadius:12, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
                 <div>
-                  <div style={{ fontWeight:700, fontSize:14, color:'#92400e' }}>⏳ You're on a free trial</div>
-                  {trialEnd && <div style={{ fontSize:12, color:'#b45309', marginTop:2 }}>Ends {trialEnd.toLocaleDateString('en-GB')}</div>}
+                  <div style={{ fontWeight:700, fontSize:14, color:'#92400e' }}>⏳ FoodTaxi Free Trial — {daysRemaining} day{daysRemaining === 1 ? '' : 's'} remaining</div>
+                  {trialEnd && <div style={{ fontSize:12, color:'#b45309', marginTop:2 }}>Ends {trialEnd.toLocaleDateString('en-GB')} · then £{FOODTAXI_MONTHLY_PRICE_GBP.toFixed(2)}/month</div>}
                 </div>
-                <a href="/dashboard/billing" style={{ padding:'8px 18px', borderRadius:8, background:'#f59e0b', color:'#fff', fontWeight:700, fontSize:13, textDecoration:'none', whiteSpace:'nowrap' }}>Upgrade Now →</a>
+                <a href="/dashboard/billing" style={{ padding:'8px 18px', borderRadius:8, background:'#f59e0b', color:'#fff', fontWeight:700, fontSize:13, textDecoration:'none', whiteSpace:'nowrap' }}>Manage Plan →</a>
+              </div>
+            )}
+            {!hasAccess && (
+              <div style={{ background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:12, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:14, color:'#991b1b' }}>⚠️ Your FoodTaxi subscription has ended</div>
+                  <div style={{ fontSize:12, color:'#991b1b', marginTop:2 }}>Reactivate to keep using the full dashboard — your business data is safe.</div>
+                </div>
+                <a href="/dashboard/billing" style={{ padding:'8px 18px', borderRadius:8, background:'#dc2626', color:'#fff', fontWeight:700, fontSize:13, textDecoration:'none', whiteSpace:'nowrap' }}>Reactivate →</a>
+              </div>
+            )}
+            {!onboardingComplete && (
+              <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:'16px 18px', marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:14, color:'#111', marginBottom:10 }}>🚀 Get set up on FoodTaxi</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {onboarding.map(s => (
+                    <div key={s.label} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color: s.done ? '#059669' : '#888' }}>
+                      <span>{s.done ? '✓' : '○'}</span>{s.label}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -234,10 +272,11 @@ export default async function BusinessDashboardPage() {
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
                 <div>
                   <div style={{ fontSize:11, fontWeight:700, color:'#888', textTransform:'uppercase', marginBottom:4 }}>Current Plan</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:'#111' }}>{planName.charAt(0).toUpperCase() + planName.slice(1)} Plan</div>
-                  <div style={{ fontSize:13, color:'#888', marginTop:2 }}>Status: <span style={{ color: subStatus === 'active' ? '#059669' : '#f59e0b', fontWeight:700 }}>{subStatus}</span></div>
+                  <div style={{ fontSize:20, fontWeight:800, color:'#111' }}>FoodTaxi Business</div>
+                  <div style={{ fontSize:13, color:'#888', marginTop:2 }}>Status: <span style={{ color: hasAccess ? '#059669' : '#dc2626', fontWeight:700 }}>{sub?.grandfathered ? 'active' : (subStatus ?? 'not started')}</span></div>
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
+                  <a href="/dashboard/analytics" style={{ padding:'9px 18px', borderRadius:10, background:'#f5f6fa', border:'1px solid #e5e7eb', color:'#374151', fontSize:13, fontWeight:700, textDecoration:'none' }}>Analytics</a>
                   <a href="/dashboard/billing" style={{ padding:'9px 18px', borderRadius:10, background:'#f97316', color:'#fff', fontSize:13, fontWeight:700, textDecoration:'none' }}>Manage Plan</a>
                 </div>
               </div>

@@ -64,9 +64,9 @@ and unused by guest/POS/WhatsApp orders).
   effectively single-owner-operated today.
 - **Super admin authorization (centralised in Phase A):** `lib/isSuperAdmin.ts`
   is now the single source of truth, called from every route/page that
-  previously hardcoded the admin email. It checks the DB role first, falling
-  back to the legacy email `sivakuna@icloud.com` — see the action item in
-  §7 to confirm the DB role and eventually drop that fallback.
+  previously hardcoded the admin email. The DB role for `sivakuna@icloud.com`
+  was confirmed as `super_admin`, and the legacy email fallback has since
+  been removed — this is now a pure database-role check.
 - **The real `/admin/*` security boundary is `lib/supabase/middleware.ts`**
   (runs before any admin page renders) — not the individual page checks,
   which are a secondary safety net. This was also updated to use the
@@ -97,12 +97,16 @@ platform. It never touches a food customer's payment for their fish and
 chips — that stays entirely between the business and its own customer
 (cash, their own card machine).
 
+FoodTaxi has **three separate, deliberately unconnected** Stripe concepts —
+see §13 for the full Phase B writeup of the first row below.
+
 | Flow | File | Status |
 |---|---|---|
-| Event booking fee (£29.99, one-off, FoodTaxi's own Checkout) | `app/api/events/pay/route.ts` | ✅ **Active** — the one real, working Stripe flow, and the correct reference pattern for future billing |
-| Webhook | `app/api/webhooks/stripe/route.ts` | ✅ Active for the booking fee event; other handlers wired but currently unreachable (see file comments) |
-| Subscription billing | `app/api/subscriptions/route.ts` | 🟡 Built but incomplete — no Stripe price IDs configured, not called by any UI. **This is the Phase B target.** |
-| Stripe Connect (marketplace) | `app/api/payments/create-intent/route.ts` | ⚠️ Inactive, unused, and contradicts the confirmed model above. Left in place per Phase A instructions; a deletion decision is for later. |
+| **FoodTaxi Business subscription** (£19.99/mo, 3-day trial, FoodTaxi's own Checkout + Customer Portal) | `app/api/subscriptions/checkout`, `/portal`, `/route.ts` (legacy, unused) | ✅ **Active (Phase B)** |
+| Event booking fee (£29.99, one-off, FoodTaxi's own Checkout) | `app/api/events/pay/route.ts` | ✅ Active — unchanged by Phase B |
+| Webhook | `app/api/webhooks/stripe/route.ts` | ✅ Active for booking fee + subscription lifecycle events, idempotent (`stripe_webhook_events`) |
+| Stripe Connect (marketplace) | `app/api/payments/create-intent/route.ts` | ⚠️ Inactive, unused, and contradicts the confirmed model above. Not touched in Phase B — deletion decision is for later. |
+| Legacy multi-tier subscription route | `app/api/subscriptions/route.ts` | ⚪ Superseded by `app/api/subscriptions/checkout` in Phase B. Left in place, not deleted, not called by any UI. |
 
 ---
 
@@ -208,3 +212,109 @@ Vercel, deployed from this repo. Environment variables per
 `.env.example` (reorganised in Phase A with explicit FOODTAXI / AGENT
 PLATFORM / YOUTUBE sections). No deployment configuration was changed in
 Phase A.
+
+---
+
+## 13. FoodTaxi Business subscription (Phase B)
+
+**One plan, no tiers:** FoodTaxi Business, £19.99/month GBP, first 3 days
+free. There is no Starter/Pro/Enterprise — the three plans seeded in
+`20240001_initial_schema.sql` are deactivated (`is_active = false`), not
+deleted, by `20240049_foodtaxi_business_subscription.sql`.
+
+**Config:** `lib/subscriptionConfig.ts` — plan name, £19.99 display price,
+3-day trial length, and `STRIPE_FOODTAXI_MONTHLY_PRICE_ID` (env var, never
+hard-coded). The Stripe Price itself must be created once in the Stripe
+Dashboard — see §14.
+
+**Access control:** `lib/subscriptionAccess.ts` — `hasActiveFoodTaxiAccess(supabase, businessId)`
+and `computeHasAccess(subscription)` are the single source of truth for
+whether a business's dashboard access is live. Access = `status` in
+(`trialing`, `active`) OR `subscriptions.grandfathered = true`. No other
+file should compare `subscription.status` directly.
+
+**Enforcement point:** `lib/supabase/middleware.ts`, the same real security
+boundary established in Phase A for `/admin/*`. It now also gates
+`/dashboard/*` (except `/dashboard/billing`, to avoid a redirect loop, and
+except super admins). An expired/inactive business is redirected to
+`/dashboard/billing?expired=1`, which shows a reactivate flow — their
+business, vans, menu, orders and history are never touched. Customer-facing
+routes (`/van/[slug]`, `/order/[id]`, `/order-status/*`, `/receipt/*`,
+`/pos-display/*`) are outside `/dashboard` entirely and are never affected.
+
+**Checkout:** `app/api/subscriptions/checkout/route.ts` — Stripe Checkout,
+`mode: 'subscription'`, `trial_period_days: 3` (only for a business that has
+never had a Stripe subscription id before, so cancel-and-resubscribe never
+grants a second free trial). `business_id` is always derived server-side
+from the authenticated user's own business row — never trusted from the
+request body.
+
+**Management:** `app/api/subscriptions/portal/route.ts` — Stripe Customer
+Portal session (update card, view invoices, cancel). FoodTaxi does not
+reimplement any of this UI itself.
+
+**Webhooks:** `app/api/webhooks/stripe/route.ts` now also handles
+`customer.subscription.created/updated/deleted` and
+`invoice.payment_failed`, matched by Stripe customer id (set on the
+`subscriptions` row before Checkout ever opens, so it works regardless of
+event delivery order). Every event id is recorded in `stripe_webhook_events`
+before processing — a Stripe redelivery is detected and skipped, so
+subscriptions can never be double-processed.
+
+**Existing-business protection (Phase B11):** every `subscriptions` row that
+existed before this migration first ran was marked `grandfathered = true` —
+a blanket, reversible flag, not a per-business judgement call. A
+grandfathered business always has access regardless of `status` or
+`trial_ends_at`, until the flag is turned off or the business actually
+subscribes through Stripe Checkout. This is why the live Howe & Co account
+was not put at risk by Phase B shipping.
+
+**Onboarding (Phase B9/B10):** the existing registration flow
+(`/register/business` → `POST /api/businesses`) is unchanged in shape — it
+now starts a real 3-day trial (was a dormant 14-day placeholder) against the
+single FoodTaxi Business plan. `app/(business)/dashboard/page.tsx` shows a
+checklist (business created / subscription started / first van / menu /
+weekly schedule) whenever any step is incomplete, computed from data that
+already exists — no new onboarding tables or wizard route.
+
+**Analytics (Phase B12–B17):** `app/api/analytics/summary/route.ts` +
+`/dashboard/analytics`. Server-side aggregation (Phase B16) over a bounded
+30-day order window, plus separate Today/This Week/This Month summaries.
+**Revenue definition:** sum of `orders.total` excluding only
+`status = 'cancelled'` — the exact rule the dashboard already used
+pre-Phase-B for "Today's Sales", extended rather than redefined. All
+channels (online/guest/POS/WhatsApp) and payment methods count.
+Multi-van filtering re-uses `my_van_ids()`/business ownership, never trusts
+a client-supplied van id without checking it belongs to the caller's
+business.
+
+**Route/stop analytics — not built (Phase B15):** `orders` has no reliable
+link to a specific `van_schedule` stop. The original schema's
+`orders.stop_id → route_stops` is dead (superseded by `van_schedule`, which
+`orders` was never updated to reference), and the free-text
+`orders.pickup_location` can't be safely joined back to
+`van_schedule.location_name` (wording/typos). Building this would need a
+new nullable `orders.schedule_stop_id → van_schedule(id)` column, set at
+order time for orders placed against a scheduled stop, and only from then
+on would stop-level revenue be reliable — not retrofittable onto historical
+orders. Not built; flagged for a future phase.
+
+## 14. Manual setup required for Phase B
+
+1. **Create the Stripe Price** — Stripe Dashboard → Product catalog → new
+   Product "FoodTaxi Business", recurring price £19.99 GBP/month. Copy the
+   resulting `price_...` id into `STRIPE_FOODTAXI_MONTHLY_PRICE_ID` in
+   Vercel's environment variables.
+2. **Enable the Stripe Customer Portal** (test mode and live mode
+   separately) — Stripe Dashboard → Settings → Billing → Customer portal —
+   turn it on and configure what a customer may do (cancel, update payment
+   method). `app/api/subscriptions/portal/route.ts` will fail until this is
+   turned on.
+3. **Run `20240049_foodtaxi_business_subscription.sql`** in Supabase SQL
+   Editor (together with the still-outstanding `20240048` from Phase A —
+   see §11 — if that hasn't been run yet).
+4. Confirm `STRIPE_WEBHOOK_SECRET` in Vercel matches the same endpoint
+   Stripe is sending `customer.subscription.*` and `invoice.payment_failed`
+   events to (it already receives `checkout.session.completed` for the
+   £29.99 event flow, so this is normally just confirming the event types
+   are enabled on that same endpoint in the Stripe Dashboard).
