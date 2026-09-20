@@ -160,6 +160,22 @@ Existed since `20240001`, documented as a Phase A recommendation, never written 
 
 ---
 
+## Automation (Phase D)
+
+### `businesses.timezone` 🟢 (column added in Phase D)
+Defaults `'Europe/London'` for every existing business. Drives all Phase D scheduling — see baseline doc §31.
+
+### `automation_settings` 🟢
+One row per `(business_id, automation_type)` — on/off, per-channel toggles (`in_app`/`email`/`sms`/`whatsapp`), and free-form `config` (times, days, thresholds). A business with no row for a type gets that type's coded default (`lib/automations/types.ts`) — no backfill needed when a new automation type is added later.
+
+### `automation_runs` 🟢
+The execution log **and** the idempotency mechanism in one table — `UNIQUE(business_id, trigger_key)` is what makes every automation exactly-once (see baseline doc §28). `status` is `PENDING|RUNNING|COMPLETED|FAILED|SKIPPED`. No general write policy in RLS — only ever written by the cron/automation routes using the service-role client, same pattern as `stock_movements`.
+
+### `notifications` 🟢 (Phase D is the first real writer)
+Existed since `20240001`, RLS already correct (`user_id = auth_user_id()`), never written to before Phase D. Category/priority/action_url/business_id live in the existing `data` jsonb column — no schema change to this table.
+
+---
+
 ## Ownership / tenant isolation summary
 
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).

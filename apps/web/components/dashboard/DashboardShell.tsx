@@ -15,6 +15,8 @@ export const NAV_ITEMS = [
   { icon: '🚚', label: 'Suppliers',  href: '/dashboard/suppliers' },
   { icon: '👥', label: 'Team',       href: '/dashboard/team' },
   { icon: '🔧', label: 'Fleet',      href: '/dashboard/fleet' },
+  { icon: '🔔', label: 'Notifications', href: '/dashboard/notifications' },
+  { icon: '⚡', label: 'Automations', href: '/dashboard/automations' },
   { icon: '📈', label: 'Analytics',  href: '/dashboard/analytics' },
   { icon: '💳', label: 'My Plan',    href: '/dashboard/billing' },
   { icon: '🎪', label: 'Events',     href: '/van/events' },

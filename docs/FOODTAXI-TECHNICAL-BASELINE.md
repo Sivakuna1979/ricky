@@ -506,3 +506,327 @@ CRUD that doesn't need an audit trail.
   `menu_stock_components` and its API
   (`app/api/menu/stock-components/route.ts`) are fully functional, but
   there is no UI wired into `/dashboard/menu` yet to use them.
+
+---
+
+## 27. Automation & Smart Operations (Phase D)
+
+**Same subscription.** Every automation in this section is included in the
+one £19.99/month FoodTaxi Business subscription — no automation/AI/premium
+tier was created.
+
+### 28. Automation engine (D1–D4)
+
+`lib/automations/engine.ts` is the one shared engine every automation runs
+through — a "trigger → conditions → action → result" evaluator function,
+not one-off scattered code. Two functions carry the whole design:
+
+- **`claimRun(admin, businessId, automationType, triggerKey)`** — attempts
+  to INSERT the `automation_runs` row for that exact `triggerKey` first. A
+  fresh key succeeds and the evaluator proceeds; a key that already
+  succeeded (or is mid-run, or was skipped) returns `null` and the
+  evaluator does nothing further. **This is the entire idempotency
+  guarantee (D4)** — enforced by `automation_runs`'s
+  `UNIQUE(business_id, trigger_key)` constraint at the database level, not
+  by an application-level "check, then act" (which would have a race
+  window under a retried cron tick or an overlapping invocation). A key
+  whose only previous attempt `FAILED` *can* be reclaimed — this is what
+  makes retries and next-tick self-healing possible without permanently
+  wedging a trigger_key that failed once.
+- **`notify(admin, params)`** — writes the in-app notification (always, if
+  that automation's `in_app` channel is on) and only fans out to
+  email/SMS if the business explicitly enabled those channels for that
+  specific automation type (D7) — nothing external is ever sent by
+  default.
+
+`trigger_key` is a deterministic, human-readable string per event, e.g.
+`low_stock:{stock_item_id}:2026-09-20` or
+`vehicle_reminder:{van_id}:mot_expiry:14:2026-09-20`. Including the
+business-local date is what makes a scheduled check run "once per day"
+rather than once per cron tick.
+
+### 29. Data model (D2)
+
+- **`automation_settings`** (business_id, automation_type, enabled,
+  channels jsonb, config jsonb) — one row per business per automation
+  type, created lazily the first time a business changes a setting.
+  Doubles as both "on/off" (D26) and configuration/channels (D27) rather
+  than two overlapping tables. A business with no row for a given type
+  gets that type's coded default (`lib/automations/types.ts`) — so adding
+  a new automation type later needs no backfill.
+- **`automation_runs`** — the execution log (D3) and the idempotency
+  mechanism (D4), described above.
+- **In-app notifications reuse the existing `notifications` table
+  as-is** (user_id-scoped, existed since `20240001`, RLS already correct)
+  — category/priority/action_url/business_id live in its existing `data`
+  jsonb column, so no columns were added to it.
+- `businesses.timezone` (new column, defaults `'Europe/London'` for every
+  existing business) drives all scheduling (D28).
+
+### 30. Scheduling (D29)
+
+**Vercel Cron**, not Supabase pg_cron and not the unrelated `apps/youtube`
+BullMQ worker — this is a Next.js app already on Vercel, Vercel Cron needs
+no new infrastructure, and there is no existing FoodTaxi job-queue process
+to extend (BullMQ is youtube-automation's own worker, a separate
+deployment target; copying it in for FoodTaxi alone would add real
+infrastructure for no benefit at this scale). `vercel.json` now has one
+cron: `GET /api/cron/automations`, hourly (`0 * * * *`).
+
+**Authorization:** the route checks `Authorization: Bearer <CRON_SECRET>`
+— named exactly `CRON_SECRET` (not a FoodTaxi-specific name) because
+that's the one env var name Vercel Cron automatically signs its own
+requests with. `apps/web` is a separate Vercel project from `apps/agent`,
+so this doesn't collide with `apps/agent`'s own unrelated `CRON_SECRET`.
+
+**Resolution vs frequency:** the cron tick is hourly, but each automation
+decides for itself whether it's actually due, via
+`isDueNow(timezone, hour, minute)` (§31) — so a business's 8:00am daily
+briefing fires within the same hour it's configured for, in *their*
+timezone, without needing a job scheduled at the exact minute. This keeps
+the design D40-compliant (not scanning everything every minute) while
+staying accurate per business.
+
+**Known constraint to check:** Vercel's Hobby plan only runs cron jobs
+once per day, regardless of the schedule expression — see §33 manual
+actions. Correctness is unaffected either way (idempotency doesn't care
+how often the tick fires), only timeliness/resolution is coarser on
+Hobby.
+
+### 31. Timezone handling (D28)
+
+`lib/automations/timezone.ts` computes "business-local now" via
+`Intl.DateTimeFormat` with the business's own `timezone` column — no
+external dependency, no assuming UTC. `isDueNow()`, `todayDateInTimezone()`
+and `isoWeekKey()` are all timezone-aware, so "today" for a report or a
+trigger_key's date bucket matches the business's own calendar day, not
+UTC's. (Note: this is more correct than Phase B/C's analytics, which use
+server/UTC date boundaries — a known, documented pre-existing limitation
+there, not touched or regressed by Phase D.)
+
+### 32. Notification centre (D5, D6)
+
+`/dashboard/notifications` (`components/notifications/NotificationCentre.tsx`)
+— filter by category (stock/hygiene/vehicle/staff/reports/marketing/events),
+mark one or all read, open the linked record via `action_url`. Priorities
+(`INFO`/`ACTION`/`IMPORTANT`/`CRITICAL`) are set per-automation in
+`lib/automations/types.ts`, not assigned ad hoc — most automations are
+`ACTION` or `INFO`; only genuinely urgent ones (out-of-stock, overdue
+vehicle renewals) are `IMPORTANT`. Nothing is `CRITICAL` yet.
+
+### 33. Notification preferences & channels (D7)
+
+Per automation type: `in_app` (default on), `email`, `sms` (both default
+off except vehicle reminders and the weekly summary, which default to
+`in_app + email`), and `whatsapp` (present in the data model and the
+control-centre UI for completeness, **but not implemented for delivery**
+— see below). Channel senders (`lib/notify/channels.ts`) mirror the exact
+providers/env vars already used elsewhere in FoodTaxi (Resend for email,
+Twilio for SMS) but are implemented fresh rather than importing the
+existing inline functions from `app/api/marketing/send` and
+`app/api/orders/manage` — so Phase D cannot accidentally change behaviour
+in those already-working, customer-facing flows.
+
+**WhatsApp automation delivery — not built.** Sending an owner a
+business-alert WhatsApp message would need either an open 24-hour
+conversation window or an approved message template, neither of which
+exists for this purpose. Documented, not faked.
+
+### 34. Stock automation (D8, D9, D10)
+
+`lib/automations/evaluators/stock.ts`, once per business per day:
+- **Low stock / out of stock**: `current_quantity <= minimum_quantity`
+  (low) or `<= 0` (out), summed across all a business's stock locations
+  (same total Phase C's stock page already shows).
+- **Reorder suggestion**: deterministic only — if `reorder_quantity` is
+  configured on the item, it's shown in the alert with the reason
+  ("based on your configured reorder quantity"). No sales-velocity
+  prediction is calculated in Phase D (would need materially more
+  historical-consumption logic to do honestly); not labelled "AI" because
+  none is used.
+- **Draft PO automation (D10)** — off by default. When enabled, groups
+  currently low/out items by their configured preferred supplier and
+  creates one `DRAFT` (never `ORDERED`) purchase order per supplier per
+  day — the owner reviews and confirms it themselves via the existing
+  Suppliers page (Phase C). Never places a real order automatically.
+
+### 35. Hygiene automation (D11, D12)
+
+`lib/automations/evaluators/hygiene.ts` reads the existing `hygiene_logs`
+table (`opening_checklist`/`closing_checklist` log types, already written
+by `/dashboard/hygiene`) — never creates, completes, or fabricates a
+check. Alerts only after a business-local deadline has passed (11:00 for
+opening, 21:00 for closing — documented, fixed defaults for now, not yet
+business-configurable) and only once per van per checklist per day.
+
+### 36. Vehicle & equipment reminders (D13, D14)
+
+`lib/automations/evaluators/vehicle.ts`. Thresholds: 30/14/7/1 days before,
+plus overdue. **Exact-day matching** (a date is only ever exactly 14 days
+away once) is what prevents duplicate reminders across multiple days for
+the same renewal — not a dedup table, just correct arithmetic plus the
+trigger_key's date bucket.
+
+### 37. Staff/shift automation (D15)
+
+`lib/automations/evaluators/staff.ts`, with documented, deliberately
+conservative grace periods (not configurable yet):
+- **Unassigned shift** — tomorrow's van has a `van_schedule` entry (i.e.
+  it's expected to operate) but no `shifts` row.
+- **Late clock-in** — a shift's start time + **15 minutes** has passed
+  with no matching `time_entries` row today.
+- **Missing clock-out** — clocked in for more than **12 hours** with no
+  clock-out. (A precise "shift end + N hours" match was considered but
+  needs reliable shift↔time-entry linkage that doesn't exist cleanly yet;
+  the 12-hour heuristic catches genuine forgotten clock-outs without
+  false-alarming on legitimately long shifts.)
+
+### 38. Reports (D16, D17, D18)
+
+`lib/automations/evaluators/reports.ts`. All three use the **same revenue
+definition already established in Phase B's analytics** (sum of
+`orders.total` excluding only `status = 'cancelled'`) — never redefined.
+
+- **Daily briefing** (default 08:00 business-local, in-app only by
+  default): vans scheduled today (`van_schedule` for today's weekday),
+  staff working today (`shifts`), low-stock count, hygiene checks still
+  due, vehicle reminders due within 30 days, event enquiries awaiting
+  response. No sales/revenue figures — deliberately, per the brief
+  ("do not invent expected sales").
+- **End-of-day summary** (default 21:00, off by default): real revenue,
+  orders, average order value, top sellers, wastage cost, staff hours —
+  every figure from a real query.
+- **Weekly summary** (default Monday 08:00, off by default, in-app +
+  email): this week vs previous week revenue (a plain subtraction/
+  percentage, not a forecast), best-performing van, wastage, staff hours,
+  low-stock count, purchase orders awaiting delivery.
+
+### 39. Marketing suggestions (D22, D23)
+
+`lib/automations/evaluators/marketing.ts` — off by default, weekly. Finds
+customers (by `orders.guest_email`, since FoodTaxi has no logged-in
+customer accounts) who ordered from a van in the last 60 days but not the
+last 21 — a plain set-difference, not an AI segmentation. Only ever
+**suggests** ("N customers... suggested action: create a campaign") and
+links to the existing `/dashboard/marketing` page; nothing is sent
+automatically, and when it is sent manually, the existing
+unsubscribe/consent checks in `app/api/marketing/send` still apply
+unchanged.
+
+### 40. Event automation (D24, D25)
+
+`lib/automations/evaluators/events.ts` — **event_tomorrow only**. A
+day-before reminder for a business's own confirmed application, using
+only real fields (`event_location`, `event_type`, `num_guests`,
+`food_type`, `notes`). Does not touch `app/api/events/pay` or the £29.99
+booking fee flow at all.
+
+**"New event enquiry" (D24) — not built as a per-business automation.**
+`event_requests` has no `business_id` (it's a cross-business marketplace
+table — a customer enquiry is published by the super admin and applied to
+by multiple vans; see `20240048_schema_reconciliation.sql`), so there is
+no single business to notify about a *brand-new* enquiry. That stays a
+super-admin/`/admin/events` concern, unchanged.
+
+**Event meal-quantity preparation summary (D25) — not built.**
+`event_requests` has no structured per-item quantity data, only free-text
+`food_type`/`notes`. Building the "Cod & Chips: 80" style breakdown the
+brief shows as an example would mean inventing numbers that don't exist in
+the schema — explicitly forbidden by the brief itself. Flagged as a
+schema gap for a future phase, not silently worked around.
+
+**Architecture note:** unlike every other evaluator (called once per
+business from the cron loop), `runEventTomorrowReminders()` scans
+tomorrow's confirmed applications globally, resolves each to a business by
+matching `van_owner_email` against `businesses.email`, and only then
+checks *that* business's own `automation_settings` before notifying —
+tenant isolation is still preserved (a notification only ever reaches the
+one business it resolves to), it's just discovered differently because
+the underlying data isn't business-scoped to begin with.
+
+### 41. Automated customer communication (D19, D20, D21) — reviewed, mostly not extended
+
+- **D19**: the existing order-ready SMS (`app/api/orders/manage`,
+  Twilio) was reviewed and left untouched — it already covers the main
+  "tell the customer something changed" case. New customer-facing
+  lifecycle messages (order-accepted, collection-reminder) were **not**
+  added in Phase D: the brief explicitly protects customer-facing order
+  flow from unnecessary changes, and adding new trigger points there is
+  real additional scope with real spam risk — recommended for a future
+  phase if wanted, not built speculatively here.
+- **D20 (van arrival notifications) — documented, not built.** There is no
+  existing mechanism for a customer to opt into "notify me for this stop"
+  (orders carry a one-time `guest_phone`, not an ongoing subscription) —
+  building one is a real new customer-facing feature, not an automation on
+  top of something that exists. Foundation: `live_locations` (GPS pings)
+  and `van_schedule` (stop times) both exist; what's missing is the
+  opt-in mechanism and per-stop coordinates (`van_schedule` only has a
+  location *name*, not lat/lng).
+- **D21 (route delay foundation) — documented, not built.** Detecting
+  "running late" reliably needs a current-stop's coordinates to compare
+  against `live_locations`, which `van_schedule` doesn't have (text
+  location names only). A clock-only signal ("scheduled arrival time has
+  passed") was considered but without stop coordinates there's no way to
+  know if the van is late for *that* stop or already fine at the next
+  one — not built rather than shipping something that could be
+  confidently wrong. The brief explicitly permits documentation-only here
+  when reliable data doesn't exist yet.
+
+### 42. Automation control centre (D26, D27, D36)
+
+`/dashboard/automations` (`components/automations/AutomationsCentre.tsx`)
+— three tabs: **Settings** (every automation grouped by category, on/off
+toggle, per-channel toggles when enabled), **Recent Runs**, **Failed**
+(with a Retry button — see §43). Reading settings is available to any
+active staff role; *changing* them requires `manage_business`
+(owner/business_admin only — an ordinary staff account cannot change
+automation or billing settings, per D36). No cron/job implementation
+detail is exposed — just what's on, what ran, and what failed.
+
+### 43. Retries & failure visibility (D30, D31)
+
+A `FAILED` run can be retried from the control centre. Retrying
+re-invokes that automation family for the same business —
+`claimRun()`'s reclaim-only-if-`FAILED` behaviour (§28) means this can
+only re-attempt the specific thing that failed, never re-send something
+that already succeeded. **Known limitation:** the three report
+automations (daily briefing / end-of-day / weekly summary) gate on
+`isDueNow()` before calling `claimRun()` at all — a manual retry outside
+their configured time window will currently no-op rather than force-run
+immediately. Stock/hygiene/vehicle/staff retries are not affected by this
+and work immediately. Documented rather than silently broken.
+
+### 44. Audit logging (D38)
+
+`lib/auditLog.ts` (Phase C) now also logs: automation settings changed,
+and (via the existing purchase-order/staff-role-change audit points)
+anything a draft-PO automation or similar touches downstream. Draft PO
+creation itself is visible via `automation_runs.result` rather than a
+duplicate audit_logs entry, to avoid double-logging the same event in two
+places.
+
+### 45. Security & tenant isolation (D35)
+
+Every evaluator is called once per business, scoped to that
+`business_id` throughout every query — the one exception
+(`event_tomorrow`, §40) resolves and scopes to a single business *before*
+calling `notify()`, so no cross-business leak is possible there either.
+The cron route itself loops businesses one at a time and wraps each in its
+own try/catch, so one business's failure or bug can never block or affect
+another's automations (D35's "never bypass tenant isolation carelessly
+simply because a service-role job is running" — every query still filters
+by the specific business being processed, service role or not).
+
+### 46. Not built in Phase D (see the completion report for the full list)
+
+- WhatsApp channel delivery for automation alerts (§33)
+- New customer-facing order-lifecycle messages beyond the existing
+  order-ready SMS (§41)
+- Van arrival notifications / route delay detection (§41) — documented
+  foundations only, as the brief explicitly permits
+- Event meal-quantity preparation summaries (§40) — no structured data to
+  report
+- Business-configurable hygiene deadline times / staff grace periods
+  (currently fixed, documented defaults)
+- Immediate force-retry for the three report automations outside their
+  scheduled window (§43)

@@ -35,6 +35,8 @@ export default async function AnalyticsPage() {
     { icon: '🚚', label: 'Suppliers',  href: '/dashboard/suppliers',active: false },
     { icon: '👥', label: 'Team',       href: '/dashboard/team',     active: false },
     { icon: '🔧', label: 'Fleet',      href: '/dashboard/fleet',    active: false },
+    { icon: '🔔', label: 'Notifications', href: '/dashboard/notifications', active: false },
+    { icon: '⚡', label: 'Automations', href: '/dashboard/automations', active: false },
     { icon: '📈', label: 'Analytics',  href: '/dashboard/analytics',active: true  },
     { icon: '💳', label: 'My Plan',    href: '/dashboard/billing',  active: false },
     { icon: '🎪', label: 'Events',     href: '/van/events',         active: false },
