@@ -1,16 +1,23 @@
 // @ts-nocheck
 // D22, D23 — marketing SUGGESTIONS only. Never sends anything itself; it
-// creates a notification with a count and a link to the existing
-// /dashboard/marketing page, where the owner reviews and sends manually
-// (respecting the existing unsubscribe list, which /api/marketing/send
-// already checks). Runs weekly, same cadence family as the weekly summary.
+// creates a notification with a count and a link to the CRM campaigns
+// page, where the owner reviews and sends manually. Runs weekly, same
+// cadence family as the weekly summary.
+//
+// I78 ("lapsed-customer audience ready") is this exact same automation —
+// no separate one was added. Fixed during Phase I to use the same
+// lapsed definition every other CRM surface uses
+// (lib/crm/segments.ts's computeSegmentMembership) instead of its own
+// bespoke van-by-van email-diff calculation, so this notification's
+// count can never disagree with the Customers dashboard's own "Lapsed"
+// segment count.
 import { claimRun, completeRun, notify } from '../engine'
 import { getResolvedSettings } from '../settings'
 import { getRecipients } from '../recipients'
 import { nowInTimezone, isDueNow, isoWeekKey } from '../timezone'
+import { getCustomerAggregates, computeSegmentMembership } from '@/lib/crm/segments'
 
 const LAPSED_AFTER_DAYS = 21
-const ACTIVE_WINDOW_DAYS = 60
 
 export async function runMarketingSuggestions(admin: any, business: { id: string; timezone: string; name: string }) {
   const settings = await getResolvedSettings(admin, business.id)
@@ -26,32 +33,25 @@ export async function runMarketingSuggestions(admin: any, business: { id: string
   if (!runId) return
 
   try {
-    const { data: vans } = await admin.from('vans').select('id, name').eq('business_id', business.id)
-    const activeSince = new Date(Date.now() - ACTIVE_WINDOW_DAYS * 86400000).toISOString()
-    const lapsedCutoff = new Date(Date.now() - LAPSED_AFTER_DAYS * 86400000).toISOString()
+    const { data: vans } = await admin.from('vans').select('id').eq('business_id', business.id)
+    const vanIds = (vans ?? []).map((v: any) => v.id)
+    const aggregates = await getCustomerAggregates(admin, business.id, vanIds)
+    let lapsedCount = 0
+    for (const agg of aggregates.values()) if (computeSegmentMembership(agg, 'lapsed', { lapsedDays: LAPSED_AFTER_DAYS })) lapsedCount++
 
-    const suggestions: { van: string; count: number }[] = []
-    for (const van of vans ?? []) {
-      const { data: activeOrders } = await admin.from('orders').select('guest_email').eq('van_id', van.id).gte('created_at', activeSince).not('guest_email', 'is', null)
-      const { data: recentOrders } = await admin.from('orders').select('guest_email').eq('van_id', van.id).gte('created_at', lapsedCutoff).not('guest_email', 'is', null)
-      const recentEmails = new Set((recentOrders ?? []).map((o: any) => o.guest_email))
-      const lapsed = new Set((activeOrders ?? []).map((o: any) => o.guest_email).filter((e: string) => !recentEmails.has(e)))
-      if (lapsed.size > 0) suggestions.push({ van: van.name, count: lapsed.size })
-    }
-
-    if (!suggestions.length) {
+    if (!lapsedCount) {
       await completeRun(admin, runId, { status: 'SKIPPED', actionTaken: 'no_suggestions' })
       return
     }
 
-    const body = suggestions.map(s => `${s.count} customers ordered from ${s.van} in the last ${ACTIVE_WINDOW_DAYS} days but not in the last ${LAPSED_AFTER_DAYS} days.`).join('\n')
-    const recipients = await getRecipients(admin, business.id, 'view_analytics')
+    const body = `${lapsedCount} customer${lapsedCount === 1 ? '' : 's'} haven't ordered in the last ${LAPSED_AFTER_DAYS} days.\n\nSuggested action: create a win-back campaign for the "Lapsed" segment.`
+    const recipients = await getRecipients(admin, business.id, 'view_marketing_analytics')
     const result = await notify(admin, {
       businessId: business.id, automationType: 'marketing_suggestion', recipients,
-      title: '💡 Marketing suggestion', body: `${body}\n\nSuggested action: create a campaign for these customers.`,
-      category: 'marketing', priority: 'INFO', actionUrl: '/dashboard/marketing',
+      title: '💡 Marketing suggestion', body,
+      category: 'marketing', priority: 'INFO', actionUrl: '/dashboard/customers',
     })
-    await completeRun(admin, runId, { status: 'COMPLETED', actionTaken: 'notified', result: { suggestions, ...result } })
+    await completeRun(admin, runId, { status: 'COMPLETED', actionTaken: 'notified', result: { lapsed_count: lapsedCount, ...result } })
   } catch (e: any) {
     await completeRun(admin, runId, { status: 'FAILED', failureReason: e.message ?? 'unknown_error' })
   }

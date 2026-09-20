@@ -23,6 +23,12 @@ export const PERMISSIONS = [
   'approve_expense', 'manage_supplier_invoices', 'record_supplier_payment',
   'perform_cash_count', 'view_cash_variance', 'view_vat', 'edit_vat',
   'export_finance', 'manage_finance_settings',
+  // Phase I (I67) — CRM/loyalty/marketing permissions, deliberately
+  // granular: contact info, loyalty adjustment and bulk campaign send
+  // are each their own grant, not lumped into a single "CRM access".
+  'view_customers', 'view_customer_contact', 'manage_customer_notes',
+  'manage_loyalty', 'adjust_loyalty', 'manage_promotions', 'manage_campaigns',
+  'send_campaigns', 'view_marketing_analytics', 'manage_reviews', 'manage_crm_settings',
 ] as const
 export type Permission = typeof PERMISSIONS[number]
 
@@ -43,25 +49,35 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     'approve_expense', 'manage_supplier_invoices', 'record_supplier_payment',
     'perform_cash_count', 'view_cash_variance', 'view_vat', 'edit_vat',
     'export_finance', 'manage_finance_settings',
+    'view_customers', 'view_customer_contact', 'manage_customer_notes',
+    'manage_loyalty', 'adjust_loyalty', 'manage_promotions', 'manage_campaigns',
+    'send_campaigns', 'view_marketing_analytics', 'manage_reviews', 'manage_crm_settings',
   ],
   // Runs the operational side of the van(s) they're assigned to — enough
   // finance access to log a cash count and an expense at their own van,
   // not to approve/pay suppliers, touch VAT, or export (H59 — "ordinary
-  // staff minimal finance access by default").
+  // staff minimal finance access by default"). Same idea for CRM (I67):
+  // enough to look up a customer and run POS loyalty day to day, not to
+  // adjust balances by hand or manage/send bulk marketing.
   VAN_MANAGER: [
     'manage_vans', 'manage_menu', 'manage_stock', 'stocktake', 'record_wastage',
     'manage_suppliers', 'manage_purchase_orders', 'manage_shifts', 'manage_vehicles',
     'manage_hygiene', 'use_pos', 'view_orders', 'manage_orders', 'view_analytics',
     'manage_business_memory',
     'view_finance_summary', 'view_expenses', 'create_expense', 'perform_cash_count', 'view_cash_variance',
+    'view_customers', 'view_customer_contact', 'manage_customer_notes', 'manage_loyalty', 'manage_reviews',
   ],
   // Business memory notes are deliberately low-stakes (operational
   // observations, not financial/destructive actions), so every active
   // role — including DRIVER/STAFF — can add one: they're the people
   // actually on the road who'd note "sold out of cod" or "road closed".
   // Same reasoning extends to a basic cash count and logging a receipt.
-  DRIVER: ['use_pos', 'view_orders', 'record_wastage', 'stocktake', 'manage_business_memory', 'perform_cash_count', 'create_expense'],
-  STAFF: ['use_pos', 'view_orders', 'manage_business_memory', 'perform_cash_count', 'create_expense'],
+  // manage_loyalty (not view_customers) is what lets them run POS
+  // loyalty lookup/redemption without any access to the customer list or
+  // bulk contact data (I67 — "should not automatically access the full
+  // customer database").
+  DRIVER: ['use_pos', 'view_orders', 'record_wastage', 'stocktake', 'manage_business_memory', 'perform_cash_count', 'create_expense', 'manage_loyalty'],
+  STAFF: ['use_pos', 'view_orders', 'manage_business_memory', 'perform_cash_count', 'create_expense', 'manage_loyalty'],
   // H58 — finance-scoped only. No operational permissions at all: an
   // accountant/bookkeeper can see and manage the books without being
   // able to touch stock, staff, vans, or POS.

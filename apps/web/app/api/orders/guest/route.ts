@@ -1,5 +1,9 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { validateDiscountCode, claimDiscountCode } from '@/lib/crm/discounts'
+import { findOrCreateCrmCustomer } from '@/lib/crm/identity'
+import { round2 } from '@/lib/finance/money'
 
 const SB_URL = () => process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const ANON_KEY = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -75,11 +79,38 @@ async function sbPost(table: string, body: any) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { van_id, business_id, customer_name, customer_phone, notes, pickup_location, pickup_time, pickup_stop_id, service_date, items, subtotal, total, payment_method } = await req.json()
+    const { van_id, business_id, customer_name, customer_phone, customer_email, notes, pickup_location, pickup_time, pickup_stop_id, service_date, items, subtotal, total, payment_method, discount_code, referral_code } = await req.json()
 
     if (!customer_name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     if (!customer_phone) return NextResponse.json({ error: 'Phone is required' }, { status: 400 })
     if (!items?.length) return NextResponse.json({ error: 'No items in order' }, { status: 400 })
+
+    // Phase I — a promo/voucher code, always revalidated and priced
+    // server-side here, never trusted from the client (I18/I21). Does not
+    // change the existing client-supplied `total` when no code is used —
+    // this is purely additive.
+    let resolvedCode: any = null
+    let finalTotal = total ?? 0
+    let finalDiscountAmount = 0
+    let admin: any = null
+    let crmCustomerForCode: any = null
+    let resolvedBusinessId = business_id ?? null
+    if (discount_code) {
+      admin = await createAdminClient()
+      if (!resolvedBusinessId && van_id) {
+        const { data: van } = await admin.from('vans').select('business_id').eq('id', van_id).maybeSingle()
+        resolvedBusinessId = van?.business_id ?? null
+      }
+      if (resolvedBusinessId) {
+        crmCustomerForCode = await findOrCreateCrmCustomer(admin, resolvedBusinessId, { phone: customer_phone, email: customer_email, displayName: customer_name })
+        resolvedCode = await validateDiscountCode(admin, resolvedBusinessId, discount_code, {
+          vanId: van_id, channel: 'guest', subtotal: round2(subtotal ?? total ?? 0), crmCustomerId: crmCustomerForCode?.id ?? null, isNewCustomer: false, // conservative default — see docs "Not built"
+        })
+        if (!resolvedCode.valid) return NextResponse.json({ error: `Code not valid: ${resolvedCode.reason}` }, { status: 400 })
+        finalDiscountAmount = resolvedCode.discount_amount
+        finalTotal = round2(Math.max(0, (subtotal ?? total ?? 0) - finalDiscountAmount))
+      }
+    }
 
     // Phase G — never trust a stop id without checking it actually
     // belongs to this van's own schedule.
@@ -112,7 +143,10 @@ export async function POST(req: NextRequest) {
         pickup_stop_id: verifiedStopId,
         service_date: resolvedServiceDate,
         subtotal: subtotal ?? 0,
-        total: total ?? 0,
+        total: finalTotal,
+        discount_amount: finalDiscountAmount || undefined,
+        discount_code: resolvedCode ? String(discount_code).trim().toUpperCase() : undefined,
+        referral_code_used: referral_code ? String(referral_code).trim().toUpperCase() : undefined,
         payment_method: payment_method ?? 'cash_at_van',
         status: 'pending',
         source: 'guest',
@@ -123,13 +157,17 @@ export async function POST(req: NextRequest) {
         van_id: van_id || null,
         notes: `Order from ${customer_name} (${customer_phone})${notes ? '. ' + notes : ''}${pickupStr}`,
         subtotal: subtotal ?? 0,
-        total: total ?? 0,
+        total: finalTotal,
         payment_method: payment_method ?? 'cash_at_van',
         status: 'pending',
         source: 'guest',
       })
     }
     const order_number = order?.order_number
+
+    if (resolvedCode?.valid && admin && order?.id) {
+      try { await claimDiscountCode(admin, resolvedBusinessId, resolvedCode, order.id, crmCustomerForCode?.id ?? null) } catch (_e) {}
+    }
 
     if (order?.id && items.length > 0) {
       await sbPost('order_items', items.map((i: any) => ({

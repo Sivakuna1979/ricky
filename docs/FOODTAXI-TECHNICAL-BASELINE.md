@@ -1756,3 +1756,483 @@ clear — read-only, informational; it never locks anything itself.
 - **Stripe Connect / real card-provider settlement verification** —
   explicitly not activated; card-recorded sales are never claimed
   verified.
+
+---
+
+## 69. Customer Growth, Loyalty, CRM & Retention (Phase I)
+
+### I1 data audit — what was found before anything was built
+
+- Authenticated `customers` accounts are rare — POS, guest/online and
+  WhatsApp ordering (the dominant volume) all create orders with
+  `customer_id` NULL, identity carried in `guest_name`/`guest_phone`/
+  `guest_email` instead. A CRM built only around `customers` would miss
+  almost every real order.
+- `email_unsubscribes` is platform-wide (not per-business), keyed by
+  email. Preserved completely unchanged and treated as an absolute
+  floor — no business, preference, or campaign in Phase I can ever
+  re-enable email to a suppressed address.
+- `whatsapp_customer_prefs` is **not** a consent table despite its
+  name — it only tracks WhatsApp ordering conversation state (last van
+  picked, pending option list). There was no existing WhatsApp
+  marketing-consent mechanism at all, so WhatsApp marketing opt-in
+  defaults to `false` for every customer, never inferred from having
+  ordered by WhatsApp.
+- `whatsapp_messages` (inbound message log) is reused as-is to compute
+  the WhatsApp 24-hour session-window eligibility for campaign sending —
+  no new table needed.
+- `reviews` existed but was completely unused (no reader or writer
+  anywhere) and required `customer_id NOT NULL`, unusable for the
+  guest-dominant order flow. Fixed in place (nullable `customer_id`,
+  `guest_name`/`guest_phone`/`guest_email` added, matching orders'
+  convention) rather than replaced.
+- `customer_favourite_vans` (authenticated-customer only) is reused
+  as-is — not extended to guest identity, since a persisted "favourite"
+  inherently needs a stable account to attach to.
+- `orders.discount_amount` (Phase B, menu deals) is reused as the one
+  field any discount — loyalty reward, voucher, or promo code — is ever
+  applied through, rather than each mechanism inventing its own pricing
+  path.
+- **Regression found and fixed:** POS's "hand over" action updated
+  `orders` directly from the browser, bypassing `PATCH
+  /api/orders/[id]/status` — the one place Phase C's stock deduction is
+  triggered. This meant POS-collected orders were never deducting stock.
+  Fixed by routing POS's hand-over through that same API route, which
+  also gives it Phase I's loyalty earning and CRM identity tracking for
+  free — a genuine regression fix, not new behaviour, found during this
+  audit exactly the way earlier phases have found and fixed similar
+  gaps.
+
+### Customer identity architecture (I2/I3)
+
+`crm_customers` is a **business-scoped identity + preference table
+only** — it never caches order counts, spend, or dates. Those are always
+computed live from `orders` at query time
+(`lib/crm/profile.ts`/`lib/crm/segments.ts`), the same "compose at query
+time from source-of-truth" principle Phase G's route analytics and Phase
+H's finance module already established.
+
+Identity resolution is conservative: `identity_key` is `'phone:<E.164
+normalised>'` when a phone is known, else `'email:<lowercased>'`, else
+`NULL` (no row is created for a truly anonymous walk-in). `UNIQUE
+(business_id, identity_key)` is the tenant-isolation boundary — the same
+phone ordering from two different FoodTaxi businesses can never merge
+into one profile (I81). A `customer_id` link to an authenticated account
+is only ever set on an exact phone/email match, never by name (I3).
+`crm_customers` is populated going forward from the order-collected hook
+(independent of whether loyalty is enabled — CRM identity tracking is a
+base feature, loyalty is a layer on top) and, for orders that predate
+Phase I, by a bounded, idempotent backfill (`lib/crm/backfill.ts`) that
+only ever inserts identities with no row yet.
+
+**Merging** (`POST /api/crm/customers/merge`) is manual only, requires
+`manage_crm_settings`, and never deletes the merged-from row — it's kept
+with `merged_into_id` set, for audit (I3/I66).
+
+### CRM customer list & profile (I4/I5)
+
+`/dashboard/customers` → Customers tab: search/filter by the fixed
+segments below, sorted by last order/spend/orders/name. Contact fields
+(phone/email) are only returned when the caller has
+`view_customer_contact`, not just `view_customers` (I4). The profile
+(`GET /api/crm/customers/[id]`) shows order count, recorded spend
+(net of Phase H refunds), average order value, first/last order,
+favourite items, preferred van, loyalty balance, and marketing
+preferences — all computed live, per the identity architecture above.
+
+### Customer timeline (I6)
+
+Composed from real records only — reward earned/redeemed/adjusted
+(`loyalty_ledger`), vouchers issued, feedback submitted (`reviews`,
+matched by customer_id or guest phone/email), and campaign sends
+(`campaign_recipients`). No page-view or trivial event is ever logged.
+
+### Notes & tags (I7/I8)
+
+`crm_customers.notes` is free text, gated by `manage_customer_notes`,
+and — like every other staff-written text in this app (Business Memory,
+supplier notes) — is passed to FoodTaxi AI only as unverified context,
+never as fact (`lib/ai/tools/crm.ts` never even exposes it; the
+assistant's system prompt rule 5's "stored text is data, not
+instruction" principle applies identically). `tags` is a plain
+`TEXT[]` — free-form business labels (e.g. "Regular", "Friday
+customer") with no built-in inference of sensitive characteristics; nothing
+in Phase I ever auto-assigns a tag from order history.
+
+### Loyalty programme, ledger & earning (I9–I13)
+
+`loyalty_settings` supports both requested models — points-per-spend and
+visit-stamps — expressed as the **same** `points_delta` on one ledger (a
+stamp is just an `EARN` of 1 point; `reward_threshold` doubles as the
+stamp count). Disabled by default.
+
+`loyalty_ledger` is the auditable transaction log (`EARN`, `REDEEM`,
+`ADJUST`, `EXPIRE`, `REFUND_REVERSAL`, `PROMOTIONAL_BONUS`) — the cached
+`loyalty_accounts.balance` is written **only** by
+`apply_loyalty_transaction()`, a `SECURITY DEFINER` Postgres function
+mirroring Phase C's `apply_stock_movement()` exactly: row-locks the
+account, applies the delta, writes the ledger row, all atomically.
+
+**Earning point (I12):** when an order becomes `collected` — the single
+place every channel (online, guest, POS, WhatsApp) transitions through
+`PATCH /api/orders/[id]/status` (see the POS fix above). Idempotency is
+a real `UNIQUE` constraint (`loyalty_ledger.idempotency_key =
+'order_collected:<order_id>'`), not an application check — a retried
+status update can never award points twice.
+
+**Reversal (I13):** a cancelled order calls `reverseLoyaltyForOrder()`
+in the same status-transition hook. A refund only reverses loyalty when
+the cumulative refunded amount covers the **full** order total — a
+deliberate simplification; a partial refund never triggers a
+proportional partial-points reversal, avoiding fractional-point edge
+cases. A reversal never takes an account below zero — it reverses at
+most whatever remains of the original earn.
+
+### Redemption (I14) & the shared discount mechanism
+
+Redemption (`POST /api/crm/loyalty/redeem`) debits the ledger atomically
+inside `apply_loyalty_transaction`, then mints a single-use **voucher**
+for the configured reward. Loyalty rewards, referral rewards, and
+manually-issued vouchers all become the same kind of row in `vouchers`;
+promo codes are a separate table but resolve through the exact same
+function, `lib/crm/discounts.ts`'s `validateDiscountCode()`/
+`claimDiscountCode()`, at order creation — one discount pricing path for
+every mechanism, never a second one invented per feature (I9's spirit
+applied to the whole phase). Only one discount code applies per order,
+ever (`promo_redemptions.order_id` is `UNIQUE`) — no stacking of two
+codes; a menu deal's own existing discount (Phase B) can combine with
+one code, a simple and predictable rule (I22).
+
+### Loyalty QR & POS/online/WhatsApp integration (I16–I19)
+
+The "QR identifier" is `crm_customers.id` itself — a random UUID with
+nothing derived from the customer's name or phone encoded in it (I16).
+POS gets a lookup widget (phone or that id) showing balance, progress,
+and an available reward, with server-validated redemption
+(`components/crm/PosLoyaltyWidget.tsx`). Online/guest checkout resolves
+and prices a promo/voucher code entirely server-side
+(`app/api/orders/guest/route.ts`) — the client's own claimed total is
+never trusted for the discount portion. **WhatsApp loyalty display was
+not built** — the ordering AI already has enough scope; wiring balance
+display into that flow risked destabilising a working, higher-stakes
+ordering path for a lower-value display feature, so it's documented as
+future work rather than attempted (see "Not built").
+
+### Promo codes, stacking & vouchers (I20–I23)
+
+`promo_codes`: fixed-amount/percentage, date range, minimum spend,
+redemption limits (total and per-customer), eligible vans/channels,
+new-customers-only. Redemption is a `SECURITY DEFINER` function
+(`redeem_promo_code`) that row-locks the code and re-checks every limit
+**inside** the lock — the actual protection against two simultaneous
+orders over-redeeming a limited code, not an application-level
+check-then-insert with a race window. `vouchers` are explicitly a
+promotional/discount instrument only — no cash-out, no stored balance
+beyond the one discount value (I23).
+
+### Referrals (I24/I25)
+
+A referrer's opaque code (`referral_codes`, one per customer,
+staff-generated from the profile page) qualifies when the **referred**
+customer's genuinely first completed order uses it
+(`referral_conversions.qualifying_order_id` is `UNIQUE` — idempotent).
+Self-referral is prevented by comparing `identity_key`, never a name.
+Both rewards (if enabled) are minted as vouchers via the same mechanism
+as loyalty redemption. A fully self-service customer-facing referral
+portal was **not** built — codes are generated by staff from the
+customer profile for now (see "Not built").
+
+### Favourites & reorder (I26/I27)
+
+`customer_favourite_vans` reused as-is for authenticated accounts.
+A "quick reorder" UI was **not** built in this pass — the existing
+guest/online ordering flow already re-validates menu/price/availability
+fresh on every order (nothing in Phase I changed that), so building
+reorder would mean adding a shortcut UI on top of an already-correct
+validation path; judged lower priority than the CRM/loyalty/promo core
+within this phase's scope (see "Not built").
+
+### Segments (I28–I30)
+
+Six fixed, documented segments computed from order history only — `new`
+(first order ≤30 days ago), `active` (ordered ≤30 days ago), `regular`
+(3+ orders, last ≤60 days), `lapsed` (no order in the last 60 days,
+configurable), `high_frequency` (10+ orders in 90 days), `high_spend`
+(recorded spend ≥ a threshold). `lib/crm/segments.ts`'s
+`computeSegmentMembership()` is the **one** place these definitions
+live — the dashboard, campaign audience builder, retention analytics,
+and AI tool all call it, so a segment count can never disagree between
+surfaces. Nothing infers a segment from anything beyond order date/
+count/spend/van — no sensitive characteristic is ever considered (I30).
+
+### Consent, preferences & suppression (I31–I33)
+
+Three independent opt-ins per customer (`marketing_email_opt_in`/
+`_whatsapp_opt_in`/`_sms_opt_in`), **all default `false`** — never
+inferred from placing an order. The global `email_unsubscribes` list is
+checked again at send time regardless of the per-business flag (the
+absolute floor, I32). Re-ordering after unsubscribing never
+re-subscribes a customer — nothing in the order-creation path touches
+these preference columns at all, only explicit preference changes
+(`PATCH /api/crm/customers/[id]`) do. Marketing eligibility
+(`lib/crm/campaigns.ts`'s `getEligibleAudience()`) is recomputed at
+confirm/send time, never trusted from an earlier preview (I33/I59).
+
+### Campaign engine (I34–I38)
+
+`campaigns`/`campaign_recipients` **extends** the existing ad-hoc
+`/api/marketing/send` (untouched, still works exactly as before) rather
+than replacing it — this is the segmented/scheduled/multi-channel engine
+with real per-recipient delivery tracking. Flow: draft (audience +
+channel + message, with an immediate estimated-recipient preview) →
+confirm & send (`send_campaigns` permission, a step up from
+`manage_campaigns`) → per-recipient `QUEUED`/`SENT`/`FAILED`/
+`SKIPPED_SUPPRESSED`/`SKIPPED_OUT_OF_WINDOW` tracking.
+
+**Idempotency (I38):** `campaign_recipients` has `UNIQUE(campaign_id,
+crm_customer_id)` — queuing is safe to re-run, and a batch send only
+touches rows still `QUEUED`, so a cron retry, a webhook retry, or a
+double confirm-click can never send the same recipient twice. Large
+audiences are processed in capped batches (500 per call) — re-confirming
+processes the next batch, documented as a scale limitation rather than
+building a full background queue.
+
+**Channels (I35):** email (Resend, reuses the existing sender), SMS
+(Twilio, reuses `sendAutomationSms`), WhatsApp (Meta Cloud API, a new
+`lib/notify/whatsapp.ts` reimplemented independently from the ordering
+webhook so the two can never interfere with each other). **WhatsApp
+marketing is only ever sent to a recipient within their 24-hour
+session window** (computed from `whatsapp_messages`) — outside it, Meta
+requires a pre-approved message template, which FoodTaxi doesn't have
+configured; everyone outside the window is recorded as
+`SKIPPED_OUT_OF_WINDOW`, never silently dropped or sent anyway.
+
+**Scheduling (I37):** `scheduled_for` + a new cron evaluator
+(`runScheduledCampaigns`) that calls the exact same
+`confirmAndSendCampaign()` the manual button uses — one send
+implementation, two triggers, so a scheduled send behaves identically to
+a manual one, including the same atomic claim guarding against duplicate
+sends.
+
+### Win-back & route-customer campaigns (I39/I40)
+
+`campaign_type: 'win_back'`/`'route_customer'` are labels on the same
+campaign engine — a win-back campaign is simply one targeted at the
+`lapsed` segment; a route-customer campaign is a manually-built custom
+segment (e.g. filtered by van) rather than an unreliable inferred
+stop relationship, per I40's explicit instruction not to infer stop
+relationships from old orders. Neither sends automatically — the owner
+always selects the audience and confirms.
+
+### Closure/route-change messages (I41/I42)
+
+Not built as a distinct feature in this pass — Phase D's van-arrival
+notifications remain the only automated location messaging (I41 says
+reuse it, not duplicate it), and an owner can already draft an ad-hoc
+message via the general campaign flow (channel + message, segment "all"
+or a van-filtered custom segment) for a closure/delay/return
+announcement. A dedicated "closure notice" quick-compose UI was judged
+lower priority than the core CRM/loyalty/promo work (see "Not built").
+
+### Offers & bonus loyalty (I43/I44)
+
+An "offer" (e.g. "10% off Friday") is simply a `promo_code` with a
+`campaign_type: 'offer'` campaign announcing it — no separate offers
+table. **Bonus/double-points periods were not built** — `loyalty_ledger`
+already has a `PROMOTIONAL_BONUS` type ready for this, but the
+time-boxed "double points" rule engine itself (start/end, eligible
+scope, audit trail per I44) was judged a lower-priority addition to an
+already very large phase (see "Not built").
+
+### Feedback & reviews (I45–I48)
+
+A public `/feedback/[orderId]` page (the order id itself is the
+capability, the same pattern `/receipt/[id]` already uses) submits a
+1–5 rating + optional comment into `reviews`, always
+`is_published: false` — a business must explicitly publish it as a
+public review (`PATCH /api/crm/reviews/[id]`), which also supports a
+business-response field. An opt-in `feedback_request` automation emails
+once per order, 2–6 hours after collection, classified as
+operational/transactional to that specific order rather than a
+marketing send (I80) — capped to once ever per order via
+`feedback_requests`' `UNIQUE(order_id)`. `lib/crm/feedback.ts`'s
+`getReviewSummary()` gives average rating, count, a 1–5 distribution,
+and a monthly trend — factual only, never an interpretation of a small
+sample (I48).
+
+### Retention analytics & cohorts (I49/I50)
+
+`lib/crm/retention.ts` defines every metric precisely once: NEW (first
+order in the period), RETURNING (ordered in the period, had ordered
+before it), repeat purchase rate (2+ orders ÷ all customers, all-time),
+"reordered within X days" (only counts customers whose first order is
+already X days old, so nobody is miscounted as churned before they've
+had time to return), and month-of-first-order cohorts with their 30-day
+reorder rate. The dashboard, export-equivalent AI tool, and retention
+endpoint all call these same functions.
+
+### Customer value (I51)
+
+`recorded_spend` is always the historical, factual total (net of
+refunds) — never called "profit" or "value" beyond what it factually is.
+No predictive LTV was built in this phase.
+
+### Campaign performance & attribution (I52/I53)
+
+Delivery is tracked per recipient (sent/failed/skipped); "opened"/
+"clicked" tracking was **not** built (would need Resend webhook
+integration — out of scope for this pass, documented). Promo redemption
+is the one strong attribution signal (`promo_redemptions` links an order
+directly to a code) — the AI system prompt (rule 12) requires
+distinguishing "attributed via promo code" from "ordered after a
+campaign" (a correlation, never claimed as proof of causation).
+
+### CRM dashboard (I54)
+
+`/dashboard/customers` → Overview: active/new/returning/lapsed
+customers, repeat rate, loyalty members, rewards redeemed, average
+rating, and recent campaigns — all from the same `lib/crm/*` functions
+the AI tools and other tabs use.
+
+### FoodTaxi AI CRM tools & campaign drafting (I55–I60)
+
+`lib/ai/tools/crm.ts` — nine tools, registered into `ALL_TOOLS`:
+`get_customer_growth_summary`, `get_lapsed_customer_count`,
+`get_customer_segment_summary`, `get_reorder_rate`,
+`get_loyalty_summary`, `get_promo_performance`, `get_review_summary`,
+`get_campaign_performance`, plus one write-capable tool,
+`propose_campaign`. Every read tool returns **aggregates and counts
+only** — no tool exposes a customer list, name, phone, or email (I60).
+`propose_campaign` follows the exact same two-step safety pattern as
+every other `propose_*` tool: it creates a `PENDING`
+`ai_pending_actions` row (`create_campaign_draft`), and even confirming
+that only creates a **DRAFT** campaign — sending it is a second, entirely
+separate, explicit "Confirm & Send" action in the dashboard (I59). The
+assistant's system prompt (rule 12) requires segments to always be one
+of the fixed deterministic list, forbids inferring or targeting by any
+sensitive personal characteristic even if asked, and forbids claiming a
+campaign was sent.
+
+### Privacy, data minimisation & deletion foundation (I61–I63)
+
+Phase I deliberately stores the minimum: no address, no full date of
+birth (only an optional `MM-DD` `birthday_month_day`, never required,
+removable, only used if a business configures a birthday feature that
+this phase does not yet build), no free-text profiling beyond
+business-defined tags. `crm_customers.merged_into_id` already
+demonstrates the "keep for audit, mark rather than destroy" pattern this
+phase uses throughout (loyalty ledger entries and campaign records are
+similarly never deleted). A full customer data export/anonymisation
+tool was **not** built — the architecture (one `crm_customers` row per
+identity, referenced by ledger/voucher/campaign tables via foreign key)
+makes a future "anonymise this identity" operation straightforward
+(null out `display_name`/`email`/`normalized_phone`, keep the
+now-anonymous row and its financial/audit trail intact), but the tool
+itself is future work, documented rather than guessed at with an
+invented retention period (I61/I63 — no legal retention period is
+invented here).
+
+### Fraud/abuse foundation (I65) & rate limiting (I64)
+
+Race-condition protection for promo/voucher redemption is real (the
+`SECURITY DEFINER` functions' row locks, above). Basic pattern
+detection — repeated self-referral, duplicate reward attempts for the
+same order — is prevented structurally (`UNIQUE` constraints on
+`qualifying_order_id`, identity comparison for self-referral) rather
+than via a separate "fraud flag" system. **Rate limiting on
+promo-validation/customer-search/campaign endpoints was not added** —
+they inherit the same per-request authentication every other Phase
+C–H API route already requires, but no additional throttle was built
+in this pass (see "Not built").
+
+### Audit trail (I66)
+
+No new table — every meaningful CRM action (loyalty adjustment,
+redemption, promo created/changed, voucher issued, referral reward,
+customer merge, marketing-preference change, campaign created/
+scheduled/sent/cancelled) is logged via the existing `logAuditEvent()`
+(Phase C), the same mechanism Phase D/H already use. Profile views are
+never audited (I66's explicit instruction).
+
+### Staff permissions & Van Manager scope (I67/I68)
+
+Eleven new granular permissions (`view_customers`,
+`view_customer_contact`, `manage_customer_notes`, `manage_loyalty`,
+`adjust_loyalty`, `manage_promotions`, `manage_campaigns`,
+`send_campaigns`, `view_marketing_analytics`, `manage_reviews`,
+`manage_crm_settings`). `BUSINESS_ADMIN` gets full CRM access;
+`VAN_MANAGER` gets enough to look up a customer and run POS loyalty
+day-to-day, not to adjust balances by hand or manage/send bulk
+marketing; `DRIVER`/`STAFF` get only `manage_loyalty` (POS
+lookup/redemption), never the customer list or contact data — "ordinary
+staff should not automatically access the full customer database" (I67)
+applied literally. Van-restricted staff's existing van-assignment
+scoping (`assertVanAllowed`/`allowedVanIds`) is unchanged and reused
+wherever a tool/route takes a van filter (I68).
+
+### Finance, stock, route & Business Memory integration (I73–I77)
+
+Promo/voucher/loyalty discounts flow into `orders.discount_amount`
+(Phase B) exactly as a menu deal already does — Phase H's finance
+reports read `orders.total`/`discount_amount` unchanged, so discounted
+sales are already correctly reflected; no separate "reward expense" is
+recorded (I73 — reward value is a foregone-revenue discount, not a
+double-counted cost). A reward-redeemed order still goes through
+`deductStockForOrder()` exactly like any other order — stock is deducted
+from the *items actually fulfilled*, never skipped because the
+customer paid less (I74). Phase B/G's existing revenue definitions
+(`sum(total)` excluding cancelled) are entirely unchanged by discounts —
+`total` already reflects the discount, so analytics simply see the
+correct net figure automatically (I75). Route/van-level CRM insight
+(I76) is available by combining a custom segment filtered by van with
+Phase G's own route analytics — no new coupling was added into
+`route_sessions`/`route_session_stops`. Business Memory (Phase F) was
+deliberately **not** used to store customer personal profiles or notes —
+CRM data stays in its own structured tables, retrieved via the CRM
+tools/API, never dumped into general semantic search (I77).
+
+### Automation integration (I78)
+
+Reuses Phase D's engine exactly. New types: `promo_expiring` (3-day
+threshold, same exact-day pattern as Phase D's vehicle reminders),
+`feedback_request` (see above, opt-in, default off). The existing
+`marketing_suggestion` automation (Phase D) **is** I78's "lapsed-customer
+audience ready" — rather than adding a competing automation, it was
+fixed during this phase to use the same `computeSegmentMembership`
+lapsed definition every other CRM surface uses (previously it had its
+own bespoke van-by-van email-diff calculation) and now links to
+`/dashboard/customers` instead of the old marketing page; its recipient
+permission also tightened from `view_analytics` to
+`view_marketing_analytics`, consistent with I67. `runScheduledCampaigns`
+executes due scheduled campaigns every cron tick. "Reward unlocked"
+customer-facing notifications and birthday/occasion automations were
+**not** built in this pass (see "Not built").
+
+### Birthday/occasion data (I79)
+
+`crm_customers.birthday_month_day` exists as an optional, voluntary,
+removable field (never a full date of birth, never inferred age) — but
+no birthday-reward automation was built to use it yet; the column is a
+foundation for that future feature, not a working feature itself.
+
+### Transactional vs marketing (I80)
+
+Order-status messages (Phase B/D, unchanged) remain transactional and
+are never gated by the new marketing opt-in columns. The new
+`feedback_request` automation is treated the same way — tied to a
+specific order, sent regardless of marketing opt-in, capped to once per
+order. Only campaign sends (`campaigns`/`campaign_recipients`) are
+gated by the marketing preference + global unsubscribe checks.
+
+### Not built in Phase I (see the completion report for the full list)
+
+- WhatsApp loyalty balance display within the ordering AI flow
+- A self-service customer-facing referral portal (staff-generated codes only)
+- A "quick reorder" UI shortcut
+- A dedicated closure/route-change quick-compose UI (the general campaign flow already covers this)
+- Bonus/double-points time-boxed rule engine (the ledger type exists; the rule engine does not)
+- Campaign email open/click tracking
+- Additional rate limiting beyond standard per-request authentication
+- A full customer data export/anonymisation tool (architecture supports it; the tool itself is future work)
+- Birthday-reward automation (the data field exists; the automation does not)
+- Reward-unlocked customer-facing notifications

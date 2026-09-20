@@ -44,6 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     create_purchase_order: 'manage_purchase_orders',
     create_stock_transfer: 'manage_stock',
     create_expense: 'create_expense',
+    create_campaign_draft: 'manage_campaigns',
   }
   const requiredPermission = PERMISSION_BY_ACTION[pending.action_type]
   if (requiredPermission && !hasPermission(ctx.role, requiredPermission)) {
@@ -103,6 +104,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }).select().single()
       if (error) throw error
       result = { expense_id: expense.id }
+    } else if (pending.action_type === 'create_campaign_draft') {
+      // I57/I59 — the AI never creates a real campaign row itself; this
+      // confirm step only creates a DRAFT, which still requires its own
+      // separate Confirm & Send action under Customers → Campaigns
+      // before anything is actually sent (two distinct confirmations,
+      // never one click to bulk-send).
+      const { name, channel, segment_definition, subject, message, campaign_type, estimated_recipients } = pending.params
+      const { data: campaign, error } = await admin.from('campaigns').insert({
+        business_id: ctx.businessId, name, channel, segment_definition, subject, message,
+        status: 'DRAFT', campaign_type, estimated_recipients, created_by: ctx.userId,
+      }).select().single()
+      if (error) throw error
+      result = { campaign_id: campaign.id }
     } else {
       throw new Error('unknown_action_type')
     }

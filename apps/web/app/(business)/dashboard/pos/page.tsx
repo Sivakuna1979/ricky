@@ -7,6 +7,7 @@ import { sortCategories } from '@/lib/categoryOrder'
 import { speakAnnouncement } from '@/lib/speak'
 import { shortOrderNumber } from '@/lib/orderNumber'
 import { CurrentStopBanner } from '@/components/routes/CurrentStopBanner'
+import { PosLoyaltyWidget } from '@/components/crm/PosLoyaltyWidget'
 
 // Never lose a completed sale to a dropped connection: if the till can't
 // reach the server, the sale is saved here and retried automatically once
@@ -44,6 +45,8 @@ export default function PosPage() {
   const [cart, setCart]           = useState<Record<string, number>>({})
   const [customerName, setCustomerName] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [discountCode, setDiscountCode] = useState('')
   const [servedBy, setServedBy]   = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'cash_at_van' | 'card_at_van'>('cash_at_van')
   const [cashTendered, setCashTendered] = useState('')
@@ -257,8 +260,14 @@ export default function PosPage() {
 
   const handOver = async (orderId: string) => {
     setHandingOver(orderId)
-    const supabase = createClient()
-    await supabase.from('orders').update({ status: 'collected', collected_at: new Date().toISOString() }).eq('id', orderId)
+    // Phase I audit finding: this used to update the order directly from
+    // the browser, silently bypassing PATCH /api/orders/[id]/status — the
+    // one place stock deduction (Phase C8) and now loyalty earning/CRM
+    // tracking (Phase I) are triggered. Routing through the API instead
+    // fixes both in one change.
+    await fetch(`/api/orders/${orderId}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'collected' }),
+    })
     setHandingOver(null)
   }
 
@@ -348,6 +357,8 @@ export default function PosPage() {
       payment_method: paymentMethod,
       customer_name: customerName || undefined,
       customer_email: customerEmail || undefined,
+      customer_phone: customerPhone || undefined,
+      discount_code: discountCode || undefined,
       served_by: servedBy || undefined,
       cash_tendered: paymentMethod === 'cash_at_van' ? tendered ?? undefined : undefined,
       discount_amount: dealPricing.discount || undefined,
@@ -369,13 +380,17 @@ export default function PosPage() {
       clearTimeout(timeoutId)
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data.error?.formErrors?.join?.(', ') ?? data.error ?? 'Could not complete the sale'); setPlacing(false); return }
-      setLastSale({ id: data.id, order_number: data.order_number, total: cartTotal, count: cartCount })
-      setRecentSales(s => [{ id: data.id, order_number: data.order_number, guest_name: data.guest_name, total: cartTotal, created_at: data.created_at, source: 'pos' }, ...s])
+      // Phase I — the server may have applied a promo/voucher code
+      // on top of the till's own deal discount, so its returned total is
+      // authoritative, not the client-computed cartTotal.
+      const finalTotal = data.total ?? cartTotal
+      setLastSale({ id: data.id, order_number: data.order_number, total: finalTotal, count: cartCount })
+      setRecentSales(s => [{ id: data.id, order_number: data.order_number, guest_name: data.guest_name, total: finalTotal, created_at: data.created_at, source: 'pos' }, ...s])
       channelRef.current?.send({
         type: 'broadcast', event: 'sale_complete',
         payload: { order_number: data.order_number, total: cartTotal, changeDue },
       })
-      setCart({}); setCustomerName(''); setCustomerEmail(''); setCashTendered('')
+      setCart({}); setCustomerName(''); setCustomerEmail(''); setCustomerPhone(''); setDiscountCode(''); setCashTendered('')
     } catch {
       // No connection at all (or too slow to matter) — never lose a
       // completed sale: queue it locally, keep serving customers, and sync
@@ -390,7 +405,7 @@ export default function PosPage() {
         type: 'broadcast', event: 'sale_complete',
         payload: { order_number: 'Pending sync', total: cartTotal, changeDue },
       })
-      setCart({}); setCustomerName(''); setCustomerEmail(''); setCashTendered('')
+      setCart({}); setCustomerName(''); setCustomerEmail(''); setCustomerPhone(''); setDiscountCode(''); setCashTendered('')
     }
     setPlacing(false)
   }
@@ -496,6 +511,7 @@ export default function PosPage() {
                   )}
 
                   <CurrentStopBanner vanId={vanId} onStopChange={setPickupStopId} />
+                  <PosLoyaltyWidget onVoucherIssued={(code) => setDiscountCode(code)} />
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                     <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#111' }}>🧾 Till — {van?.name}</h1>
@@ -645,6 +661,8 @@ export default function PosPage() {
 
                       <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name (optional)" style={{ ...inp, width: '100%', marginBottom: 8 }} />
                       <input value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} type="email" placeholder="Email — for emailed receipt (optional)" style={{ ...inp, width: '100%', marginBottom: 8 }} />
+                      <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone — for loyalty (optional)" style={{ ...inp, width: '100%', marginBottom: 8 }} />
+                      <input value={discountCode} onChange={e => setDiscountCode(e.target.value.toUpperCase())} placeholder="Promo/voucher code (optional)" style={{ ...inp, width: '100%', marginBottom: 8 }} />
                       <input value={servedBy} onChange={e => setServedBy(e.target.value)} placeholder="Served by (optional)" style={{ ...inp, width: '100%', marginBottom: 10 }} />
 
                       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>

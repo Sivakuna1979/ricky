@@ -93,6 +93,8 @@ export function FoodTaxiAI() {
       ? '✅ Done — stock transfer created for you to review under Stock → Movements.'
       : actionType === 'create_expense'
       ? '✅ Done — expense recorded under Finance → Expenses.'
+      : actionType === 'create_campaign_draft'
+      ? '✅ Done — campaign saved as a draft under Customers → Campaigns. It still needs its own Confirm & Send before anything goes out.'
       : '✅ Done — purchase order created as a draft for you to review under Suppliers.'
     setMessages(m => [...m, { role: 'assistant', content: res.ok ? successMessage : `❌ ${data.error}` }])
   }
@@ -157,11 +159,14 @@ export function FoodTaxiAI() {
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
               {a.action_type === 'create_stock_transfer' ? '🚐 Draft stock transfer to van'
                 : a.action_type === 'create_expense' ? '💰 Draft expense'
+                : a.action_type === 'create_campaign_draft' ? '📣 Draft campaign'
                 : `📋 Draft purchase order — ${a.params.supplier_name}`}
             </div>
             <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
               {a.action_type === 'create_expense'
                 ? `${a.params.description} — £${Number(a.params.gross_amount).toFixed(2)} (${a.params.category.replace('_', ' ')})`
+                : a.action_type === 'create_campaign_draft'
+                ? `${a.params.name} — ${a.params.channel} to ~${a.params.estimated_recipients} customers (${a.params.segment_definition?.type ?? 'all'})`
                 : a.params.items.map((i: any) => `${i.quantity} × ${i.name}`).join(', ')}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>

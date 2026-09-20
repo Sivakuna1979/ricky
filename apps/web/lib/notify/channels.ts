@@ -14,6 +14,7 @@
 // (D7) so the control centre UI is complete, but selecting it currently
 // has no delivery effect — see docs/FOODTAXI-TECHNICAL-BASELINE.md.
 import { Resend } from 'resend'
+import { normalizePhone } from '@/lib/phone'
 
 export async function sendAutomationEmail(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string }> {
   if (!process.env.RESEND_API_KEY) return { ok: false, error: 'not_configured' }
@@ -25,14 +26,6 @@ export async function sendAutomationEmail(to: string, subject: string, html: str
   } catch (e: any) {
     return { ok: false, error: e.message ?? 'send_failed' }
   }
-}
-
-function normalizePhone(phone: string | null | undefined): string | null {
-  if (!phone) return null
-  const trimmed = phone.trim()
-  if (trimmed.startsWith('+')) return trimmed
-  if (trimmed.startsWith('0')) return `+44${trimmed.slice(1)}`
-  return trimmed
 }
 
 export async function sendAutomationSms(to: string | null | undefined, body: string): Promise<{ ok: boolean; error?: string }> {

@@ -276,6 +276,54 @@ RLS on every new Phase H table: the same `my_business_ids() OR my_staff_business
 
 ---
 
+## Customer Growth, Loyalty, CRM & Retention (Phase I)
+
+### `crm_customers` 🟢
+Identity + preference table only — never a stats cache; order count/spend/dates are always computed live from `orders` (`lib/crm/profile.ts`). `identity_key` (`'phone:+447...'` or `'email:x@y.com'`) is `UNIQUE(business_id, identity_key)` — the tenant-isolation boundary preventing the same phone number merging across two businesses' CRM. `customer_id` links to an authenticated account only on an exact phone/email match. `merged_into_id` marks (never deletes) a row merged into another.
+
+### `orders.discount_code` / `orders.referral_code_used` 🟢 (columns added in Phase I)
+Nullable, reporting/attribution only — `orders.discount_amount` (Phase B) remains the one authoritative discount figure; these just record which code, if any, was used.
+
+### `loyalty_settings` 🟢
+One row per business. `enabled` defaults `false`. Both requested earning models (points-per-spend, visit-stamps) share the same `loyalty_ledger` shape.
+
+### `loyalty_accounts` / `loyalty_ledger` 🟢
+`loyalty_accounts.balance` is a cache written **only** by `apply_loyalty_transaction()` (below) — never directly. `loyalty_ledger` is the full auditable history (`EARN`/`REDEEM`/`ADJUST`/`EXPIRE`/`REFUND_REVERSAL`/`PROMOTIONAL_BONUS`); `idempotency_key` has a `UNIQUE(business_id, idempotency_key)` partial index — the actual guard against double-earning an order under retry.
+
+### `apply_loyalty_transaction()` (function) 🟢
+`SECURITY DEFINER`, `REVOKE`d from `authenticated`/`anon` — mirrors Phase C's `apply_stock_movement()` exactly: row-locks the account, applies the delta, writes the ledger row, atomically. The only writer of `loyalty_accounts.balance`.
+
+### `promo_codes` / `promo_redemptions` 🟢
+Fixed-amount/percentage, date range, min spend, redemption limits (total + per-customer), eligible vans/channels. `promo_redemptions.order_id` is `UNIQUE` — one discount code per order, ever.
+
+### `redeem_promo_code()` (function) 🟢
+`SECURITY DEFINER`, row-locks the promo and re-checks every limit inside the lock before inserting the redemption — the actual race-condition protection against over-redeeming a limited code.
+
+### `vouchers` 🟢
+A promotional/discount instrument only (no stored value, no cash-out). `source` distinguishes `manual`/`loyalty_redemption`/`referral_reward` — all three mint the same kind of row. `redeem_voucher()` (function, `SECURITY DEFINER`) is the same atomic row-lock-and-claim pattern as promo codes.
+
+### `referral_settings` / `referral_codes` / `referral_conversions` 🟢
+One referral code per customer (`UNIQUE(business_id, crm_customer_id)`). `referral_conversions.qualifying_order_id` is `UNIQUE` — a given order can only ever qualify one referral, once. Self-referral is prevented by comparing `identity_key`, never a name.
+
+### `campaigns` / `campaign_recipients` 🟢
+Extends (does not replace) the pre-existing ad-hoc `/api/marketing/send`. `campaign_recipients.UNIQUE(campaign_id, crm_customer_id)` is what makes queuing and re-sending idempotent — a cron retry, webhook retry, or double confirm-click can never send the same recipient twice. `segment_definition` (jsonb) is the deterministic filter used to build the audience, re-evaluated at send time, never trusted from an earlier preview.
+
+### `reviews` 🟢 (Phase A table, fixed in Phase I — see baseline doc §69)
+`customer_id` made nullable; `guest_name`/`guest_phone`/`guest_email`/`business_id`/`business_response`/`responded_at`/`responded_by` added. `is_published` default flipped to `false` — a review is never public until a business explicitly publishes it.
+
+### `feedback_requests` 🟢
+`UNIQUE(order_id)` — the idempotency guard behind the once-per-order feedback-request automation.
+
+### `ai_pending_actions.action_type = 'create_campaign_draft'` 🟢 (new action type, Phase I)
+No new table — reuses Phase E's `ai_pending_actions` exactly. Confirming it only creates a DRAFT campaign; sending is always a second, separate, explicit action.
+
+### `automation_settings`/`automation_runs` — new types `promo_expiring`, `feedback_request` 🟢 (Phase I)
+No schema change. The pre-existing `marketing_suggestion` type (Phase D) was reused for I78's "lapsed-customer audience ready" rather than duplicated — see baseline doc §69.
+
+RLS on every new Phase I table: the same `my_business_ids() OR my_staff_business_ids() OR is_super_admin()` pattern as every table since Phase C.
+
+---
+
 ## Ownership / tenant isolation summary
 
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).

@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 import { deductStockForOrder, restoreStockForOrder } from '@/lib/stockDeduction'
+import { findOrCreateCrmCustomerForOrder } from '@/lib/crm/identity'
+import { earnLoyaltyForOrder, reverseLoyaltyForOrder } from '@/lib/crm/loyalty'
+import { qualifyReferral } from '@/lib/crm/referrals'
 
 const schema = z.object({
   status: z.enum(['accepted', 'preparing', 'ready', 'collected', 'cancelled']),
@@ -46,12 +49,36 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Automatic stock deduction (Phase C8) — optional per business, and a
   // no-op if nothing is configured; must never fail the status update.
+  // Phase I — CRM identity tracking, loyalty earn/reverse and referral
+  // qualification hook into this exact same point, the one place every
+  // channel (online, guest, POS — see the Phase I audit note fixing
+  // POS's hand-over to route through here, WhatsApp) transitions an
+  // order to 'collected'/'cancelled'. None of this may ever fail the
+  // status update itself.
   if (status === 'collected' || status === 'cancelled') {
     const admin = await createAdminClient()
+    const { data: actor } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
     try {
-      const { data: actor } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle()
       if (status === 'collected') await deductStockForOrder(admin, params.id, actor?.id)
       if (status === 'cancelled') await restoreStockForOrder(admin, params.id, actor?.id)
+    } catch (_e) {}
+
+    try {
+      const { data: van } = await admin.from('vans').select('business_id').eq('id', data.van_id).maybeSingle()
+      const businessId = van?.business_id
+      if (businessId) {
+        if (status === 'collected') {
+          // CRM identity tracking is unconditional (base feature) —
+          // loyalty earning and referral qualification are opt-in layers
+          // on top of it, checked inside their own functions.
+          await findOrCreateCrmCustomerForOrder(admin, businessId, data)
+          await earnLoyaltyForOrder(admin, businessId, { id: data.id, van_id: data.van_id, source: data.source, total: data.total, guest_phone: data.guest_phone, guest_email: data.guest_email, guest_name: data.guest_name, customer_id: data.customer_id })
+          if (data.referral_code_used) await qualifyReferral(admin, businessId, data.referral_code_used, data)
+        }
+        if (status === 'cancelled') {
+          await reverseLoyaltyForOrder(admin, businessId, params.id, 'Order cancelled')
+        }
+      }
     } catch (_e) {}
   }
 

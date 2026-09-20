@@ -10,6 +10,7 @@ import { hasPermission } from '@/lib/permissions'
 import { assertVanAllowed } from '@/lib/ai/context'
 import { round2 } from '@/lib/finance/money'
 import { logAuditEvent } from '@/lib/auditLog'
+import { reverseLoyaltyForOrder } from '@/lib/crm/loyalty'
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -54,5 +55,16 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await logAuditEvent(admin, { actorId: ctx.userId, action: 'finance.refund_recorded', entityType: 'refunds', entityId: refund.id, newValues: refund })
+
+  // I13 — loyalty reversal only when the refund makes up the FULL order
+  // total (a deliberate simplification: partial refunds never trigger a
+  // partial-points reversal, avoiding messy fractional-point edge cases —
+  // documented in docs/FOODTAXI-TECHNICAL-BASELINE.md). Never fails the
+  // refund itself.
+  const totalRefunded = round2(alreadyRefunded + refundAmount)
+  if (totalRefunded >= order.total - 0.01) {
+    try { await reverseLoyaltyForOrder(admin, ctx.businessId, order_id, 'Order fully refunded') } catch (_e) {}
+  }
+
   return NextResponse.json(refund, { status: 201 })
 }
