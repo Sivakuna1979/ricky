@@ -429,3 +429,23 @@ RLS on every new Phase L table (except the two secrets tables and `oauth_states`
 
 ### `lib/permissions.ts` — three new permissions 🟢
 `view_integrations`, `manage_payment_integrations`, `manage_accounting_integrations`. No schema change (TypeScript constants, not a DB enum) — see baseline doc §72's "Permissions" section for exactly which roles get which.
+
+## Live customer card payments — Stripe Terminal (Phase L-B)
+
+Migration: `20240060_phase_l_stripe_terminal.sql`. One additive schema
+change only.
+
+### `order_status` — new value `awaiting_payment` 🟢
+`ALTER TYPE order_status ADD VALUE`. An order sits here only while a
+Stripe Terminal charge is in flight — invisible to the Kitchen Display
+(`PREP_STATUSES` in `app/(business)/dashboard/kitchen/page.tsx` never
+included it) and excluded from revenue (`REVENUE_EXCLUDED_STATUSES` in
+`lib/finance/revenue.ts` now includes it alongside `cancelled`). Moves to
+`preparing` the moment Stripe genuinely confirms payment (via the till's
+own confirm call or the Connect webhook, whichever arrives first — both
+guarded so it can only ever happen once), or to `cancelled` on
+decline/cancel/timeout. No other column or table changed — every
+`payment_provider_connections`/`provider_transactions`/`provider_refunds`/
+`payment_terminals`/`provider_webhook_events` row a Stripe Terminal charge
+produces uses the exact Phase L-A schema unchanged, with `provider =
+'STRIPE_TERMINAL'`.

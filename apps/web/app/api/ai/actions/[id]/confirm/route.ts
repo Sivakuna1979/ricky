@@ -15,6 +15,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { resolveAiContext } from '@/lib/ai/context'
 import { hasPermission } from '@/lib/permissions'
 import { logAuditEvent } from '@/lib/auditLog'
+import { executeProviderRefund } from '@/lib/payments/refundExecution'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = await createClient()
@@ -123,27 +124,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       if (error) throw error
       result = { campaign_id: campaign.id }
     } else if (pending.action_type === 'confirm_provider_refund') {
-      // L18 — the ONLY place a provider_refunds row can move off PENDING.
-      // Server revalidates everything independently of what was proposed
-      // (E24) — the original provider_transaction is re-read fresh, never
-      // trusted from `pending.params`. If no real provider connection is
-      // CONNECTED (true for every business today, since no provider is
-      // yet approved), this fails loudly rather than pretending a refund
-      // happened — nothing here ever fakes success.
-      const { provider_refund_id } = pending.params
-      const { data: refundRow } = await admin.from('provider_refunds').select('*, provider_transactions(*)').eq('id', provider_refund_id).maybeSingle()
-      if (!refundRow || refundRow.business_id !== ctx.businessId) throw new Error('refund_not_found')
-      if (refundRow.status !== 'PENDING') throw new Error('refund_already_handled')
-
-      const { data: connection } = await admin.from('payment_provider_connections').select('status').eq('id', refundRow.provider_transactions.connection_id).maybeSingle()
-      if (!connection || connection.status !== 'CONNECTED') {
-        await admin.from('provider_refunds').update({ status: 'FAILED', confirmed_by: ctx.userId, updated_at: new Date().toISOString() }).eq('id', refundRow.id)
-        throw new Error('no_active_payment_provider — no live payment provider is connected for this business, so nothing has been refunded.')
-      }
-      // Real provider refund API call would happen here once a provider
-      // is approved and connected (L-B) — intentionally not implemented
-      // against a specific provider yet (see the Phase L decision report).
-      throw new Error('provider_refund_not_yet_implemented')
+      // L18/L-B — the ONLY place the AI's refund proposal can actually
+      // execute, and only via the same shared executeProviderRefund() the
+      // human-direct refund route uses — never a separate/duplicated
+      // implementation. Fully re-validates independently of what the AI
+      // proposed (E24): the transaction/connection are re-read fresh here,
+      // never trusted from `pending.params` beyond the refund's own id.
+      result = await executeProviderRefund(admin, { refundId: pending.params.provider_refund_id, businessId: ctx.businessId, userId: ctx.userId, auditAction: 'ai.provider_refund_confirmed' })
     } else {
       throw new Error('unknown_action_type')
     }

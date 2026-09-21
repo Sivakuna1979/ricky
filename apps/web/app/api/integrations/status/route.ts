@@ -17,7 +17,7 @@ export async function GET() {
   if (!ctx || !hasPermission(ctx.role, 'view_integrations')) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
 
   const admin = await createAdminClient()
-  const [paymentConnections, accountingConnections, terminals, failedSyncJobs, needsReviewJobs, openReviewItems, recentWebhookErrors] = await Promise.all([
+  const [paymentConnections, accountingConnections, terminals, failedSyncJobs, needsReviewJobs, openReviewItems, recentWebhookErrors, myVans] = await Promise.all([
     admin.from('payment_provider_connections').select('id, provider, status, external_account_name, last_checked_at, last_error, connected_at').eq('business_id', ctx.businessId),
     admin.from('accounting_connections').select('id, provider, status, external_org_name, last_sync_at, last_checked_at, last_error, connected_at').eq('business_id', ctx.businessId),
     admin.from('payment_terminals').select('id, van_id, provider, label, status, last_seen_at').eq('business_id', ctx.businessId),
@@ -25,6 +25,7 @@ export async function GET() {
     admin.from('accounting_sync_jobs').select('id', { count: 'exact', head: true }).eq('business_id', ctx.businessId).eq('status', 'NEEDS_REVIEW'),
     admin.from('reconciliation_review_items').select('id', { count: 'exact', head: true }).eq('business_id', ctx.businessId).eq('status', 'OPEN'),
     admin.from('provider_webhook_events').select('id', { count: 'exact', head: true }).eq('business_id', ctx.businessId).eq('status', 'FAILED'),
+    admin.from('vans').select('id, name').eq('business_id', ctx.businessId).eq('is_active', true),
   ])
 
   return NextResponse.json({
@@ -44,5 +45,6 @@ export async function GET() {
     },
     reconciliation: { open_review_items: openReviewItems.count ?? 0 },
     webhook_errors: recentWebhookErrors.count ?? 0,
+    vans: myVans.data ?? [],
   })
 }

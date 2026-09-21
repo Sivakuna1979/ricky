@@ -8,6 +8,7 @@ import { speakAnnouncement } from '@/lib/speak'
 import { shortOrderNumber } from '@/lib/orderNumber'
 import { CurrentStopBanner } from '@/components/routes/CurrentStopBanner'
 import { PosLoyaltyWidget } from '@/components/crm/PosLoyaltyWidget'
+import { useStripeTerminal } from '@/lib/pos/useStripeTerminal'
 
 // Never lose a completed sale to a dropped connection: if the till can't
 // reach the server, the sale is saved here and retried automatically once
@@ -62,6 +63,14 @@ export default function PosPage() {
   const [offlineQueue, setOfflineQueue] = useState<any[]>([])
   const [syncing, setSyncing] = useState(false)
   const [pickupStopId, setPickupStopId] = useState<string | null>(null)
+  // L-B — Stripe Terminal. `terminalReady` reflects the current van having
+  // a real, connected Stripe Terminal location set up in Integrations; a
+  // business that hasn't connected Stripe Terminal sees no change at all
+  // to the existing cash/card-label flow below.
+  const [terminalReady, setTerminalReady] = useState(false)
+  const [terminalLabel, setTerminalLabel] = useState<string | null>(null)
+  const [useSimulatedReader, setUseSimulatedReader] = useState(false)
+  const [chargingCard, setChargingCard] = useState(false)
   const channelRef = useRef<any>(null)
   const announcedRef = useRef<Set<string>>(new Set())
   const firstReadyFetchRef = useRef(true)
@@ -117,7 +126,19 @@ export default function PosPage() {
   useEffect(() => {
     const saved = localStorage.getItem('pos-voice-collection')
     if (saved != null) setVoiceOn(saved === '1')
+    const savedSim = localStorage.getItem('pos-terminal-simulated')
+    if (savedSim != null) setUseSimulatedReader(savedSim === '1')
   }, [])
+
+  // L-B — re-checked every time the selected van changes (each van can
+  // have its own Stripe Terminal location, or none at all).
+  useEffect(() => {
+    if (!vanId) { setTerminalReady(false); return }
+    fetch(`/api/pos/terminal/status?van_id=${vanId}`).then(r => r.json()).then(d => {
+      setTerminalReady(Boolean(d.ready))
+      setTerminalLabel(d.terminal_label ?? null)
+    }).catch(() => setTerminalReady(false))
+  }, [vanId])
   useEffect(() => {
     voiceOnRef.current = voiceOn
     localStorage.setItem('pos-voice-collection', voiceOn ? '1' : '0')
@@ -330,6 +351,12 @@ export default function PosPage() {
     return next
   })
 
+  // L-B — a no-op hook (status stays 'unavailable') for any business that
+  // hasn't connected Stripe Terminal, so this line changes nothing for
+  // the vast majority of installs.
+  const terminal = useStripeTerminal({ ready: terminalReady, simulated: useSimulatedReader })
+  useEffect(() => { localStorage.setItem('pos-terminal-simulated', useSimulatedReader ? '1' : '0') }, [useSimulatedReader])
+
   const tendered = paymentMethod === 'cash_at_van' ? Number(cashTendered) || 0 : null
   const changeDue = tendered != null ? Math.max(0, tendered - cartTotal) : null
   const shortBy = tendered != null && tendered < cartTotal ? cartTotal - tendered : 0
@@ -408,6 +435,37 @@ export default function PosPage() {
       setCart({}); setCustomerName(''); setCustomerEmail(''); setCustomerPhone(''); setDiscountCode(''); setCashTendered('')
     }
     setPlacing(false)
+  }
+
+  // L-B — the real Stripe Terminal path. Only ever called when
+  // `terminalReady && terminal.status === 'connected'` (see the payment
+  // buttons below) — completeSale() above is completely untouched and
+  // still handles every cash sale and every card_at_van sale at a van
+  // with no Stripe Terminal connected.
+  const chargeViaTerminal = async () => {
+    if (!cartLines.length || !vanId) return
+    setChargingCard(true); setError('')
+    const payload = {
+      van_id: vanId,
+      customer_name: customerName || undefined,
+      customer_email: customerEmail || undefined,
+      customer_phone: customerPhone || undefined,
+      discount_code: discountCode || undefined,
+      served_by: servedBy || undefined,
+      discount_amount: dealPricing.discount || undefined,
+      pickup_stop_id: pickupStopId || undefined,
+      items: cartLines.map(i => ({ menu_item_id: i.id, name: i.name, price: i.price, quantity: cart[i.id], item_total: i.price * cart[i.id] })),
+    }
+    const result = await terminal.chargeCard(payload)
+    if (!result.ok) {
+      setError(result.error ?? 'Card payment failed.')
+      setChargingCard(false)
+      return
+    }
+    setLastSale({ id: result.orderId, order_number: null, total: cartTotal, count: cartCount, terminalCharge: true })
+    channelRef.current?.send({ type: 'broadcast', event: 'sale_complete', payload: { order_number: 'Card payment', total: cartTotal, changeDue: 0 } })
+    setCart({}); setCustomerName(''); setCustomerEmail(''); setCustomerPhone(''); setDiscountCode('')
+    setChargingCard(false)
   }
 
   const inp = { padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none', boxSizing: 'border-box' as const }
@@ -606,8 +664,8 @@ export default function PosPage() {
                   {lastSale ? (
                     <div style={{ textAlign: 'center', padding: '20px 0' }}>
                       <div style={{ fontSize: 40, marginBottom: 10 }}>{lastSale.offline ? '📴' : '🍳'}</div>
-                      <div style={{ fontWeight: 800, fontSize: 17, color: lastSale.offline ? '#b45309' : '#059669', marginBottom: 4 }}>{lastSale.offline ? 'Saved offline — payment taken' : 'Payment taken — now preparing'}</div>
-                      <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>{lastSale.offline ? 'No connection right now' : `Order #${lastSale.order_number}`}</div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: lastSale.offline ? '#b45309' : '#059669', marginBottom: 4 }}>{lastSale.offline ? 'Saved offline — payment taken' : lastSale.terminalCharge ? 'Card charged — now preparing' : 'Payment taken — now preparing'}</div>
+                      <div style={{ fontSize: 13, color: '#666', marginBottom: 2 }}>{lastSale.offline ? 'No connection right now' : lastSale.order_number ? `Order #${lastSale.order_number}` : 'Verified by Stripe Terminal'}</div>
                       <div style={{ fontSize: 11, color: '#999', marginBottom: 2 }}>{lastSale.offline ? 'This sale will sync to the kitchen and your records automatically once back online.' : 'It\'ll show on the Kitchen screen, then land in "Ready for Pickup" above once made.'}</div>
                       <div style={{ fontSize: 22, fontWeight: 900, color: '#111', margin: '10px 0' }}>£{lastSale.total.toFixed(2)}</div>
                       {lastSale.id && (
@@ -670,6 +728,23 @@ export default function PosPage() {
                         <button onClick={() => setPaymentMethod('card_at_van')} style={{ flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, border: paymentMethod === 'card_at_van' ? '2px solid #0e7490' : '1px solid #e5e7eb', background: paymentMethod === 'card_at_van' ? '#ecfeff' : '#fff', color: paymentMethod === 'card_at_van' ? '#0e7490' : '#555' }}>💳 Card</button>
                       </div>
 
+                      {/* L-B — only shown at all when this van has a real,
+                          connected Stripe Terminal set up; otherwise Card
+                          behaves exactly as it always has (a staff-recorded
+                          label, "Complete Sale" below). */}
+                      {paymentMethod === 'card_at_van' && terminalReady && (
+                        <div style={{ marginBottom: 12, padding: '8px 10px', borderRadius: 8, background: terminal.status === 'connected' ? '#ecfdf5' : '#fef3c7', fontSize: 12, fontWeight: 700, color: terminal.status === 'connected' ? '#059669' : '#92400e' }}>
+                          {terminal.status === 'connected' && `🟢 ${terminalLabel ?? 'Card reader'} connected`}
+                          {terminal.status === 'connecting' && '🟡 Connecting to card reader…'}
+                          {terminal.status === 'loading' && '🟡 Starting card reader…'}
+                          {terminal.status === 'error' && '🔴 Card reader unavailable — check Integrations'}
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontWeight: 600, cursor: 'pointer' }}>
+                            <input type="checkbox" checked={useSimulatedReader} onChange={e => setUseSimulatedReader(e.target.checked)} />
+                            Use test (simulated) reader
+                          </label>
+                        </div>
+                      )}
+
                       {paymentMethod === 'cash_at_van' && (
                         <div style={{ marginBottom: 12 }}>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -698,10 +773,17 @@ export default function PosPage() {
 
                       {error && <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 700, marginBottom: 8 }}>⚠️ {error}</div>}
 
-                      <button onClick={completeSale} disabled={!cartLines.length || placing || (paymentMethod === 'cash_at_van' && shortBy > 0)}
-                        style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: '#059669', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', opacity: (!cartLines.length || placing || (paymentMethod === 'cash_at_van' && shortBy > 0)) ? 0.5 : 1 }}>
-                        {placing ? 'Processing…' : `✅ Complete Sale · £${cartTotal.toFixed(2)}`}
-                      </button>
+                      {paymentMethod === 'card_at_van' && terminalReady ? (
+                        <button onClick={chargeViaTerminal} disabled={!cartLines.length || chargingCard || terminal.status !== 'connected'}
+                          style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: '#059669', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', opacity: (!cartLines.length || chargingCard || terminal.status !== 'connected') ? 0.5 : 1 }}>
+                          {chargingCard ? '💳 Tap or insert card…' : `💳 Charge Card · £${cartTotal.toFixed(2)}`}
+                        </button>
+                      ) : (
+                        <button onClick={completeSale} disabled={!cartLines.length || placing || (paymentMethod === 'cash_at_van' && shortBy > 0)}
+                          style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: '#059669', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', opacity: (!cartLines.length || placing || (paymentMethod === 'cash_at_van' && shortBy > 0)) ? 0.5 : 1 }}>
+                          {placing ? 'Processing…' : `✅ Complete Sale · £${cartTotal.toFixed(2)}`}
+                        </button>
+                      )}
 
                       {vanId && (
                         <>

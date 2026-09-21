@@ -1,0 +1,20 @@
+-- ============================================================================
+-- PHASE L-B — live customer card processing via Stripe Terminal, following
+-- the user's explicit provider approval ("Stripe Terminal") given after
+-- reviewing the Phase L provider decision report. Nothing here activates
+-- payment processing by itself — a business must still complete Stripe
+-- Connect Express onboarding before payment_provider_connections.status
+-- can ever become CONNECTED for them (app/api/integrations/payments/
+-- stripe-terminal/connect).
+--
+-- Rationale for the one schema change below: the existing
+-- server-authoritative POS design (Phase L-A) requires an order to exist
+-- in a state that is neither "not yet placed" nor "confirmed/paid" while a
+-- Terminal payment is in flight — `order_status` had no such state
+-- (pending/accepted/preparing/ready/collected/cancelled only, and
+-- 'pending' already means something else: an accepted online order not
+-- yet actioned). Adding 'awaiting_payment' is purely additive — nothing
+-- existing ever produces or expects this value, so every existing query
+-- filtering by specific statuses is unaffected.
+-- ============================================================================
+ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'awaiting_payment';

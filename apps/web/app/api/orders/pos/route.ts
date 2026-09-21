@@ -2,9 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
-import { round2 } from '@/lib/finance/money'
-import { validateDiscountCode, claimDiscountCode } from '@/lib/crm/discounts'
-import { findOrCreateCrmCustomer } from '@/lib/crm/identity'
+import { claimDiscountCode } from '@/lib/crm/discounts'
+import { computePosSale } from '@/lib/pos/pricing'
 
 // POST /api/orders/pos — staff-side till: rings up a face-to-face sale into
 // the same `orders` table online/guest/WhatsApp orders use, tagged
@@ -70,29 +69,21 @@ export async function POST(req: NextRequest) {
   const { data: van } = await admin.from('vans').select('business_id').eq('id', van_id).maybeSingle()
   const businessId = van?.business_id
 
-  const subtotal = items.reduce((sum, item) => sum + item.item_total, 0)
-  const dealDiscount = Math.min(discount_amount ?? 0, subtotal)
-
   // I18/I21 — a promo/voucher code is always revalidated and priced
-  // here, server-side; the deal discount above (pre-existing, Phase B)
-  // is untouched and can combine with it (I22 — deals and a code stack,
-  // two codes never do).
-  let resolvedCode: any = null
-  let promoDiscount = 0
-  let crmCustomerForCode: any = null
-  if (businessId && (customer_phone || customer_email)) {
-    crmCustomerForCode = await findOrCreateCrmCustomer(admin, businessId, { phone: customer_phone, email: customer_email, displayName: customer_name })
+  // server-side; the deal discount (pre-existing, Phase B) is untouched
+  // and can combine with it (I22 — deals and a code stack, two codes
+  // never do). L-B: this computation is now shared with the Stripe
+  // Terminal charge endpoint (lib/pos/pricing.ts) so the two paths can
+  // never price the same sale differently.
+  let subtotal: number, totalDiscount: number, total: number, resolvedCode: any, crmCustomerForCode: any
+  try {
+    ({ subtotal, totalDiscount, total, resolvedCode, crmCustomerForCode } = await computePosSale(admin, {
+      businessId, vanId: van_id, items, dealDiscountAmount: discount_amount, discountCode: discount_code,
+      customerName: customer_name, customerEmail: customer_email, customerPhone: customer_phone,
+    }))
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message ?? 'pricing_failed' }, { status: e.statusCode ?? 400 })
   }
-  if (discount_code && businessId) {
-    resolvedCode = await validateDiscountCode(admin, businessId, discount_code, {
-      vanId: van_id, channel: 'pos', subtotal: round2(subtotal - dealDiscount), crmCustomerId: crmCustomerForCode?.id ?? null, isNewCustomer: false,
-    })
-    if (!resolvedCode.valid) return NextResponse.json({ error: `Code not valid: ${resolvedCode.reason}` }, { status: 400 })
-    promoDiscount = resolvedCode.discount_amount
-  }
-
-  const totalDiscount = round2(dealDiscount + promoDiscount)
-  const total = round2(Math.max(0, subtotal - totalDiscount))
 
   const now = new Date().toISOString()
   const { data: order, error } = await supabase

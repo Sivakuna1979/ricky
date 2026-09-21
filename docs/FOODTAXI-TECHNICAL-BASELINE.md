@@ -2929,3 +2929,135 @@ unchanged) so the two can never be confused.
 - `SUPPLIER_INVOICE`/`CUSTOMER_INVOICE`/`REFUND` accounting sync job types are supported structurally by the sync engine and schema but have no UI trigger creating them yet — only `SALES_SUMMARY`/`EXPENSE` are wired end-to-end in this pass, matching L36's conservative-scope instruction.
 - A payment-provider OAuth authorize/callback implementation — deliberately not built for an unapproved, unverified specific provider (would require asserting implementation details for a provider that might not even be the one approved); will be built in L-B against the actual approved provider.
 - A dedicated rate-limiting layer for the new Integration Centre endpoints (same pre-existing gap Phases J/K already documented).
+
+## 72b. Live customer card payments — Stripe Terminal (Phase L-B)
+
+Following the user's explicit approval ("Stripe Terminal") of the provider
+decision report above, live customer card processing is now built against
+Stripe Terminal specifically. Migration: `20240060_phase_l_stripe_terminal.sql`
+(one additive change — `order_status` gains a new value, `awaiting_payment`).
+
+### Multi-business model
+
+Each business connects its **own** Stripe account via **Stripe Connect
+Express** onboarding (`app/api/integrations/payments/stripe-terminal/onboard`)
+— Stripe's hosted, identity/bank-detail-collecting flow, chosen over a full
+Standard account because FoodTaxi businesses want to accept card payments
+without becoming Stripe power users themselves. Every subsequent Stripe API
+call for that business is made with `{ stripeAccount: <their account id> }`
+(`lib/payments/stripeTerminal.ts`) — this single mechanism is what makes it
+structurally impossible for one business's charge, refund, or reader to
+touch another business's account or FoodTaxi's own platform account (L24).
+**No FoodTaxi commission is applied** (`application_fee_amount` is never
+set) — the phase's explicit instruction was not to introduce one without
+separate approval, and none was given; 100% of a Terminal charge (minus
+Stripe's own processing fee) goes to the business.
+
+There is no OAuth token to store for Stripe Connect the way Xero/QuickBooks
+need one — the platform's own `STRIPE_SECRET_KEY` acts on a connected
+account purely via its account id, so `payment_provider_secrets` is never
+populated for `STRIPE_TERMINAL`.
+
+### Server-authoritative POS flow (now activated)
+
+1. Staff selects Card at the till; if the van has a connected Stripe
+   Terminal location, "Complete Sale" becomes "Charge Card" (`app/(business)/dashboard/pos/page.tsx`, `lib/pos/useStripeTerminal.ts`).
+2. `POST /api/pos/terminal/charge` — server recomputes the true total via
+   `lib/pos/pricing.ts`'s `computePosSale()` (the **exact same** function
+   the ordinary cash/card-label sale route now also calls, extracted so
+   the two paths can never price a sale differently), inserts the order as
+   `status: 'awaiting_payment'` (invisible to the Kitchen Display —
+   `PREP_STATUSES` never included it — and excluded from revenue —
+   `lib/finance/revenue.ts`'s `REVENUE_EXCLUDED_STATUSES` now includes it),
+   then creates a Stripe `PaymentIntent` (`payment_method_types: ['card_present']`)
+   scoped to the business's connected account, and a `provider_transactions`
+   row (idempotent, `PENDING`).
+3. The till's Stripe Terminal Web SDK (loaded via Stripe's own
+   `js.stripe.com/terminal/v1` script tag — no new npm dependency)
+   `collectPaymentMethod` → `processPayment` against a real or **simulated**
+   reader (a "use test reader" toggle is available on the till for testing
+   without hardware).
+4. Confirmation is **dual-path and idempotent**: the till itself calls
+   `POST /api/pos/terminal/[transactionId]/confirm`, which re-verifies the
+   PaymentIntent status directly with Stripe (never trusting the SDK's own
+   success callback) before progressing the order to `preparing`; the
+   Stripe **Connect webhook** (`app/api/webhooks/stripe-connect`,
+   `payment_intent.succeeded`) does the identical update independently.
+   Both are guarded by `.eq('status', 'awaiting_payment')` on the order
+   update, so whichever arrives first wins and the other is a genuine
+   no-op — never a double-progression.
+5. Decline/cancel/timeout: `POST /api/pos/terminal/[transactionId]/cancel`
+   cancels the PaymentIntent with Stripe itself (never just locally) and
+   moves the order to `cancelled`.
+
+### Connect webhook
+
+`app/api/webhooks/stripe-connect` — a **separate endpoint and a separate
+signing secret** (`STRIPE_CONNECT_WEBHOOK_SECRET`) from the existing
+platform webhook (`app/api/webhooks/stripe` — `STRIPE_WEBHOOK_SECRET`,
+which still handles ONLY the £19.99 subscription and £29.99 event fee and
+was not touched by this phase). Handles `account.updated` (connection
+status), `payment_intent.succeeded`/`.payment_failed`/`.canceled` (order
+progression), and `charge.refunded` (a reconciliation safety net only —
+see "Refunds" below). Idempotent via the same shared
+`provider_webhook_events` table every Phase L provider uses. Every handler
+resolves the FoodTaxi business from `event.account` via
+`payment_provider_connections` **before** touching anything — an event for
+an unrecognised account is safely ignored, never guessed.
+
+### Refunds — now real
+
+A genuine two-step human flow: `POST /api/integrations/payments/transactions/[id]/refund`
+(request — validates the transaction/amount, creates a `PENDING`
+`provider_refunds` row, calls Stripe for nothing) then a **separate**
+`POST /api/integrations/payments/refunds/[id]/confirm` (confirm — atomically
+claims the row via `confirmed_by IS NULL AND status='PENDING'`, then calls
+`stripe.refunds.create` for real). Both the direct Integration Centre UI
+and the AI's `propose_provider_refund` → `confirm_provider_refund` path
+now call the **same** shared implementation
+(`lib/payments/refundExecution.ts`'s `executeProviderRefund()`) so they can
+never drift into inconsistent behaviour — the AI still can only ever
+*draft*, and confirming still always requires a second, separate,
+explicitly human, authenticated action. A successful Stripe refund also
+writes a row into the existing, Finance-Hub-authoritative `refunds` table
+(so net revenue and card reconciliation correctly reflect it, exactly as a
+manual refund always has) and reverses loyalty on a full refund, reusing
+`reverseLoyaltyForOrder` unchanged.
+
+### Receipts / Finance / Command Centre
+
+`app/receipt/[id]/page.tsx` (built dormant in L-A) now actually shows
+"Card — verified by stripe terminal" the moment a `SUCCEEDED`
+`PROVIDER_VERIFIED_CARD` transaction exists for an order — no further
+change needed. `lib/finance/revenue.ts`'s `paymentCategory()` deliberately
+still buckets a Terminal sale under `card_recorded` at the summary level
+(not a new bucket) — a conservative simplification to avoid touching a
+function six+ Finance/CRM files depend on; the *provider-verified* fact
+is visible at the receipt and Integration Centre/reconciliation level
+instead. Command Centre's integration-health exceptions (L-A) already
+cover a Stripe connection going `ERROR`/`ACTION_REQUIRED`.
+
+### Manual setup required (Stripe Terminal specifically)
+
+- Enable Stripe Connect on the platform Stripe account (Dashboard → Connect settings) and register a **Connect webhook endpoint** pointed at `<APP_URL>/api/webhooks/stripe-connect`, subscribed to `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`.
+- Set `STRIPE_CONNECT_WEBHOOK_SECRET` in Vercel from that endpoint's signing secret (distinct from the existing `STRIPE_WEBHOOK_SECRET`).
+- Each business completes Express onboarding once (Integrations → Connect with Stripe) before Terminal can be used at all.
+- Each van needs a Stripe Terminal **location** registered (Integrations → Terminal locations) before a reader can connect for that van.
+- **Test with a simulated reader first** (the "use test (simulated) reader" toggle on the POS till) in Stripe test mode before ever using a real card reader — this integration has not been exercised end-to-end in any live or sandboxed environment (no browser/hardware/network egress to `js.stripe.com`/`api.stripe.com` from this development session).
+
+### Environment variables (Stripe Terminal addition)
+
+| Variable | Purpose |
+|---|---|
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | Signing secret for the Connect webhook endpoint (`app/api/webhooks/stripe-connect`) — separate from `STRIPE_WEBHOOK_SECRET`. |
+
+`STRIPE_SECRET_KEY` (Phase B, already set) is reused as-is — Stripe Connect
+calls are the same API key plus a `stripeAccount` parameter, not a
+separate credential.
+
+### Not built / caveats for Stripe Terminal
+
+- **Not live-tested end-to-end** — no registered Stripe Connect platform settings, no browser, no hardware, and no network egress to Stripe from this development session. The code is written to Stripe's documented Connect/Terminal Web SDK APIs but a genuine sandbox test pass (simulated reader, a real test-mode Express account) is required before this is relied upon for a real sale.
+- Reader de-registration/renaming UI (a business can add a location but not yet remove/rename one from the Integration Centre — only via the Stripe Dashboard directly).
+- Partial-capture / manual-capture PaymentIntent flows — every Terminal PaymentIntent uses `capture_method: 'automatic'` (immediate capture on approval), the simplest and most common till behaviour; delayed capture was judged out of scope.
+- A payout/settlement view inside FoodTaxi (Stripe's own Express dashboard, linked from the connected account, already covers this — duplicating it was judged unnecessary scope).

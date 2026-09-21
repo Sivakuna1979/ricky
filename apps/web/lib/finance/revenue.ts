@@ -8,7 +8,12 @@
 // never had to handle since `refunds` didn't exist yet.
 import { round2, sum } from './money'
 
-export const REVENUE_EXCLUDED_STATUSES = ['cancelled']
+// L-B — 'awaiting_payment' (a Stripe Terminal charge still in flight) must
+// never count as revenue until it's actually confirmed paid — at that
+// point the order moves to 'preparing' like any other sale and is
+// included normally. An abandoned/declined attempt is moved to
+// 'cancelled' (already excluded) rather than left dangling.
+export const REVENUE_EXCLUDED_STATUSES = ['cancelled', 'awaiting_payment']
 
 // H21 — provider-neutral payment categorisation. 'card_at_van' is
 // explicitly labelled "card-recorded", never "verified" or "settled" —

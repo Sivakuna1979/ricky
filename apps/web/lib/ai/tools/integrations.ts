@@ -23,10 +23,13 @@ export const integrationsTools = [
         admin.from('payment_provider_connections').select('provider, status, last_error').eq('business_id', ctx.businessId),
         admin.from('accounting_connections').select('provider, status, last_sync_at, last_error').eq('business_id', ctx.businessId),
       ])
+      const stripeConnected = (paymentConn.data ?? []).some((c: any) => c.provider === 'STRIPE_TERMINAL' && c.status === 'CONNECTED')
       return {
         payment_providers: paymentConn.data ?? [],
         accounting: accountingConn.data ?? [],
-        note: 'No live customer card-payment provider is active on FoodTaxi today — all card processing for food orders is still staff-recorded labels only.',
+        note: stripeConnected
+          ? 'Stripe Terminal is connected for this business — card_at_van sales at a set-up van are real, provider-verified card payments.'
+          : 'No live customer card-payment provider is connected for this business yet — card_at_van sales are still staff-recorded labels only until Stripe Terminal is connected in Integrations.',
       }
     },
   },
@@ -54,7 +57,7 @@ export const integrationsTools = [
   },
   {
     name: 'propose_provider_refund',
-    description: "Prepare a DRAFT provider refund request for the owner to review and confirm. Does NOT refund anything by itself, and cannot succeed at all unless a real payment provider is connected (none is today). Use only when the user explicitly asks to refund a card payment that was processed by a real payment provider (not a manual/cash refund — use propose_expense-style manual recording for those via the Finance Hub).",
+    description: "Prepare a DRAFT provider refund request for the owner to review and confirm. Does NOT refund anything by itself — the owner must press Confirm in the app, which then calls Stripe for real. Only succeeds if this business has Stripe Terminal connected and the transaction is genuinely refundable. Use only when the user explicitly asks to refund a card payment that was processed by a real payment provider (not a manual/cash refund — use propose_expense-style manual recording for those via the Finance Hub).",
     input_schema: {
       type: 'object',
       properties: { provider_transaction_id: { type: 'string', description: 'The provider_transactions row id (not the provider’s own transaction id).' }, amount: { type: 'number' }, reason: { type: 'string' } },
