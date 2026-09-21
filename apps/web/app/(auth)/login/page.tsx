@@ -89,25 +89,37 @@ export default function LoginPage() {
     setDebug({ ...dbg })
 
     // 3. Also probe server-side session (tells us if the cookie is readable by the server)
-    try {
-      const probe = await fetch('/api/debug/session', { cache: 'no-store' })
-      const pd = await probe.json()
-      dbg.serverCookies   = pd.sbCookieNames
-      dbg.serverSession   = pd.sessionExists
-      dbg.serverSessionEmail = pd.sessionEmail
-      dbg.serverUser      = pd.userExists
-      dbg.serverUserError = pd.userError
-      dbg.totalCookies    = pd.totalCookies
-    } catch (e) {
-      dbg.probeError = String(e)
+    //    — dev/preview diagnostics only, see the debug-box gate below.
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const probe = await fetch('/api/debug/session', { cache: 'no-store' })
+        const pd = await probe.json()
+        dbg.serverCookies   = pd.sbCookieNames
+        dbg.serverSession   = pd.sessionExists
+        dbg.serverSessionEmail = pd.sessionEmail
+        dbg.serverUser      = pd.userExists
+        dbg.serverUserError = pd.userError
+        dbg.totalCookies    = pd.totalCookies
+      } catch (e) {
+        dbg.probeError = String(e)
+      }
     }
 
-    // 4. Redirect — super admin → /admin, everyone else → /dashboard
-    const redirect = data.user?.email === 'sivakuna@icloud.com' ? '/admin' : '/dashboard'
+    // 4. Redirect — super admin → /admin, everyone else → /dashboard.
+    // Same DB-role truth source as lib/isSuperAdmin.ts (never a hardcoded
+    // email) — this is only a UX convenience for which page to land on;
+    // /admin's own middleware gate is the actual authorization boundary
+    // regardless of what this redirects to.
+    const { data: profileRow } = await supabase.from('users').select('role').eq('auth_id', data.user.id).maybeSingle()
+    const redirect = profileRow?.role === 'super_admin' ? '/admin' : '/dashboard'
     dbg.step         = 'redirecting'
     dbg.finalRedirect = redirect
     setDebug({ ...dbg })
-    setTimeout(() => window.location.replace(redirect), 500) // pause so debug is visible
+    if (process.env.NODE_ENV !== 'production') {
+      setTimeout(() => window.location.replace(redirect), 500) // pause so debug is visible
+    } else {
+      window.location.replace(redirect)
+    }
   }
 
   const inp: React.CSSProperties = {
@@ -204,19 +216,25 @@ export default function LoginPage() {
           )}
         </div>
 
-        {/* Always-visible debug box */}
-        <div style={{ marginTop: 16, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, padding: '12px 14px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.45)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
-            🐞 Test Login Debug
-          </div>
-          {debug ? (
-            <pre style={{ margin: 0, color: '#a7f3d0', fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        {/* Dev/preview-only diagnostics — was unconditionally rendered on
+            the production sign-in page for every visitor (Phase O finding):
+            leaked Supabase URL/anon-key-configured state, auth error detail,
+            session/cookie info to anyone who attempted to sign in. Never
+            shown once NODE_ENV is production. */}
+        {process.env.NODE_ENV !== 'production' && (
+          <div style={{ marginTop: 16, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, padding: '12px 14px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.45)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
+              🐞 Test Login Debug (dev/preview only)
+            </div>
+            {debug ? (
+              <pre style={{ margin: 0, color: '#a7f3d0', fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
 {JSON.stringify(debug, null, 2)}
-            </pre>
-          ) : (
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.3)' }}>Press “Sign In” to run diagnostics…</div>
-          )}
-        </div>
+              </pre>
+            ) : (
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.3)' }}>Press “Sign In” to run diagnostics…</div>
+            )}
+          </div>
+        )}
 
         <p style={{ textAlign: 'center', marginTop: 18, fontSize: 13, color: 'rgba(255,255,255,.25)' }}>
           Food business?{' '}

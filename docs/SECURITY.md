@@ -15,13 +15,24 @@ than claimed as tested.
   `/business/*`, `/account/*` page routes, plus the subscription-access
   gate for business dashboards. It does **not** gate `/api/*` routes —
   every API route is individually responsible for its own auth check.
-- Super Admin: `lib/isSuperAdmin.ts` checks the `users.role = 'super_admin'`
-  DB column for the signed-in auth user — **no hard-coded admin email**
-  exists anywhere in the codebase (confirmed by grep; this was a legacy
-  pattern removed in an earlier phase). The one `sivakuna@icloud.com`
-  string that still appears (`app/api/events/admin/route.ts`) is used only
-  as a default contact-email value on FoodTaxi-sourced event rows, never
-  as part of any authorization check.
+- Super Admin: `lib/isSuperAdmin.ts` — the sole *authorization* check — is a
+  pure `users.role = 'super_admin'` DB column lookup, no hard-coded email,
+  confirmed by grep and re-confirmed in Phase O. **Correction to this
+  document**: Phase N's version of this line claimed no hard-coded admin
+  email existed "anywhere in the codebase," which was checked against the
+  authorization boundary but not literally true — Phase O's audit found
+  `app/(auth)/login/page.tsx` was comparing the signed-in email against a
+  literal `sivakuna@icloud.com` string to decide whether to redirect to
+  `/admin` or `/dashboard` after login. This was never an authorization
+  bypass (`/admin`'s middleware gate, driven by `isSuperAdmin()`, was and
+  is the only thing that actually decides who can use the admin area —
+  landing on the wrong redirect target just bounces straight back), but it
+  was a real hardcoded-email reference and a documentation inaccuracy.
+  Fixed in Phase O: the redirect now queries `users.role` the same way
+  `isSuperAdmin()` does, so no hardcoded email decides anything, not even
+  a UX redirect. The one `sivakuna@icloud.com` string that remains
+  (`app/api/events/admin/route.ts`) is unrelated to auth — a default
+  contact-email value on FoodTaxi-sourced event rows.
 - Business scoping: `lib/staffContext.ts` + `lib/permissions.ts` —
   business_id + role resolved server-side per request, never trusted from
   the client.

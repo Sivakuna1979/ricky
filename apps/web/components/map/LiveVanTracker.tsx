@@ -2,7 +2,14 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 
-const AVG_SPEED_MPH = 18 // urban van average for ETA estimates
+// Phase O finding: this straight-line-distance/fixed-speed figure was
+// being presented to customers as "arriving in ~X min" — real-ETA
+// language for a number with no road-routing or traffic data behind it,
+// while lib/customer/liveStatus.ts documents the opposite discipline
+// elsewhere in this codebase (never fabricate an ETA). Kept as a rough
+// estimate, but the label below now says "estimate" rather than implying
+// a computed arrival time.
+const AVG_SPEED_MPH = 18 // urban van average for the rough-estimate calculation
 
 function haversineMiles(lat1, lng1, lat2, lng2) {
   const toRad = (d) => d * Math.PI / 180
@@ -130,7 +137,7 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
           </div>
           {dist != null && !stale && (
             <div style={{ fontSize:12, color:'#a7f3d0' }}>
-              🚐 {dist.toFixed(1)} mi {pickup?.lat ? 'from your pickup' : 'from you'} · arriving in ~{etaMin} min
+              🚐 {dist.toFixed(1)} mi {pickup?.lat ? 'from your pickup' : 'from you'} · ~{etaMin} min est.
             </div>
           )}
         </div>

@@ -3319,3 +3319,66 @@ confirmation, live monitoring dashboard setup, and any live-browser CSP
 verification all require infrastructure this session doesn't have. Each
 is documented as a manual-verification action for the project owner,
 never claimed as tested.
+
+## 75. Final QA, Launch Readiness, Production Rollout & Platform Handover (Phase O)
+
+The final planned major phase of the A–O roadmap — proving launch
+readiness, not adding features. Same sandbox constraint as Phase N (no
+browser, no live database, no network egress to Vercel/Supabase/Stripe/
+Meta), disclosed honestly throughout rather than fabricating live-test
+results. Full detail in `docs/PHASE-O-LAUNCH-READINESS.md`.
+
+### Real findings this phase (all fixed, verified by type-check/build)
+
+1. **Commercial-model violation, now fixed**: `app/api/places/claim/route.ts`
+   (the Google-Places business-claim registration path) hardcoded a
+   14-day trial against a plan named `'Starter'` — a plan that doesn't
+   exist in this single-plan system. In practice this silently created
+   **no subscription row at all** for anyone registering this way
+   (swallowed by an empty `catch {}`). Fixed to use the same shared
+   `FOODTAXI_TRIAL_DAYS`/`FOODTAXI_PLAN_NAME` constants every other
+   registration path already used correctly.
+2. **Production information leak + documentation correction**: the login
+   page unconditionally rendered a debug panel to every visitor and used
+   a hardcoded personal email to decide the post-login redirect target.
+   Neither was an authorization bypass — `/admin`'s middleware gate,
+   driven by `isSuperAdmin()`'s DB-role check, remained the sole actual
+   boundary throughout — but both are now fixed (debug panel gated to
+   non-production, redirect now queries `users.role`), and Phase N's
+   `docs/SECURITY.md` claim that no hardcoded admin email existed
+   "anywhere in the codebase" has been corrected to be precise about
+   what it actually verified.
+3. **Migration-reconstruction failure, now fixed**: two legacy
+   pre-renumbering migration files were confirmed (via diff) to be
+   duplicate content of properly-numbered files that supersede them.
+   Because Supabase applies migrations in filename order and these two
+   sorted *after* their replacements, a from-scratch database
+   reconstruction would hit a hard SQL error partway through. Archived
+   (not deleted) into `supabase/migrations/_archive/` with full evidence
+   in that folder's README.
+4. Smaller fixes: a hardcoded default admin password removed
+   (`app/api/admin/fix-user`), and a customer-facing "arriving in ~X min"
+   label corrected to not overclaim real-time-ETA precision for what is
+   actually a straight-line-distance estimate (`LiveVanTracker.tsx`).
+
+### Launch recommendation: READY WITH MANUAL ACTIONS
+
+Not "READY" — genuine E2E testing across ~60 flows, accessibility,
+device/browser matrix, load testing, and a restore drill all require
+live infrastructure this sandbox doesn't have. Not "NOT READY" — no
+release-blocking issue survived this phase uncorrected, and the build is
+clean. Every manual action required before an actual go-live decision is
+listed in `docs/LAUNCH-CHECKLIST.md`.
+
+### New documentation this phase
+
+`docs/PHASE-O-LAUNCH-READINESS.md` (full audit + roadmap matrix),
+`docs/LAUNCH-CHECKLIST.md`, `docs/PRODUCTION-ROLLOUT.md`,
+`docs/OPERATIONS-HANDOVER.md`, `docs/BUSINESS-QUICK-START.md`.
+
+Per this phase's own explicit instruction: **Phase P is not started.**
+Future work (native app packaging, deeper accounting integrations,
+advanced forecasting, a second payment provider, internationalisation)
+is listed as options in `docs/OPERATIONS-HANDOVER.md` §12, for the owner
+to prioritise based on actual post-launch usage — none begun here merely
+because this phase is complete.

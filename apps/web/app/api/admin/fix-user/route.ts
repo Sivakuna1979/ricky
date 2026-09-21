@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@/lib/supabase/server'
 import { isSuperAdmin } from '@/lib/isSuperAdmin'
+import { randomBytes } from 'crypto'
 
 const URL  = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -26,8 +27,15 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const targetEmail = body.email ?? 'howeandcovan45@gmail.com'
-  const tempPassword = body.password ?? 'FoodTaxi2025!'
+  // Phase O finding: this previously defaulted to a specific real email and
+  // a literal hardcoded password when the caller omitted them — meaning a
+  // super admin calling this without a body would silently reset that
+  // account's password to a fixed, guessable string. Now requires an
+  // explicit target email and always generates a random one-time password
+  // when none is supplied, rather than falling back to a known constant.
+  const targetEmail = body.email
+  if (!targetEmail) return NextResponse.json({ error: 'email is required' }, { status: 400 })
+  const tempPassword = body.password ?? randomBytes(12).toString('base64url')
   const role = body.role ?? 'business_owner'
 
   if (!SVC) return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set in env' }, { status: 500 })

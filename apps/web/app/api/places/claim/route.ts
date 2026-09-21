@@ -8,6 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { FOODTAXI_PLAN_NAME, FOODTAXI_TRIAL_DAYS } from '@/lib/subscriptionConfig'
 
 const URL  = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
 const SVC  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
@@ -154,11 +155,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create business: ' + (bizErr?.message ?? '') }, { status: 500 })
   }
 
-  // 4. Start a 14-day trial subscription if a Starter plan exists
+  // 4. Start the trial subscription — same plan name, trial length and
+  // shared constant every other registration path uses (Phase O fix: this
+  // previously looked up a plan literally named 'Starter', which doesn't
+  // exist — FoodTaxi has exactly one plan, FOODTAXI_PLAN_NAME — so this
+  // silently created no subscription row at all for anyone who registered
+  // through this flow, and separately hardcoded a 14-day trial instead of
+  // the approved 3-day trial).
   try {
-    const { data: plan } = await db.from('subscription_plans').select('id').eq('name', 'Starter').maybeSingle()
+    const { data: plan } = await db.from('subscription_plans').select('id').eq('name', FOODTAXI_PLAN_NAME).maybeSingle()
     if (plan) {
-      const trialEnd = new Date(); trialEnd.setDate(trialEnd.getDate() + 14)
+      const trialEnd = new Date(); trialEnd.setDate(trialEnd.getDate() + FOODTAXI_TRIAL_DAYS)
       await db.from('subscriptions').insert({
         business_id: business.id, plan_id: plan.id,
         status: 'trialing', trial_ends_at: trialEnd.toISOString(),
