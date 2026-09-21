@@ -18,11 +18,12 @@ import { memoryTools } from './memory'
 import { routeTools } from './routes'
 import { financeTools } from './finance'
 import { crmTools } from './crm'
+import { ownerIntelligenceTools } from './ownerIntelligence'
 
 export const ALL_TOOLS = [
   ...salesTools, ...stockTools, ...supplierTools, ...staffTools, ...hygieneTools,
   ...vehicleTools, ...eventTools, ...operationsTools, ...actionTools, ...memoryTools,
-  ...routeTools, ...financeTools, ...crmTools,
+  ...routeTools, ...financeTools, ...crmTools, ...ownerIntelligenceTools,
 ]
 
 export const TOOLS_BY_NAME = Object.fromEntries(ALL_TOOLS.map(t => [t.name, t]))

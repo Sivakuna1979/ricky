@@ -6,6 +6,7 @@
 // exactly as they are.
 export const NAV_ITEMS = [
   { icon: '📊', label: 'Dashboard',  href: '/dashboard' },
+  { icon: '🎯', label: 'Command Centre', href: '/dashboard/command-centre' },
   { icon: '🚐', label: 'My Vans',    href: '/dashboard/vans' },
   { icon: '📦', label: 'Orders',     href: '/dashboard/orders' },
   { icon: '🧾', label: 'POS',        href: '/dashboard/pos' },

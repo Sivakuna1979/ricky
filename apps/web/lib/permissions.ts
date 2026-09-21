@@ -29,6 +29,14 @@ export const PERMISSIONS = [
   'view_customers', 'view_customer_contact', 'manage_customer_notes',
   'manage_loyalty', 'adjust_loyalty', 'manage_promotions', 'manage_campaigns',
   'send_campaigns', 'view_marketing_analytics', 'manage_reviews', 'manage_crm_settings',
+  // Phase K (K60/K61) — Command Centre permissions, deliberately granular
+  // like every phase before it: seeing the command centre at all is
+  // separate from seeing business-wide (vs van-scoped) intelligence,
+  // separate again from finance/customer/stock intelligence specifically,
+  // separate again from setting goals or using the AI owner-brief tools.
+  'view_command_centre', 'view_business_intelligence', 'view_finance_intelligence',
+  'view_customer_intelligence', 'view_stock_intelligence', 'manage_business_goals',
+  'use_ai_owner_brief',
 ] as const
 export type Permission = typeof PERMISSIONS[number]
 
@@ -52,6 +60,11 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     'view_customers', 'view_customer_contact', 'manage_customer_notes',
     'manage_loyalty', 'adjust_loyalty', 'manage_promotions', 'manage_campaigns',
     'send_campaigns', 'view_marketing_analytics', 'manage_reviews', 'manage_crm_settings',
+    // K60 — a trusted manager gets the full business-wide command centre,
+    // same reasoning as their full finance/CRM access above.
+    'view_command_centre', 'view_business_intelligence', 'view_finance_intelligence',
+    'view_customer_intelligence', 'view_stock_intelligence', 'manage_business_goals',
+    'use_ai_owner_brief',
   ],
   // Runs the operational side of the van(s) they're assigned to — enough
   // finance access to log a cash count and an expense at their own van,
@@ -66,6 +79,12 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     'manage_business_memory',
     'view_finance_summary', 'view_expenses', 'create_expense', 'perform_cash_count', 'view_cash_variance',
     'view_customers', 'view_customer_contact', 'manage_customer_notes', 'manage_loyalty', 'manage_reviews',
+    // K60 — sees the command centre for their own assigned van(s) only
+    // (enforced by staffContext.vanIds in the API layer, same as every
+    // other Van Manager grant above); no goal-setting and no AI
+    // owner-brief (that's framed as whole-business decision support).
+    'view_command_centre', 'view_business_intelligence', 'view_finance_intelligence',
+    'view_customer_intelligence', 'view_stock_intelligence',
   ],
   // Business memory notes are deliberately low-stakes (operational
   // observations, not financial/destructive actions), so every active
@@ -86,6 +105,8 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     'approve_expense', 'manage_supplier_invoices', 'record_supplier_payment',
     'view_cash_variance', 'view_vat', 'edit_vat', 'export_finance',
     'manage_finance_settings', 'manage_business_memory',
+    // K60 — finance-scoped only, same as every other Accountant grant.
+    'view_finance_intelligence', 'use_ai_owner_brief',
   ],
 }
 

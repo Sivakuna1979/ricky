@@ -2437,3 +2437,192 @@ See the completion report for the full, honest breakdown of what was statically 
 - Push wired into the Phase D scheduled-automations engine (e.g. a "promo expiring" push)
 - Automated accessibility (axe/Lighthouse) and Core Web Vitals measurement — no tooling available in this environment
 - A fix to `/search`'s continuous `watchPosition()` geolocation call (pre-existing, flagged not changed)
+
+## 71. Business Growth Intelligence, Multi-Van Command Centre & Decision Support (Phase K)
+
+### K1 audit findings (summary)
+
+- `components/operations/OperationsSummary.tsx` + `/api/operations/summary` (Phase C) was already the main dashboard's "today at a glance" tile set (stock/wastage/POs/staff/vehicle/hygiene counts). The Command Centre composes this same class of signal into a richer, itemised, deep-linkable exception list (see "Exceptions" below) rather than duplicating or replacing it — the original tile set on `/dashboard` is untouched.
+- Every domain already had its own authoritative composer: `lib/finance/reports.ts`'s `getManagementReport()` (revenue/COGS/gross contribution/expenses), `lib/crm/retention.ts`'s `getRetentionSummary()` (new/returning/repeat rate), `lib/routes/analytics.ts`'s `getAnomalies()`/`getDayOfWeekPerformance()` (route-vs-baseline), `lib/routes/demand.ts`'s `getLoadingPlan()` (stock loading forecast). Phase K calls into every one of these directly — `lib/commandCentre/*` contains **no re-derivation** of revenue, COGS, wastage, retention, or route-baseline logic.
+- `notifications.is_read` is a simple two-state read flag (Phase A) — it is not the OPEN/ACKNOWLEDGED/RESOLVED/DISMISSED lifecycle K55–K58 asks for, and nothing else in the schema provided one. This is the one genuinely new piece of state this phase adds (`attention_items`).
+- `purchase_order_items.unit_cost` (Phase C, one immutable row per purchase-order line) is the only confirmed, line-level supplier-cost history in the schema. `finance_documents.extraction_status` (Phase H's OCR pipeline) is explicitly **not** read anywhere in Phase K's supplier-price/margin code — K27's "no unconfirmed OCR as authoritative" is enforced by simply never querying that table for this purpose.
+- `businesses.timezone` (Phase D) and `lib/automations/timezone.ts` already gave every business its own correctly-handled local day/week boundary — reused throughout the comparison engine, never re-derived from UTC or browser-local time.
+- No opaque health/performance score existed anywhere in the codebase before this phase (confirmed by a repo-wide grep) — none was introduced. Every "summary" (van summary, readiness, KPI snapshot) is a labelled list of factual components.
+- `lib/permissions.ts`'s `PERMISSIONS`/`ROLE_PERMISSIONS` (array-per-role) and `lib/staffContext.ts`'s `getStaffContext()` (returns `{ businessId, role, vanIds }`, `vanIds: null` = unrestricted) were reused exactly as-is — Phase K adds new permission keys to the existing lists, not a parallel authorization system.
+
+### Command Centre architecture (K2)
+
+- `/dashboard/command-centre` (new): a tabbed dashboard (Today / Live Ops / Trends / Tomorrow / Pricing / Goals & Budgets), using the same `DashboardShell` component (and now the same shared `NAV_ITEMS` list, with one new "Command Centre" entry) every Phase C+ dashboard page already uses — not a new, disconnected shell.
+- `lib/commandCentre/*` — the composition layer every `/api/command-centre/*` route and every new AI owner-intelligence tool calls into: `context.ts` (auth/tenant/van-scope resolution, see "Permissions" below), `priority.ts` (shared INFO/ACTION/IMPORTANT/CRITICAL type + colour, now also imported by the pre-existing `NotificationCentre.tsx` instead of it keeping its own copy), `comparison.ts` (the like-for-like comparison engine), `attention.ts` (the OPEN/ACKNOWLEDGED/RESOLVED/DISMISSED reconciliation), `exceptions.ts`, `opportunities.ts`, `kpi.ts`, `liveOps.ts`, `tomorrow.ts`, `supplierPrices.ts` (also covers menu margin + the price simulator), `budgets.ts`.
+- `/dashboard/command-centre/report` (new): the optional printable/exportable owner report (K54), reusing the exact same `/api/command-centre/overview` and `/comparisons` data — see "Owner report" below.
+
+### Attention-first UI (K3/K4)
+
+- The Today tab leads with the KPI snapshot, then an "⚠️ Needs attention" list sorted by priority (`sortByPriority()`, `lib/commandCentre/priority.ts`), each card carrying a direct `actionUrl` deep link (e.g. straight to `/dashboard/stock` for a stock exception) and Acknowledge/Dismiss controls.
+- Priority is the exact same `'INFO' | 'ACTION' | 'IMPORTANT' | 'CRITICAL'` union Phase D's `lib/automations/engine.ts` already defined, reused via `lib/commandCentre/priority.ts` — never a second scheme. Every priority is assigned by a fixed rule in `lib/commandCentre/exceptions.ts` (e.g. an overdue invoice is always `IMPORTANT`, an out-of-stock item is always `CRITICAL`) — the AI owner-brief tools only ever read an already-assigned priority; nothing lets the model choose or escalate one (assistant.ts rule 13).
+
+### Live Operations / multi-van (K5/K6/K7)
+
+- `lib/commandCentre/liveOps.ts`'s `getVanSummary()` composes, per van: trading status/current/next stop (reusing Phase J's `getVanLiveStatus()` verbatim — not re-derived), GPS freshness (the same 90-second staleness threshold `components/map/LiveVanTracker.tsx` already uses, read from `live_locations.recorded_at`), today's order counts/revenue by status, staff on shift, whether today's hygiene opening checklist is done, and vehicle document fields due within 30 days.
+- Every van is processed through the identical `getVanSummary()` call (`getAllVanSummaries()` just `Promise.all`s it) — there is no van-specific branching anywhere, so this scales from 1 van to 10+ with no code change (K6).
+- K7: the return value is a flat object of named facts (`trading_status`, `orders_today.revenue`, `hygiene_opening_checklist_done`, …) — there is no single derived "score" field anywhere in it.
+
+### KPI snapshot (K8)
+
+- `lib/commandCentre/kpi.ts`'s `getKpiSnapshot()`: revenue/orders/AOV (computed here, matching Phase B's exact `total`-except-`cancelled` rule), known gross contribution + `cogs_coverage_pct` (from `getManagementReport()`), recorded expenses, wastage cost, new/returning customers + repeat purchase rate (from `getRetentionSummary()`), and loyalty redemption count (`loyalty_ledger` rows of `type = 'REDEEM'`).
+
+### Comparison engine / like-for-like rules (K9–K12)
+
+- `lib/commandCentre/comparison.ts`:
+  - `compareValues(current, prior, comparablePeriods)` — the single function every comparison in the Command Centre goes through. A `null` prior (no comparable data at all) returns `coverage: 'INSUFFICIENT DATA'` explicitly, never a fabricated number. A zero prior returns `delta_pct: null` with a plain-English note instead of `Infinity`/`NaN`.
+  - `findComparableTradingDays()` — "today vs comparable day" walks back up to 8 weeks looking for the same weekday, and only treats a date as a genuine trading day if the business's own `van_schedule` says it trades that weekday (or, for a schedule-less/fully-ad-hoc business, if an order actually exists that day) — never "7 days ago" blindly. It stops once it has up to 4 comparable days, and returns however many it actually found (K63's "only 2 comparable Fridays" is exactly what this produces when that's the truth).
+  - `partialDayWindow()` — when today is still in progress, each comparable day's figure is cut off at the *same wall-clock time*, not compared against its full-day total (K11).
+  - `priorWeekRange()`/`priorMonthRange()` — straightforward calendar-period comparisons for K9's week-vs-week/month-vs-month.
+  - All date arithmetic is done on `YYYY-MM-DD` strings via UTC-midnight construction (the same trick `lib/ai/dateRange.ts` already uses) — this is what makes it DST-safe by construction (K66): there is no raw millisecond-difference math across a local-time boundary anywhere in this file.
+  - `coverageForSampleSize()` — `HIGH DATA COVERAGE` (≥3 comparable points), `LIMITED DATA` (1–2), `INSUFFICIENT DATA` (0). No confidence percentage is ever invented (K65).
+
+### Trends (K12)
+
+- The Trends tab (`/api/command-centre/comparisons`) currently covers week-vs-week and month-vs-month for the full KPI set (revenue, orders, AOV, known gross contribution, expenses, wastage, repeat-purchase-rate). Route/day-of-week trend detail is available via the pre-existing `/dashboard/routes` (Phase G) rather than duplicated here — the Command Centre links to it rather than re-rendering the same chart a second way.
+
+### Exceptions / root-cause evidence (K13/K14)
+
+- `lib/commandCentre/exceptions.ts` — nine deterministic rules, each reading straight from its own source table and returning a stable `dedupeKey`, a rule-derived priority, and the measurable `evidence` that justifies it: out-of-stock/low-stock (per item), repeated stockout (≥2 distinct days out in 14 days), hygiene (no opening checklist logged yet today), vehicle document expiring/overdue, missing clock-out (open `time_entries` row from a shift that started >8h ago), overdue supplier invoice, meaningful cash/card variance (>£5 or >3% of expected), unusually high wastage (>2× a van's own trailing average), and route below baseline (reusing Phase G's own `getAnomalies()`, flagged when yesterday's revenue was ≥20% below the same-weekday average).
+- Every exception's `evidence` is the raw numbers only — nothing here writes a causal sentence; a route-below-baseline card says "revenue £X vs a Y-day average of £Z", never "this route failed because…" (K14: "an anomaly is a signal, not a cause").
+
+### Opportunities / recommendations (K15/K16) and safe actions (K17/K18)
+
+- `lib/commandCentre/opportunities.ts` — four rule-based signals: repeated sellout (an item out of stock ≥3 times in 30 days), stock risk before a historically strong trading day (cross-references `getDayOfWeekPerformance()` against current stock levels), improving repeat-customer rate (≥5-point rise vs the prior period), and a promo code near its redemption limit. Every card carries `title` (WHAT), `why` (WHY), `dataPeriod`, `evidence`, `dataCoverage`, and `possibleAction` — exactly K16's required shape.
+- Nothing in either module, nor any Command Centre route, ever writes to an order/stock/price/staff/campaign/invoice record. The only *write* surfaces this phase adds at all are: attention-item acknowledge/dismiss (a workflow-state change only), and goal/budget creation (an owner-set target, not a business action). K18's "reuse Phase E pending-action confirmation for draft actions" was not needed in this pass — no Phase K opportunity currently proposes a draftable action (e.g. a draft PO) the way Phase E/G/H/I's `propose_*` tools do; this is documented under "Not built" rather than forced in.
+
+### Tomorrow planner / readiness (K19/K20)
+
+- `lib/commandCentre/tomorrow.ts`: `getTomorrowReadiness()` per van — scheduled stops (`van_schedule`), assigned staff (`shifts`), a stock loading plan and shortfalls (reusing Phase G's own `getLoadingPlan()` for tomorrow's first stop — the same function the daily briefing automation already calls), vehicle document status, equipment due for service, and whether today's *closing* checklist was done (a proxy for "the van was left ready", not assumed true). `getTomorrowBusinessContext()` adds confirmed events (matched via `event_applications.van_owner_email = this business's owner's email`, since that table has no `business_id` column) and expected supplier deliveries.
+- `ready` is only ever computed from these real reads — a van with no schedule at all returns `ready: null` (no route tomorrow, nothing to be "ready" for), never a default "yes" (K20: "never mark complete without evidence").
+
+### Daily/weekly owner review (K21/K22)
+
+- Phase D's `lib/automations/evaluators/reports.ts` (`runDailyBriefing`, `runEndOfDaySummary`, `runWeeklySummary`) remains the delivery mechanism (in-app/email/SMS, on its existing schedule) — **not modified in this phase**. The Command Centre's Today/Trends tabs and the AI's `get_owner_brief`/`get_period_comparison` tools give an equivalent (and more detailed, on-demand) view inside the dashboard itself; enhancing the automated briefing text to reference the new exception/opportunity language is listed under "Not built" rather than risked in this already-large pass.
+
+### Goals (K23) and budgets (K24–K26)
+
+- `business_goals` (new table): one active target per `(business_id, goal_type)` — revenue, wastage ceiling %, hygiene completion %, stockout count ceiling, repeat-customer rate %. A new goal supersedes (not deletes) the previous one for a simple history. `POST /api/command-centre/goals` requires `manage_business_goals` and writes an `audit_logs` row (K76) via the pre-existing `logAuditEvent()` helper.
+- `business_budgets` (new table): one row per `(business_id, category, period_start)` — revenue/stock purchasing/vehicle maintenance/marketing, monthly. `lib/commandCentre/budgets.ts`'s `getBudgetComparison()` explicitly separates **recorded actual** (confirmed, non-VOID supplier invoices for stock purchasing; `vehicle_maintenance`+`equipment_maintenance` costs; expenses tagged "marketing"), **committed** (purchase orders placed but not yet fully received, valued at their own line-item unit costs), and **unpaid** (UNPAID/PARTIALLY_PAID invoice total) — never summed together, so nothing is double-counted (K25).
+- K26: nothing here turns a goal (including `hygiene_completion_pct`) into a leaderboard, badge, or ranking — it is a plain target-vs-actual number, same as every other goal type.
+
+### Supplier price intelligence (K27/K28) and product cost trends
+
+- `lib/commandCentre/supplierPrices.ts`'s `getSupplierPriceChanges()`: for every stock item with ≥2 confirmed purchases (`purchase_order_items.unit_cost` on `RECEIVED`/`PARTIALLY_RECEIVED` purchase orders only), finds the latest price and the most recent *different* prior price, and returns both amounts, both dates, and the percentage change. `getCostIncreaseVsPriceFlags()` cross-references any cost increase against `menu_stock_components` to flag menu items whose ingredient cost rose while their own selling price didn't — display-only, never an auto price change (K27's own explicit instruction).
+
+### Menu margin (K29) and price simulator (K31)
+
+- `getMenuMarginReview()`: selling price, known cost (summed from `menu_stock_components` × `stock_items.cost_price`, the same "latest confirmed cost" convention Phase H's COGS calculation already uses), known gross contribution, margin %, and an explicit `cost_coverage` of `FULL`/`PARTIAL`/`NONE` — never a guessed cost for an item with no recipe linked.
+- `simulatePriceChange()` (via `GET /api/command-centre/price-simulator`): pure arithmetic on a proposed price vs the known cost. Returns an explicit `disclosure` that it assumes unchanged sales volume and never predicts demand (K31). Reads the menu item's current price only to display it — **never writes to `menu_items`**; a price can only ever be changed through the existing Menu management screens.
+
+### Stock intelligence / coverage (K32/K33) and wastage intelligence (K34)
+
+- Stock risk is the `stockExceptions()`/`repeatedStockoutExceptions()` output above, plus `stockRiskBeforeStrongRouteOpportunities()`'s cross-reference against route performance. "Approximate inventory coverage" is Phase G's own `getLoadingPlan()`/`computeDemandEstimate()` (comparable-days-average forecasting, already fully documented in the Phase G baseline section) — reused, not re-explained a second way.
+- `wastageExceptions()` flags a van-day where recorded wastage cost exceeds 2× that van's own trailing (non-today) average, with the comparison itself as the evidence — it never attributes a reason ("staff error", etc.) to the spike (K34: "do not blame staff automatically").
+
+### Staff intelligence / privacy (K35/K36) and hygiene intelligence (K37)
+
+- Staff signals are limited to `staffExceptions()` (a shift with no clock-out recorded ≥8 hours after clock-in) and the live-ops "staff on shift" count. There is no payroll, no per-staff performance ranking, and no attempt anywhere in Phase K to infer competence from sales figures — the only staff-linked number surfaced is a count of open shifts.
+- Hygiene signals are `hygieneExceptions()` (no opening checklist logged for a trading van today) and the readiness "closing checklist" evidence check — both read `hygiene_logs` directly; nothing here ever inserts or backfills a hygiene record on a business's behalf (K37: "never auto-complete/fabricate compliance records").
+
+### Vehicle/equipment intelligence (K38)
+
+- `vehicleExceptions()` (MOT/insurance/tax/service due within 30 days or overdue, `CRITICAL` once past-due) and the tomorrow-readiness "equipment due for service" check (`equipment.next_service_date`). No failure prediction beyond a plain date-due comparison is made anywhere (K38: "no unsupported failure prediction").
+
+### Finance intelligence (K39)
+
+- Every finance figure traces to Phase H's own functions (`getManagementReport`, `getVehicleCosts`/`getEquipmentCosts`) or Phase H's own tables (`supplier_invoices`, `cash_reconciliations`, `card_reconciliations`) — `getKpiSnapshot()`'s `disclosure` field is Phase H's own management-report disclosure text, carried through unchanged. `known_gross_contribution`/`recorded_operating_result` are never referred to as "net profit" or "statutory accounts" anywhere in Phase K's code or UI copy.
+
+### CRM/growth intelligence (K40) and customer-experience intelligence (K41)
+
+- New/returning/lapsed/repeat-rate figures are Phase I's own `getRetentionSummary()`, unmodified. No sensitive-trait inference is introduced (the same constraint Phase I's own segment system already enforces, reused as-is).
+- Customer-experience funnel data (menu views → cart starts → checkout starts → completed orders, reorders, install prompts) is Phase J's own `customer_events`/`/api/analytics/funnel` (the `CustomerFunnelWidget` already on `/dashboard/analytics`) — the Command Centre links to it rather than re-querying `customer_events` a second way in this pass; a dedicated Command Centre funnel card is listed under "Not built".
+
+### Event intelligence (K42)
+
+- Tomorrow's confirmed events are read via `event_applications`/`event_requests` (see "Tomorrow planner" above). The existing £29.99 `event_requests.foodtaxi_fee` default and the whole event-booking flow are untouched — Phase K only ever *reads* these tables, never writes to them.
+
+### Business Memory integration (K43)
+
+- `business_memory` notes are included as one of the Command Centre search's result categories (see "Global search" below), surfaced with a clear `memory note` type label — never presented as a verified fact, consistent with how `lib/ai/tools/memory.ts` already treats the same table.
+
+### FoodTaxi AI owner tools (K44–K50)
+
+- `lib/ai/tools/ownerIntelligence.ts` — twelve read-only tools (`get_owner_brief`, `get_live_operations`, `get_van_summary`, `get_business_exceptions`, `get_business_opportunities`, `get_period_comparison`, `get_tomorrow_readiness`, `get_supplier_price_changes`, `get_margin_review`, `get_stock_risks`, `get_customer_growth_summary`, `get_finance_attention_items`), registered into the exact same `ALL_TOOLS` array in `lib/ai/tools/index.ts` every other tool file uses. None are added to `WRITE_TOOL_NAMES` — there is no `propose_*` tool in this file at all (K44/K17: no autonomous management).
+- Every handler calls `hasPermission(ctx.role, ...)` first (`use_ai_owner_brief` for the general tools, `view_finance_intelligence`/`view_stock_intelligence`/`view_customer_intelligence` for the domain-specific ones), exactly like every existing Phase E–I tool file, and calls the identical `lib/commandCentre/*` functions the dashboard routes use — the AI's answers and the dashboard's numbers cannot disagree.
+- `lib/ai/assistant.ts` gained rule 13: current-state owner-brief questions must always call the tool fresh (never rely on earlier conversation turns), a signal's server-assigned priority is never re-judged by the model, and a `data_coverage`/`comparable_days`/`sample_size` field must always be stated plainly rather than dropped — the model-facing enforcement of K65's "no false precision" and the assistant's own established fact/possible-explanation split (rule 4).
+
+### Global search / command palette (K51/K52) and saved views (K53)
+
+- `GET /api/command-centre/search` — plain, bounded (`LIMIT 5` per category) `ILIKE` queries across vans, stops, stock items, suppliers, staff, vehicles, equipment, and business-memory notes, all pre-scoped to the caller's own business and van access via `resolveCommandCentreContext()`. No new search index/tsvector was added — at a single business's realistic data volume this is more than adequate, and avoids taking on full-text-search infrastructure for a first pass.
+- **Deliberately excludes events**: `event_requests` has no `business_id` column at all (see "Tomorrow planner"'s note on how a business's own events are matched via owner email) — a safely-scoped search over it needs more care than a plain `ILIKE`, so it was left out rather than risk a cross-tenant leak inside a search endpoint.
+- The dashboard's search bar (`SearchBar` in `CommandCentreDashboard.tsx`) is a debounced type-ahead with a results dropdown linking straight to the relevant page — a lightweight command-palette, not a full keyboard-shortcut-driven palette (see "Not built").
+- `command_centre_saved_views` (new table): a name + a JSON filter bundle (e.g. `{"van_id":...,"section":"stock"}`), scoped to the business. `GET`/`POST`/`DELETE /api/command-centre/saved-views` are built; the dashboard UI does not yet have a "save current view" button wired to them (see "Not built") — the API is ready for it.
+
+### Owner report (K54)
+
+- `/dashboard/command-centre/report` (`components/commandCentre/OwnerReport.tsx`): reuses `/api/command-centre/overview` and `/comparisons` (no new computation) to render a clean, single-page summary with a "Print / Save as PDF" button (`window.print()`, no new PDF-generation dependency — this codebase's `jspdf`/`jspdf-autotable` packages are present but unused anywhere, so introducing a new usage pattern for one report was judged unnecessary complexity) and a "Download CSV" button (a plain client-built CSV Blob, no library needed).
+
+### Notification digest / resolution (K55–K58)
+
+- Phase D's `NotificationCentre.tsx` is reused unmodified in behaviour — only its priority-colour lookup was refactored to import `PRIORITY_META` from the new shared `lib/commandCentre/priority.ts` instead of keeping its own separate copy of the same four colours (a safe, values-identical dedup).
+- The Command Centre's exception list is a **deliberately separate, complementary surface**, not a duplicate alert channel: Phase D notifications are point-in-time alerts fired once by a cron-driven automation when a threshold is first crossed; Command Centre exceptions are a live, always-recomputed-fresh view with the new OPEN/ACKNOWLEDGED/RESOLVED/DISMISSED workflow state (`attention_items`, reconciled by `lib/commandCentre/attention.ts`'s `reconcileAttentionItems()` on every load). Dismissing an exception (`PATCH /api/command-centre/attention/[id]`) only ever changes that workflow state — it never touches the underlying stock/invoice/hygiene/vehicle record, so a dismiss can never masquerade as a real fix (K57). An item is only ever auto-marked `RESOLVED` when the next reconciliation genuinely no longer detects its `dedupeKey` in the live-computed exception list (K58).
+- **Not built in this pass**: grouping/digesting multiple same-category Phase D notifications into a single collapsed line in `NotificationCentre.tsx` itself — the existing category-filter chips already reduce noise somewhat; a true digest view is listed under "Not built" rather than risked as a change to an already-working, unrelated component under this phase's time budget.
+
+### Multi-location (K59)
+
+- No single-base assumption exists anywhere in Phase K's code: every query that touches stock is written against `stock_locations`/`stock_levels` (van **and** warehouse location types, Phase C's existing model), and every van-facing composer (`liveOps.ts`, `tomorrow.ts`) is called once per van with no hard-coded count or "the van" singular assumption.
+
+### Permissions (K60/K61)
+
+- Seven new permissions added to `lib/permissions.ts`'s existing `PERMISSIONS` list and `ROLE_PERMISSIONS` map (the same array-per-role shape every phase has used): `view_command_centre`, `view_business_intelligence`, `view_finance_intelligence`, `view_customer_intelligence`, `view_stock_intelligence`, `manage_business_goals`, `use_ai_owner_brief`.
+  - **BUSINESS_ADMIN**: all seven (matches their existing full finance/CRM/analytics grant).
+  - **VAN_MANAGER**: `view_command_centre`, `view_business_intelligence`, `view_finance_intelligence`, `view_customer_intelligence`, `view_stock_intelligence` — **not** `manage_business_goals` or `use_ai_owner_brief` (goal-setting and the AI owner brief are framed as whole-business decision support, kept at the Owner/Business-Admin/Accountant tier).
+  - **ACCOUNTANT**: `view_finance_intelligence`, `use_ai_owner_brief` only — stays finance-scoped, exactly like every other Accountant grant.
+  - **DRIVER/STAFF**: none of the seven — no automatic business-wide (or even van-level) intelligence access, matching K60's explicit instruction.
+- `lib/commandCentre/context.ts`'s `resolveCommandCentreContext(permission, requestedVanId?)` is the one place every Command Centre API route resolves both the permission check and the van scope: a Van Manager's `effectiveVanIds` is always the **intersection** with their own `staffContext.vanIds` assignment, never the whole business, regardless of which "business-wide" permission is being checked — so a restricted role can never see another van's data through this system even though the permission name itself is business-wide-sounding.
+
+### RLS / tenant security (K62)
+
+- Every new table's RLS policy uses the exact same `business_id IN (my_business_ids()) OR business_id IN (my_staff_business_ids()) OR is_super_admin()` pattern every table since Phase C has used. As with every prior phase, RLS is the tenant *boundary*; the actual permission/van-scope enforcement happens in the API layer via `resolveCommandCentreContext()` (mirroring `getStaffContext()`+`hasPermission()` everywhere else). `business_id` is never read from a request query param or body anywhere in `app/api/command-centre/*` — verified by direct code review of every route; every write uses `business.id` resolved server-side.
+
+### Data coverage / confidence / cold start (K63–K65)
+
+- `coverageForSampleSize()` (`lib/commandCentre/comparison.ts`) is the one function every "how much history backs this" label goes through: `HIGH DATA COVERAGE` / `LIMITED DATA` / `INSUFFICIENT DATA`, purely from a count, never an invented percentage.
+- `GET /api/command-centre/overview` computes `business_age_days` from `businesses.created_at` and sets `cold_start: true` for any business younger than 14 days — the Today tab then shows a plain "getting started" message instead of a comparable-day comparison or trend, rather than fabricating a baseline from too little history.
+
+### Timezone & money (K66/K67)
+
+- Every date boundary in `lib/commandCentre/comparison.ts` (today, this-week, this-month, comparable-day search) is resolved through `business.timezone` (via `nowInTimezone()`, the existing Phase D helper) — never UTC or the browser's local time. All date arithmetic uses `YYYY-MM-DD` string construction at UTC midnight (never a raw millisecond diff across a boundary), which is what makes it correct across a DST transition without any special-casing.
+- All money figures are produced by, or rounded through, `lib/finance/money.ts`'s `round2()`/`sum()` — imported directly everywhere in `lib/commandCentre/*`, never a new local re-implementation (unlike a few pre-existing files elsewhere in the codebase that do keep their own local `round2` copy — Phase K did not add another one).
+
+### Performance / realtime / snapshots (K68–K70)
+
+- Every Command Centre composer function fetches its inputs via `Promise.all` (bounded parallel queries), and the per-van functions (`getVanSummary`, `getTomorrowReadiness`) are themselves run in parallel across vans (`Promise.all(vans.map(...))`) rather than sequentially. No client-side component makes more than a small, fixed number of requests per tab (one fetch per tab load, occasionally two).
+- **No snapshot/materialized view was introduced anywhere** — every figure is computed live, on every request, directly from the transactional tables, exactly matching K88's "do not duplicate transactional source data just for dashboards". The only genuinely new stored state is `attention_items` (workflow status, not a data cache — see K55–K58) and the owner-set `business_goals`/`business_budgets`/`command_centre_saved_views`.
+- Realtime is not used anywhere in Phase K — every view is request-driven (refetch on tab switch/action), which is appropriate here since nothing in the Command Centre is a second-by-second live feed the way Phase J's menu board or Phase G's live tracking are.
+
+### Mobile / accessibility (K71–K73)
+
+- `/dashboard/command-centre` uses the shared `DashboardShell`, which already collapses to a bottom tab bar below 700px (Phase C's own responsive design, unmodified). The Today tab is intentionally the default/first tab and leads with exactly K71's three questions in order: KPI snapshot ("what is happening"), the attention list ("what needs attention"), then opportunities ("what should I consider"/possible next steps).
+- New interactive elements carry `role="tablist"`/`aria-selected` (both the Command Centre's own tabs and, unmodified, the account-hub pattern from Phase J), `aria-label`s on the search input, and priority is always shown as both colour **and** a text label (`PRIORITY_META[...].label`) — never colour alone.
+
+### Security / rate limits / audit (K74–K76)
+
+- Reviewed: no Command Centre route trusts a client-supplied `business_id`/`van_id` beyond validating a requested van against the caller's own authorised set (see "Permissions" above). The AI owner-intelligence tools carry the same permission checks as every other Phase E–I tool file.
+- **No dedicated rate-limiting infrastructure exists anywhere in this codebase** (confirmed again during this phase, same finding as Phase J) — the Command Centre's search endpoint and AI tools have no request-rate limit beyond the AI chat route's own existing per-hour message cap (Phase E, unmodified). Documented as Phase L technical debt rather than built ad-hoc under this phase's time budget.
+- Goal and budget changes are audited via the pre-existing `lib/auditLog.ts`'s `logAuditEvent()` (`audit_logs`, unmodified table/helper) — dashboard reads are not audited, matching K76's own instruction ("audit meaningful goal/budget/settings changes and confirmed recommendation actions, not dashboard reads"; no recommendation in this phase currently has a confirmable action to audit — see "Not built").
+
+### Not built in Phase K (see the completion report for the full list)
+
+- A confirmable/actionable "safe action" surface for any Command Centre opportunity (e.g. a draft PO proposed directly from a stock-risk-before-strong-route card) — every current opportunity is display-only with a `possibleAction` suggestion, not a Phase E-style `propose_*` draft; genuinely wiring one in was judged separate, riskier scope for a future phase.
+- A true notification digest/grouping view inside `NotificationCentre.tsx` itself.
+- A "save current view" button in the Command Centre UI wired to the already-built `command_centre_saved_views` API.
+- A dedicated customer-experience funnel card inside the Command Centre (the existing Phase J `CustomerFunnelWidget` on `/dashboard/analytics` covers this today).
+- Enhancing the Phase D daily/weekly briefing text itself to reference the new exception/opportunity language.
+- A keyboard-shortcut-driven command palette (the search bar is a type-ahead dropdown, not a `Cmd+K`-style overlay).
+- A dedicated rate-limiting layer for the search/AI endpoints (same pre-existing gap Phase J already documented).

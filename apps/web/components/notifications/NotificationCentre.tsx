@@ -2,11 +2,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { PRIORITY_META } from '@/lib/commandCentre/priority'
 
 const CARD = { background: '#fff', borderRadius: 14, padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.07)', marginBottom: 8 }
 const CATEGORIES = ['stock', 'hygiene', 'vehicle', 'staff', 'reports', 'marketing', 'events']
 const CATEGORY_ICON: Record<string, string> = { stock: '📦', hygiene: '🧼', vehicle: '🚐', staff: '👥', reports: '📊', marketing: '💡', events: '🎉' }
-const PRIORITY_COLOR: Record<string, string> = { INFO: '#6366f1', ACTION: '#f59e0b', IMPORTANT: '#dc2626', CRITICAL: '#991b1b' }
+// Phase K — the single source of truth for priority colour is now
+// lib/commandCentre/priority.ts (shared with the Command Centre), rather
+// than this component keeping its own separate copy.
+const PRIORITY_COLOR: Record<string, string> = Object.fromEntries(Object.entries(PRIORITY_META).map(([k, v]: any) => [k, v.color]))
 
 export function NotificationCentre() {
   const [data, setData] = useState<any>(null)
