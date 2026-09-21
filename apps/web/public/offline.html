@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>You're offline — FoodTaxi</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #080c18; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; box-sizing: border-box;
+  }
+  .badge { font-size: 56px; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 800; margin: 0 0 8px; }
+  p { color: #9ca3af; font-size: 14px; max-width: 320px; line-height: 1.6; margin: 0 0 24px; }
+  button {
+    padding: 12px 28px; border-radius: 12px; border: none; cursor: pointer;
+    background: linear-gradient(135deg, #f97316, #ea580c); color: #fff;
+    font-weight: 800; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <div class="badge">📡</div>
+  <h1>You're offline</h1>
+  <p>FoodTaxi needs a connection to show live menus, prices and order status — nothing here is out of date, it just isn't loaded yet. Reconnect and try again.</p>
+  <button onclick="location.reload()">Try again</button>
+</body>
+</html>

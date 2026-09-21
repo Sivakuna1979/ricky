@@ -11,7 +11,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const admin = await createAdminClient()
   const { data: order, error } = await admin
     .from('orders')
-    .select('id, order_number, status, pickup_location, pickup_time, checked_in_at, total, created_at, guest_name, order_items(name, quantity), vans(name)')
+    .select('id, order_number, status, pickup_location, pickup_time, checked_in_at, total, created_at, guest_name, van_id, order_items(name, quantity), vans(name, business_id)')
     .eq('id', params.id)
     .maybeSingle()
   // A real query error (e.g. a column from a migration that hasn't been run

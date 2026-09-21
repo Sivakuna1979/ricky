@@ -329,3 +329,36 @@ RLS on every new Phase I table: the same `my_business_ids() OR my_staff_business
 Every business-scoped table is reachable only via `van_id IN (my_van_ids())` or `business_id IN (my_business_ids())`, both `SECURITY DEFINER` functions resolving from the signed-in user — this is consistent and correctly applied across the schema. The exception is the three event tables reconciled in Phase A, which had no RLS at all until this migration (safe to add: nothing in the app used anon-key access to them).
 
 **Phase C addition:** a new function, `my_staff_business_ids()`, returns businesses where the caller has an *active* `staff` row (any role). Every new Phase C table's RLS policy is `business_id IN (my_business_ids()) OR business_id IN (my_staff_business_ids()) OR is_super_admin()` — this is the tenant-isolation boundary (no business ever sees another business's rows). It is deliberately coarse: it does not itself distinguish which *role* may take which *action* — that's enforced in the API layer by `lib/permissions.ts` + `lib/staffContext.ts`, the same "RLS = tenant boundary, API = permission boundary" split already used for super-admin routes. It also does not narrow a van-restricted staff member's *visibility* of business-wide records (e.g. a driver assigned to one van can still see all shifts/vehicle records for the business, not just their own) — documented as a known simplification in the baseline doc, not a tenant-isolation gap.
+
+## Customer Experience, PWA & Push (Phase J)
+
+Migration: `20240057_phase_j_customer_experience.sql`. Purely additive — new tables and columns only, no destructive changes. Full architecture write-up: baseline doc §70.
+
+### `customer_favourite_items` 🟢
+`(customer_id, menu_item_id)` composite PK, `customer_id → customers(id)`. Mirrors the pre-existing `customer_favourite_vans` shape/RLS pattern exactly. Cascade-deletes with the menu item.
+
+### `customer_favourite_stops` 🟢
+`(customer_id, stop_id)` composite PK, `stop_id → van_schedule(id)` — the canonical stop-template identity Phase G already established, never a free-text location.
+
+### `push_subscriptions` 🟢
+One row per browser push subscription. `business_id` required; `van_id`, `customer_id` (NULL = guest), `order_id` (set when subscribing for one specific order's updates) all optional. Five independent notification-type toggles, `notify_order_updates` defaulting `true`, everything else (including `notify_marketing_offers`) defaulting `false`. `endpoint` is `UNIQUE`. **No RLS policy grants anon/authenticated anything** — only the service-role key (used exclusively from trusted server routes) can touch this table; that absence of a public policy is the actual security control.
+
+### `push_deliveries` 🟢
+`UNIQUE(subscription_id, trigger_key)` — the idempotency guard behind push sends, mirroring `automation_runs.trigger_key` exactly. Same RLS posture as `push_subscriptions` (service role only).
+
+### `customer_events` 🟢
+Minimal funnel-analytics table: `business_id`, `van_id`, `event_type` (a fixed `CHECK` list), and a non-identifying, client-generated `session_token` used only to dedupe within one browsing session — never a persistent identity. RLS: readable by the owning business/staff/super-admin (`customer_events_business_read`); written only via the service-role key from `POST /api/analytics/event`.
+
+### `qr_codes` — new columns `context`, `context_id` 🟢
+`context` (`'van'` default / `'stop'` / `'board'`), `context_id → van_schedule(id)`. The uniqueness constraint moved from implicit one-per-van to `UNIQUE(van_id, context, context_id)` so a van can have a main QR plus per-stop/board QRs. Fully backward compatible — the one existing caller (auto-QR on van creation) sends no body and gets `context = 'van'`, identical to prior behaviour.
+
+### `orders` — no new columns
+`orders.customer_id` (already nullable since the Phase C POS migration) and `orders.guest_email` (already indexed, Phase I) are reused as-is for guest→account linking and claiming — no schema change needed.
+
+### `supabase_realtime` publication — added `menu_items`, `menu_deals` 🟢
+Needed for the digital menu board's live-update subscription. `vans` was already in the publication (original schema). Guarded with an `IF NOT EXISTS` check against `pg_publication_tables` so re-running this migration, or either table already having been added by hand, is a safe no-op.
+
+### `customers` / `customer_favourite_vans` — reused, unchanged schema 🟢
+Both pre-existing (Phase A) and previously unused by any code. Phase J is the first thing that actually reads/writes them: `customers` rows are created lazily (`lib/customer/identity.ts`) the first time a signed-in 'customer'-role user needs one; `customer_favourite_vans` now has a real API (`/api/customer/favourites/vans`) and UI (the van page's heart icon, the account hub's Favourites tab).
+
+RLS on every new Phase J table: the standard `my_business_ids() OR my_staff_business_ids() OR is_super_admin()` pattern for business-readable tables (`customer_events`), or the `customer_id IN (SELECT id FROM customers WHERE user_id = auth_user_id())` pattern for customer-owned tables (`customer_favourite_items`/`customer_favourite_stops`, matching the pre-existing `customer_favourite_vans` policy) — with the deliberate exception of `push_subscriptions`/`push_deliveries`, which grant no public policy at all (service-role only, see above). As with every phase since Phase C, this RLS is the tenant/ownership *boundary*; the actual per-route authorization is enforced in the API layer (`lib/customer/identity.ts`'s `requireCustomer()` for customer-owned data, the existing staff/business auth checks for business-side routes).

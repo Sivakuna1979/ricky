@@ -16,6 +16,34 @@ export default function LoginPage() {
   const [error, setError]       = useState('')
   const [debug, setDebug]       = useState<any>(null)
 
+  // Phase J9 — a low-friction alternative to password sign-in, reusing
+  // Supabase Auth's own magic-link mechanism (no new auth system, no
+  // custom passwords/OTP storage). Kept fully separate from the password
+  // flow above so it cannot regress it.
+  const [magicMode, setMagicMode]     = useState(false)
+  const [magicEmail, setMagicEmail]   = useState('')
+  const [magicSent, setMagicSent]     = useState(false)
+  const [magicLoading, setMagicLoading] = useState(false)
+  const [magicError, setMagicError]   = useState('')
+
+  const sendMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setMagicError('')
+    if (!magicEmail.trim()) { setMagicError('Enter your email address.'); return }
+    setMagicLoading(true)
+    const supabase = createClient()
+    const { error: sbError } = await supabase.auth.signInWithOtp({
+      email: magicEmail.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/account`,
+        shouldCreateUser: true,
+      },
+    })
+    setMagicLoading(false)
+    if (sbError) { setMagicError(sbError.message); return }
+    setMagicSent(true)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -153,6 +181,28 @@ export default function LoginPage() {
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
+
+        {/* Phase J9 — magic-link alternative, customers especially */}
+        <div style={{ marginTop: 16, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, padding: 20 }}>
+          {!magicMode ? (
+            <button type="button" onClick={() => setMagicMode(true)} style={{ width: '100%', background: 'none', border: 'none', color: '#fbbf24', fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0 }}>
+              ✉️ Or email me a sign-in link (no password)
+            </button>
+          ) : magicSent ? (
+            <div style={{ textAlign: 'center', color: '#a7f3d0', fontSize: 13, lineHeight: 1.6 }}>
+              📬 Check <strong>{magicEmail}</strong> for a sign-in link — it'll bring you straight to your account.
+            </div>
+          ) : (
+            <form onSubmit={sendMagicLink}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.6)', marginBottom: 6 }}>Email address</label>
+              <input type="email" value={magicEmail} onChange={e => setMagicEmail(e.target.value.trim())} autoComplete="email" placeholder="you@example.com" style={{ ...inp, marginBottom: 10 }} />
+              {magicError && <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 10 }}>⚠️ {magicError}</div>}
+              <button type="submit" disabled={magicLoading} style={{ width: '100%', padding: '12px', background: 'rgba(251,191,36,.15)', border: '1px solid rgba(251,191,36,.4)', borderRadius: 10, color: '#fbbf24', fontWeight: 700, fontSize: 13, cursor: magicLoading ? 'not-allowed' : 'pointer' }}>
+                {magicLoading ? 'Sending…' : 'Send sign-in link'}
+              </button>
+            </form>
+          )}
+        </div>
 
         {/* Always-visible debug box */}
         <div style={{ marginTop: 16, background: 'rgba(0,0,0,.4)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, padding: '12px 14px' }}>

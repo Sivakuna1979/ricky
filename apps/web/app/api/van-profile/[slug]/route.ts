@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { getVanLiveStatus } from '@/lib/customer/liveStatus'
 
 async function supabaseGet(path: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -37,13 +39,29 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
     }
 
     let schedule: any[] = []
+    let deals: any[] = []
     if (vanIds.length > 0) {
       schedule = await supabaseGet(
         `van_schedule?van_id=eq.${vanIds[0]}&order=day_of_week,arrival_time`
       ) ?? []
+      // J17/J23 — pre-existing menu_deals table, never previously surfaced
+      // to customers anywhere (confirmed during the Phase J audit).
+      deals = await supabaseGet(
+        `menu_deals?van_id=eq.${vanIds[0]}&active=eq.true&select=id,name,quantity,deal_price`
+      ) ?? []
     }
 
-    return NextResponse.json({ business, vans, menuItems, schedule })
+    // J29/J30 — customer-safe live status for the primary van, composed
+    // server-side so the client never has to reach an authenticated route.
+    let liveStatus = null
+    if (vans[0]) {
+      try {
+        const admin = await createAdminClient()
+        liveStatus = await getVanLiveStatus(admin, vans[0])
+      } catch { /* live status is an enhancement — never break the page over it */ }
+    }
+
+    return NextResponse.json({ business, vans, menuItems, schedule, liveStatus, deals })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

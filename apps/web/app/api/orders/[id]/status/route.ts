@@ -6,6 +6,7 @@ import { deductStockForOrder, restoreStockForOrder } from '@/lib/stockDeduction'
 import { findOrCreateCrmCustomerForOrder } from '@/lib/crm/identity'
 import { earnLoyaltyForOrder, reverseLoyaltyForOrder } from '@/lib/crm/loyalty'
 import { qualifyReferral } from '@/lib/crm/referrals'
+import { sendPushToMany } from '@/lib/push/send'
 
 const schema = z.object({
   status: z.enum(['accepted', 'preparing', 'ready', 'collected', 'cancelled']),
@@ -86,6 +87,29 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   await supabase.functions.invoke('send-notification', {
     body: { type: 'order_status_update', order_id: params.id, status },
   })
+
+  // J38/J41 — order-ready push, targeted only at subscriptions created
+  // specifically for THIS order (never every subscriber to the van — see
+  // the push_subscriptions.order_id comment in the migration).
+  if (status === 'ready') {
+    try {
+      const admin = await createAdminClient()
+      const { data: subs } = await admin
+        .from('push_subscriptions')
+        .select('id, endpoint, p256dh, auth_key')
+        .eq('order_id', params.id)
+        .eq('notify_order_updates', true)
+        .is('disabled_at', null)
+      if (subs?.length) {
+        await sendPushToMany(admin, subs, {
+          title: 'Your order is ready! 🔔',
+          body: `Order #${data.order_number ?? ''} is ready for collection.`,
+          url: `/order/${params.id}`,
+          tag: `order-${params.id}`,
+        }, `order_ready:${params.id}`)
+      }
+    } catch (_e) { /* push failures must never fail the status update */ }
+  }
 
   return NextResponse.json(data)
 }

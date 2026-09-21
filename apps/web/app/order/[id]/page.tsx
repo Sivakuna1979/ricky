@@ -2,6 +2,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
+import { pushSupported, subscribeToPush } from '@/lib/push/client'
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Order received',
@@ -27,6 +28,16 @@ export default function OrderStatusPage() {
   const [error, setError] = useState('')
   const [, forceTick] = useState(0)
   const pollRef = useRef<any>(null)
+  const [pushState, setPushState] = useState<'idle'|'subscribing'|'subscribed'|'unsupported'|'denied'>('idle')
+
+  useEffect(() => { if (!pushSupported()) setPushState('unsupported') }, [])
+
+  const enableNotifyWhenReady = async () => {
+    if (!order?.vans?.business_id) return
+    setPushState('subscribing')
+    const res = await subscribeToPush({ business_id: order.vans.business_id, van_id: order.van_id, order_id: order.id })
+    setPushState(res.ok ? 'subscribed' : (res.reason === 'denied' ? 'denied' : 'idle'))
+  }
 
   const fetchOrder = async () => {
     try {
@@ -128,6 +139,20 @@ export default function OrderStatusPage() {
               {error && <div style={{ fontSize: 13, color: '#f87171', fontWeight: 700, textAlign: 'center', marginTop: 10 }}>⚠️ {error}</div>}
             </>
           )
+        )}
+
+        {['pending', 'accepted', 'preparing'].includes(order.status) && pushState !== 'unsupported' && (
+          <div style={{ marginTop: 12, textAlign: 'center' }}>
+            {pushState === 'subscribed' ? (
+              <div style={{ fontSize: 12, color: '#6ee7b7' }}>🔔 We'll notify you when it's ready</div>
+            ) : pushState === 'denied' ? (
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>Notifications are blocked in your browser settings</div>
+            ) : (
+              <button onClick={enableNotifyWhenReady} disabled={pushState === 'subscribing'} style={{ background: 'none', border: '1px solid #1e2a45', color: '#9ca3af', borderRadius: 10, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                🔔 {pushState === 'subscribing' ? 'Enabling…' : 'Notify me when it\'s ready'}
+              </button>
+            )}
+          </div>
         )}
 
         {order.status === 'collected' && (

@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { validateDiscountCode, claimDiscountCode } from '@/lib/crm/discounts'
 import { findOrCreateCrmCustomer } from '@/lib/crm/identity'
 import { round2 } from '@/lib/finance/money'
+import { getAuthedUserProfile, getOrCreateCustomerRecord } from '@/lib/customer/identity'
 
 const SB_URL = () => process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const ANON_KEY = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -85,18 +86,78 @@ export async function POST(req: NextRequest) {
     if (!customer_phone) return NextResponse.json({ error: 'Phone is required' }, { status: 400 })
     if (!items?.length) return NextResponse.json({ error: 'No items in order' }, { status: 400 })
 
+    let admin: any = await createAdminClient()
+
+    // J58/J59 — conservative, self-contained abuse guard: no dedicated
+    // rate-limiting infrastructure exists in this codebase (documented as
+    // a Phase K recommendation), but a runaway bot/retry loop placing many
+    // orders in seconds for the same phone+van is caught here without one.
+    // Deliberately generous (5 in 2 minutes) so it never blocks a genuine
+    // customer correcting a mistake or a busy van's real repeat trade.
+    if (van_id) {
+      const twoMinAgo = new Date(Date.now() - 2 * 60000).toISOString()
+      const { count: recentCount } = await admin
+        .from('orders').select('id', { count: 'exact', head: true })
+        .eq('van_id', van_id).eq('guest_phone', customer_phone).gte('created_at', twoMinAgo)
+      if ((recentCount ?? 0) >= 5) {
+        return NextResponse.json({ error: 'Too many orders placed in a short time — please wait a moment and try again.' }, { status: 429 })
+      }
+
+      // J20/J29/J67 — "ordering open/closed" was previously never actually
+      // enforced anywhere on this route (a pre-existing gap found during
+      // the Phase J audit: toggling accepts_online_orders had no real
+      // effect on guest checkout). Now authoritative here, not just shown
+      // as a badge on the van page.
+      const { data: vanRow } = await admin.from('vans').select('accepts_online_orders, is_active').eq('id', van_id).maybeSingle()
+      if (!vanRow || !vanRow.is_active) {
+        return NextResponse.json({ error: 'This van is not currently available for online ordering.' }, { status: 409 })
+      }
+      if (vanRow.accepts_online_orders === false) {
+        return NextResponse.json({ error: 'Online ordering is currently closed for this van — please check back later, or order via WhatsApp/in person if available.' }, { status: 409 })
+      }
+    }
+
+    // J20/J71 — server-side availability + price revalidation, closing a
+    // gap found during the Phase J audit: this route previously trusted
+    // the client's cart entirely for both, with no re-check at all. The
+    // server is now always authoritative — a stale page (or a reorder
+    // from an older order) can never place an order at an out-of-date
+    // price or for an item that's since sold out; it gets a clear
+    // correction response instead (J20's "clear correction flow"). The
+    // subtotal used for the rest of this request is also recomputed from
+    // these server-confirmed prices, not trusted from the client.
+    let serverSubtotal = subtotal ?? 0
+    {
+      const itemIds = [...new Set((items ?? []).map((i: any) => i.menu_item_id).filter(Boolean))]
+      if (itemIds.length) {
+        const { data: currentItems } = await admin.from('menu_items').select('id, price, available').in('id', itemIds)
+        const byId = Object.fromEntries((currentItems ?? []).map((i: any) => [i.id, i]))
+        const correction: any[] = []
+        let recomputed = 0
+        for (const it of items) {
+          if (!it.menu_item_id) { recomputed += Number(it.item_total ?? it.price * it.quantity ?? 0); continue }
+          const cur = byId[it.menu_item_id]
+          if (!cur || cur.available === false) correction.push({ menu_item_id: it.menu_item_id, name: it.name, reason: 'unavailable' })
+          else if (Number(cur.price) !== Number(it.price)) correction.push({ menu_item_id: it.menu_item_id, name: it.name, reason: 'price_changed', current_price: cur.price })
+          else recomputed += Number(cur.price) * Number(it.quantity ?? 1)
+        }
+        if (correction.length) {
+          return NextResponse.json({ error: 'Some items in your order have changed — please review and try again.', correction }, { status: 409 })
+        }
+        serverSubtotal = round2(recomputed)
+      }
+    }
+
     // Phase I — a promo/voucher code, always revalidated and priced
-    // server-side here, never trusted from the client (I18/I21). Does not
-    // change the existing client-supplied `total` when no code is used —
-    // this is purely additive.
+    // server-side here, never trusted from the client (I18/I21). Starts
+    // from serverSubtotal (Phase J — server-recomputed from current menu
+    // prices, see above), not the client's own total.
     let resolvedCode: any = null
-    let finalTotal = total ?? 0
+    let finalTotal = serverSubtotal
     let finalDiscountAmount = 0
-    let admin: any = null
     let crmCustomerForCode: any = null
     let resolvedBusinessId = business_id ?? null
     if (discount_code) {
-      admin = await createAdminClient()
       if (!resolvedBusinessId && van_id) {
         const { data: van } = await admin.from('vans').select('business_id').eq('id', van_id).maybeSingle()
         resolvedBusinessId = van?.business_id ?? null
@@ -104,13 +165,28 @@ export async function POST(req: NextRequest) {
       if (resolvedBusinessId) {
         crmCustomerForCode = await findOrCreateCrmCustomer(admin, resolvedBusinessId, { phone: customer_phone, email: customer_email, displayName: customer_name })
         resolvedCode = await validateDiscountCode(admin, resolvedBusinessId, discount_code, {
-          vanId: van_id, channel: 'guest', subtotal: round2(subtotal ?? total ?? 0), crmCustomerId: crmCustomerForCode?.id ?? null, isNewCustomer: false, // conservative default — see docs "Not built"
+          vanId: van_id, channel: 'guest', subtotal: serverSubtotal, crmCustomerId: crmCustomerForCode?.id ?? null, isNewCustomer: false, // conservative default — see docs "Not built"
         })
         if (!resolvedCode.valid) return NextResponse.json({ error: `Code not valid: ${resolvedCode.reason}` }, { status: 400 })
         finalDiscountAmount = resolvedCode.discount_amount
-        finalTotal = round2(Math.max(0, (subtotal ?? total ?? 0) - finalDiscountAmount))
+        finalTotal = round2(Math.max(0, serverSubtotal - finalDiscountAmount))
       }
     }
+
+    // Phase J8 — if the browser placing this "guest" order actually has a
+    // signed-in customer session, attach it to the order directly so it
+    // shows up in their order history immediately (no reliance on a later
+    // email-match claim). Best-effort and silent on failure — a signed-in
+    // customer must never be blocked from ordering as a guest would be.
+    let linkedCustomerId: string | null = null
+    try {
+      const supabase = await createClient()
+      const profile = await getAuthedUserProfile(supabase)
+      if (profile) {
+        const customer = await getOrCreateCustomerRecord(admin, profile.userId)
+        linkedCustomerId = customer?.id ?? null
+      }
+    } catch { /* guest checkout must never fail because of this */ }
 
     // Phase G — never trust a stop id without checking it actually
     // belongs to this van's own schedule.
@@ -135,6 +211,7 @@ export async function POST(req: NextRequest) {
     try {
       order = await sbPost('orders', {
         van_id: van_id || null,
+        customer_id: linkedCustomerId,
         guest_name: customer_name,
         guest_phone: customer_phone,
         notes: notes || null,
@@ -142,7 +219,7 @@ export async function POST(req: NextRequest) {
         pickup_time: pickup_time || null,
         pickup_stop_id: verifiedStopId,
         service_date: resolvedServiceDate,
-        subtotal: subtotal ?? 0,
+        subtotal: serverSubtotal,
         total: finalTotal,
         discount_amount: finalDiscountAmount || undefined,
         discount_code: resolvedCode ? String(discount_code).trim().toUpperCase() : undefined,
@@ -155,8 +232,9 @@ export async function POST(req: NextRequest) {
       const pickupStr = pickup_location ? ` | Pickup: ${pickup_location}${pickup_time ? ` ~${pickup_time}` : ''}` : ''
       order = await sbPost('orders', {
         van_id: van_id || null,
+        customer_id: linkedCustomerId,
         notes: `Order from ${customer_name} (${customer_phone})${notes ? '. ' + notes : ''}${pickupStr}`,
-        subtotal: subtotal ?? 0,
+        subtotal: serverSubtotal,
         total: finalTotal,
         payment_method: payment_method ?? 'cash_at_van',
         status: 'pending',

@@ -2,6 +2,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard'
+import { CustomerFunnelWidget } from '@/components/analytics/CustomerFunnelWidget'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Analytics — FoodTaxi' }
@@ -85,6 +86,7 @@ export default async function AnalyticsPage() {
             <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#111' }}>Analytics</h1>
             <p style={{ color:'#888', margin:'0 0 24px', fontSize:13 }}>How your business is performing</p>
             <AnalyticsDashboard businessId={business.id} />
+            <CustomerFunnelWidget businessId={business.id} />
           </div>
         </div>
       </div>

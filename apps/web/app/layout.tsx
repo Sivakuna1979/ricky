@@ -1,8 +1,9 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import { Inter, Syne } from 'next/font/google'
 import './globals.css'
 import { Toaster } from '../components/ui/toaster'
+import PwaShell from '../components/pwa/PwaShell'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const syne = Syne({ subsets: ['latin'], variable: '--font-syne', weight: ['700', '800'] })
@@ -20,6 +21,18 @@ export const metadata: Metadata = {
     url: process.env.NEXT_PUBLIC_APP_URL,
     siteName: 'Food Taxi',
   },
+  // J2 — PWA manifest is linked platform-wide (harmless on dashboard/admin
+  // pages — a manifest link alone does not install/cache anything); actual
+  // service-worker registration and the install prompt are gated to
+  // customer-only paths inside <PwaShell> (see its own comment for why).
+  manifest: '/manifest.json',
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'FoodTaxi' },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#f97316',
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -28,6 +41,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className={`${inter.variable} ${syne.variable} font-sans`}>
         {children}
         <Toaster />
+        <PwaShell />
       </body>
     </html>
   )
