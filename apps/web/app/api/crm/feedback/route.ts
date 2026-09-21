@@ -8,9 +8,12 @@
 // review.
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { rateLimitResponse } from '@/lib/rateLimit'
 
 // Body: { order_id, rating, comment? }
 export async function POST(req: NextRequest) {
+  const limited = rateLimitResponse('crm-feedback', req, 20, 60000)
+  if (limited) return limited
   const { order_id, rating, comment } = await req.json().catch(() => ({}))
   if (!order_id || !rating || rating < 1 || rating > 5) return NextResponse.json({ error: 'order_id and a rating from 1-5 are required' }, { status: 400 })
 

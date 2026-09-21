@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { waitUntil } from '@vercel/functions'
 import { createAdminClient } from '@/lib/supabase/server'
+import { createHmac, timingSafeEqual } from 'crypto'
+import { log } from '@/lib/logging'
 
 // ============================================================================
 // WhatsApp Cloud API webhook — fully automatic ordering, MULTI-TENANT and
@@ -28,6 +30,24 @@ export async function GET(req: NextRequest) {
     return new Response(p.get('hub.challenge') ?? '', { status: 200 })
   }
   return new Response('Forbidden', { status: 403 })
+}
+
+// Verifies Meta's X-Hub-Signature-256 header (HMAC-SHA256 over the raw
+// request body, keyed with the Meta App Secret — NOT the per-channel
+// access_token). Passes through unenforced when WHATSAPP_APP_SECRET isn't
+// set yet, so this can be rolled out without silently breaking a
+// deployment that hasn't configured the new secret; once it's set,
+// missing/mismatched signatures are rejected.
+function verifyWhatsAppSignature(rawBody: string, signatureHeader: string | null): boolean {
+  const secret = process.env.WHATSAPP_APP_SECRET
+  if (!secret) return true
+  if (!signatureHeader) return false
+  const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex')
+  const provided = signatureHeader.startsWith('sha256=') ? signatureHeader.slice(7) : signatureHeader
+  const expectedBuf = Buffer.from(expected, 'hex')
+  const providedBuf = Buffer.from(provided, 'hex')
+  if (expectedBuf.length !== providedBuf.length) return false
+  return timingSafeEqual(expectedBuf, providedBuf)
 }
 
 // Used to silently swallow every failure here, which is how a customer
@@ -276,7 +296,12 @@ async function sweepStuck(admin: any, channel: any) {
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json()
+    const rawBody = await req.text()
+    if (!verifyWhatsAppSignature(rawBody, req.headers.get('x-hub-signature-256'))) {
+      log.warn({ scope: 'webhooks.whatsapp', action: 'signature_check', status: 'rejected' })
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+    }
+    const payload = JSON.parse(rawBody)
     const admin = await createAdminClient()
 
     for (const entry of payload.entry ?? []) {
@@ -322,7 +347,13 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-  } catch { /* must still 200 */ }
+  } catch (e: any) {
+    // Meta retries aggressively on non-2xx, and this handler already does
+    // its real error handling per-message above — a top-level failure here
+    // is unexpected and worth a log line, but we must still 200 so Meta
+    // doesn't retry-storm us for something that isn't a delivery problem.
+    log.error({ scope: 'webhooks.whatsapp', action: 'process_payload', status: 'error', error: String(e?.message ?? e).slice(0, 300) })
+  }
   return NextResponse.json({ ok: true })
 }
 

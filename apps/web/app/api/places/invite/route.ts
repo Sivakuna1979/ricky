@@ -6,6 +6,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 function getAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
@@ -16,8 +18,17 @@ function getAdmin() {
   })
 }
 
+async function requireSuperAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return isSuperAdmin(supabase, user)
+}
+
+// Admin: list all invited businesses — includes invitation_token, the
+// capability used to authenticate the claim flow, so this must never be
+// reachable without the super-admin check below.
 export async function GET(req: NextRequest) {
-  // Admin: list all invited businesses
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const db = getAdmin()
   const { data, error } = await db
     .from('discovered_businesses')
@@ -31,6 +42,7 @@ export async function GET(req: NextRequest) {
 
 // PATCH — update notes or status (e.g. mark as contacted) from the admin page
 export async function PATCH(req: NextRequest) {
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const body = await req.json().catch(() => ({}))
   const { id, notes, status } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
@@ -52,6 +64,7 @@ function makeToken() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const body = await req.json().catch(() => ({}))
   const {
     place_id, name, method = 'manual', phone = null, website = null,

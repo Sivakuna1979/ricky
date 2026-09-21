@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { getAuthedUserProfile, getOrCreateCustomerRecord } from '@/lib/customer/identity'
+import { rateLimitResponse } from '@/lib/rateLimit'
 
 // POST /api/push/subscribe — J35/J37. Works for guests (order-specific
 // "notify me when it's ready") and signed-in customers alike. business_id
@@ -17,6 +18,8 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimitResponse('push-subscribe', req, 20, 60000)
+  if (limited) return limited
   const body = await req.json().catch(() => ({}))
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 })

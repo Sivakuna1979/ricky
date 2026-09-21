@@ -5,6 +5,7 @@ import { validateDiscountCode, claimDiscountCode } from '@/lib/crm/discounts'
 import { findOrCreateCrmCustomer } from '@/lib/crm/identity'
 import { round2 } from '@/lib/finance/money'
 import { getAuthedUserProfile, getOrCreateCustomerRecord } from '@/lib/customer/identity'
+import { rateLimitResponse } from '@/lib/rateLimit'
 
 const SB_URL = () => process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const ANON_KEY = () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -79,6 +80,8 @@ async function sbPost(table: string, body: any) {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimitResponse('orders-guest', req, 20, 60000)
+  if (limited) return limited
   try {
     const { van_id, business_id, customer_name, customer_phone, customer_email, notes, pickup_location, pickup_time, pickup_stop_id, service_date, items, subtotal, total, payment_method, discount_code, referral_code } = await req.json()
 

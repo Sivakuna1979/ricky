@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 function getAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
@@ -22,6 +24,16 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
 }
 
 export async function GET(req: NextRequest) {
+  // Not currently called from any page — mixes live van GPS, business
+  // owner emails, and raw imported_businesses.* with no field allowlist
+  // and no access control. Gated pending a real caller; a future public
+  // map feature should use an explicit public-fields allowlist instead
+  // (see app/api/events/opportunities/route.ts's PUBLIC_FIELDS pattern).
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!(await isSuperAdmin(supabase, user))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
   const { searchParams } = req.nextUrl
   const lat    = parseFloat(searchParams.get('lat') ?? '0')
   const lng    = parseFloat(searchParams.get('lng') ?? '0')

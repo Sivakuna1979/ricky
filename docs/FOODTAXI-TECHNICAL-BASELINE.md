@@ -3203,3 +3203,119 @@ Every group aggregation function in `lib/groups/dashboard.ts` uses `Promise.all`
 - A dedicated group-level consolidated audit-log VIEW (every action IS logged via the existing `audit_logs` table — only a cross-entity filtered query UI for it was deferred, to avoid a rushed, potentially leaky scoping implementation under time pressure).
 - Group-to-group or archive/delete-with-cascade-safety-check for a whole group (only status-level suspend/archive exists).
 - A rollback-to-a-prior-template-version UI (history is preserved and queryable; the UI action isn't built).
+
+## 74. Production Reliability, Security, Observability, Backup & Scale Hardening (Phase N)
+
+A hardening pass, not a feature phase — no user-facing feature, no new
+payment provider, no group/franchise tier, no £19.99/£29.99 pricing
+change. Stripe Connect stayed inactive throughout. Scope: `apps/web`
+only.
+
+**Sandbox constraint, stated up front and honoured throughout**: this
+session has no live Vercel/Supabase infrastructure access — no browser,
+no production database, no network egress to run a real load test or
+restore drill. Per the phase's own instruction ("never claim results that
+were not actually verified"), every item below is either (a) a real
+code/config/migration change, verified by `type-check` and `build` in
+this sandbox, or (b) documented as requiring manual verification in a
+live environment, never claimed as tested when it wasn't. See
+`docs/PHASE-N-PRODUCTION-READINESS.md` for the full gate with every item
+marked PASS / PASS WITH MANUAL ACTION / BLOCKED / NOT APPLICABLE.
+
+### N1 audit findings — the headline result
+
+A static audit of every route using the service-role key directly (i.e.
+every route that bypasses RLS) found **12 API routes with no
+authorization check at all**, several of them explicitly commented
+"admin-only" or "super-admin" while enforcing nothing server-side:
+
+- `GET /api/events?admin=1` — every event_requests row (customer name,
+  phone, email, budget) to anyone who appended the query string.
+- `GET/PATCH/DELETE /api/events/[id]` — arbitrary field update or delete
+  of any event request.
+- `GET /api/events/applications`, `GET/POST/DELETE /api/events/blocked-dates`,
+  `GET /api/events/stats` (real platform revenue figures) — same gap.
+- `GET/POST/PATCH /api/admin/import-businesses` — unauthenticated bulk
+  write into the business directory.
+- `GET/POST /api/places/nearby`, `POST /api/discovery/google-places` —
+  unauthenticated, cost-abuse vector against the platform's Google Places
+  API budget (auto-expanding search radius).
+- `GET/PATCH/POST /api/places/invite` — leaked `invitation_token`, the
+  capability token used to authenticate the business claim flow, to any
+  caller.
+- `PATCH /api/admin/homepage-sections` — unauthenticated public-homepage
+  defacement.
+- `GET /api/admin/debug-user` — user enumeration + full users/businesses
+  row disclosure for any email, unauthenticated.
+- `GET /api/debug/orders`, `GET /api/debug/schedule` — leftover
+  diagnostic routes reading (and, for schedule, live-probing with
+  insert/delete) production data via the service-role key, unauthenticated.
+- `GET /api/map-data` — unreferenced anywhere in the app, but live and
+  reachable, mixing real-time van GPS with business owner emails via
+  `select('*')` with no field allowlist.
+
+All twelve now require the same `isSuperAdmin()` check every correctly-
+written sibling admin route in this codebase already used — the fix was
+never inventing new authorization logic, only applying the existing,
+correct pattern where it had been skipped. `app/api/vans/create` and
+`app/api/menu/import` were checked against the same pattern and found
+safe: both use the anon/session client and rely on RLS's `WITH CHECK`
+clause (`vans_owner_all`, `menu_items_owner_all_by_van`) to scope the
+insert, which is the same "RLS as the real boundary" design already
+documented in every prior phase.
+
+A related, narrower finding: `order_number_counters` (Phase D's
+daily-reset order numbering) never had RLS enabled — every write goes
+through a `SECURITY DEFINER` trigger, but with RLS off, Supabase's
+PostgREST layer exposed the raw table to the public anon key's default
+grants. Fixed additively in `20240062_phase_n_hardening.sql` (enables RLS,
+zero policies — a pure restriction, cannot break the trigger or the
+admin client).
+
+### What else was hardened
+
+- **WhatsApp webhook signature verification** (`app/api/webhooks/whatsapp/route.ts`):
+  Meta's `X-Hub-Signature-256` HMAC-SHA256 check, matching the existing
+  correct pattern in both Stripe webhooks. Rolled out
+  enforce-if-configured/pass-through-otherwise via `WHATSAPP_APP_SECRET`
+  so it can't silently break live WhatsApp ordering for a deployment that
+  hasn't set the new env var yet.
+- **Dependency audit**: removed unused `jspdf`/`jspdf-autotable`
+  (critical/high CVEs, zero references in the codebase), upgraded
+  `next`/`eslint-config-next` to the latest available 14.x patch
+  (14.2.35). Next.js 14 has reached end-of-patch-line — several CVE
+  ranges (including two critical RCE-class issues) extend into most of
+  Next 15 too, with no fix inside 14.x. Deliberately not remediated this
+  pass (a major-version jump is out of scope for a hardening pass given
+  the breaking-change risk across ~300+ route/page files) — documented as
+  known technical debt with a recommendation for a dedicated, separately
+  tested Next 15 migration.
+- **Security headers** (`next.config.js`): CSP scoped to every external
+  origin actually called from the browser (Stripe Terminal SDK, Leaflet
+  tiles, Supabase incl. Realtime websocket), X-Content-Type-Options,
+  Referrer-Policy, Permissions-Policy, X-Frame-Options, HSTS. `unsafe-inline`/
+  `unsafe-eval` kept on `script-src` because this sandbox has no browser
+  to verify a stricter nonce-based policy wouldn't break hydration —
+  flagged for live verification and tightening in `docs/SECURITY.md`.
+- **Rate limiting** (`lib/rateLimit.ts`): in-memory sliding window, applied
+  to guest order creation, promo-code validation, public feedback
+  submission, and push subscribe. Honestly documented as per-instance
+  (not distributed across serverless instances), with Upstash Redis noted
+  as the real production path.
+- **Structured logging** (`lib/logging.ts`) + request correlation id
+  (`middleware.ts` now echoes `x-request-id`), console-JSON so Vercel's
+  native log capture needs no paid add-on.
+- **`/api/health`** readiness endpoint — DB reachability only, no secret
+  or version leakage.
+- **`vercel.json` reconciliation** — the root and `apps/web/` copies had
+  drifted (only the root had the automations `crons` block); both now
+  agree, so the cron job registers regardless of which one Vercel's
+  project-root setting actually reads.
+
+### Not achievable in this sandbox — see docs/PHASE-N-PRODUCTION-READINESS.md
+
+Live load testing, an actual restore drill, Supabase-plan backup/PITR
+confirmation, live monitoring dashboard setup, and any live-browser CSP
+verification all require infrastructure this session doesn't have. Each
+is documented as a manual-verification action for the project owner,
+never claimed as tested.

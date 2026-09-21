@@ -2,6 +2,8 @@
 // Debug endpoint: shows DB state for a given email — only callable when logged in as super admin
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 const URL  = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const SVC  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -11,6 +13,14 @@ function admin() {
 }
 
 export async function GET(req: NextRequest) {
+  // The comment above has claimed super-admin-only since this file was
+  // written, but nothing ever enforced it — this returned auth-user
+  // existence, users/businesses rows for any email to any caller.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!(await isSuperAdmin(supabase, user))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
   if (!SVC) return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set' }, { status: 500 })
 
   const email = req.nextUrl.searchParams.get('email') ?? 'howeandcovan45@gmail.com'

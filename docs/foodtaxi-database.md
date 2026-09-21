@@ -500,3 +500,24 @@ Generic bulk-action tracking (currently used by menu-template publishing), `idem
 `my_group_ids()` (groups the caller owns or has an active `group_staff` role in), `my_group_member_business_ids()` (ACTIVE member business ids for those groups), `my_active_member_group_ids()` (the reverse: groups where a business the caller owns/staffs is an ACTIVE member — lets a member business read group-level content without any `group_staff` role), and `match_group_memory()`. All `SETOF UUID`, `STABLE SECURITY DEFINER`, following the exact existing `my_business_ids()`/`my_staff_business_ids()` pattern.
 
 RLS on every new Phase M table: `group_id IN (my_group_ids()) OR group_id IN (my_active_member_group_ids()) OR is_super_admin()` (or the equivalent business-visibility union for membership/application-style rows a business needs to see before it has any group role) — never "same group = full access" to anything beyond that table's own group-level content.
+
+## Production Hardening (Phase N)
+
+No new feature tables. One schema change: `20240062_phase_n_hardening.sql`
+enables RLS (zero policies) on `order_number_counters`, which had been
+created in Phase D (`20240034_daily_order_numbers.sql`) without RLS ever
+being turned on. Every write to that table goes through the
+`generate_order_number()` `SECURITY DEFINER` trigger; with RLS off,
+Supabase's PostgREST layer exposed the raw table to the public anon key's
+default grants, so a caller could have read/written the daily counter
+directly, bypassing the trigger. Purely restrictive — cannot break any
+existing read/write path (the trigger and the service-role admin client
+are unaffected by RLS).
+
+A full audit of every table's RLS policy (142 tables) found this to be
+the only table with RLS gap at the schema level — the rest of this
+phase's authorization findings were application-layer (API routes that
+skipped the standard `isSuperAdmin()` check while using the service-role
+client to bypass RLS entirely) rather than schema-level; see
+`docs/SECURITY.md` for the full RLS classification table and the API
+route findings.

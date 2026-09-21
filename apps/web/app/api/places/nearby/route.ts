@@ -9,6 +9,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 const KEYWORDS = [
   'food truck',
@@ -86,6 +88,17 @@ async function searchRadius(apiKey: string, lat: number, lng: number, radius: nu
 }
 
 export async function GET(req: NextRequest) {
+  // Not currently called from any page in this codebase, but it's a live,
+  // reachable route that burns the platform's Google Places API budget
+  // per call with auto-expanding radius (5→100 miles) — unauthenticated,
+  // it's a cost-abuse vector regardless of whether the UI links to it, so
+  // it gets the same admin gate as the other discovery/business-directory
+  // tooling (app/api/discovery/search).
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!(await isSuperAdmin(supabase, user))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     return NextResponse.json({

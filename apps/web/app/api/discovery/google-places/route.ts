@@ -1,6 +1,14 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
+
+async function requireSuperAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return isSuperAdmin(supabase, user)
+}
 
 const KEYWORDS = [
   'fish and chips van',
@@ -52,6 +60,7 @@ async function geocodePostcode(q: string): Promise<{ lat: number; lng: number } 
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     return NextResponse.json(
@@ -170,6 +179,7 @@ alter table discovered_businesses add column if not exists postcode text;`,
 
 // GET: test endpoint to verify API key is configured
 export async function GET() {
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const hasKey = !!process.env.GOOGLE_PLACES_API_KEY
   return NextResponse.json({
     configured: hasKey,

@@ -1,11 +1,19 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 // One-tap diagnostic for the van_schedule save problem.
 // Open /api/debug/schedule in a browser — every check reports ok/fail
 // with the exact database error, so we can see which layer is broken.
+// It performs real (immediately-reverted) inserts against van_schedule
+// using the service-role key and was reachable with no auth at all.
 export async function GET() {
+  const authClient = await createClient()
+  const { data: { user: caller } } = await authClient.auth.getUser()
+  if (!(await isSuperAdmin(authClient, caller))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
   const results: any = {}
 
   // 1. Is a real service-role key configured (not the anon fallback)?

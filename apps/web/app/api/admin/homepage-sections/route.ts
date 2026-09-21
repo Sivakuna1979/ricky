@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerAuthClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -54,6 +56,11 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const supabaseAuth = await createServerAuthClient()
+    const { data: { user } } = await supabaseAuth.auth.getUser()
+    if (!(await isSuperAdmin(supabaseAuth, user))) {
+      return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+    }
     const sections = await req.json()
     if (!Array.isArray(sections) || !sections.length) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })

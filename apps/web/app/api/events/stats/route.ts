@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 function getAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
@@ -11,7 +13,13 @@ function getAdmin() {
   })
 }
 
+// Platform-wide revenue and pipeline stats — admin-only.
 export async function GET() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!(await isSuperAdmin(supabase, user))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
   const db = getAdmin()
   const today = new Date().toISOString().slice(0, 10)
   const monthStart = today.slice(0, 7) + '-01'

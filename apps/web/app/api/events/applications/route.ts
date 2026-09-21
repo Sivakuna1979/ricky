@@ -5,6 +5,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 function getAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
@@ -15,7 +17,16 @@ function getAdmin() {
   })
 }
 
+// Lists applications (van owner name/email, business name, notes) for an
+// event — admin-only (contact details are only released to the organiser
+// after admin approval, per the opportunities route's PUBLIC_FIELDS
+// allowlist; this endpoint must never be reachable without that check).
 export async function GET(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!(await isSuperAdmin(supabase, user))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
   const event_id = req.nextUrl.searchParams.get('event_id')
   const db = getAdmin()
 

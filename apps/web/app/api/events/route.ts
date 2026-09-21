@@ -1,10 +1,13 @@
 // @ts-nocheck
 /**
  * GET  /api/events  — public calendar (only admin-blocked dates; dates never blocked by other requests)
+ * GET  /api/events?admin=1 — full event_requests rows incl. customer name/phone/email/budget (admin only)
  * POST /api/events  — submit an event request (multiple per day are allowed — marketplace model)
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 function getAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
@@ -20,6 +23,14 @@ export async function GET(req: NextRequest) {
   const admin = req.nextUrl.searchParams.get('admin') === '1'
 
   if (admin) {
+    // ?admin=1 was previously just a client-side hint with no server-side
+    // check — anyone could read every event_requests row (customer name,
+    // phone, email, budget) by appending it to the URL. Now enforced.
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!(await isSuperAdmin(supabase, user))) {
+      return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+    }
     const { data, error } = await db
       .from('event_requests')
       .select('*')

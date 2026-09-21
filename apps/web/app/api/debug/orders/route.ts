@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +17,14 @@ async function restGet(key: string, path: string) {
   return { ok: res.ok, status: res.status, data }
 }
 
+// Diagnostic endpoint — reads raw orders (guest names, totals) with the
+// service-role key, bypassing RLS. Was reachable with no auth at all.
 export async function GET() {
+  const authClient = await createClient()
+  const { data: { user: caller } } = await authClient.auth.getUser()
+  if (!(await isSuperAdmin(authClient, caller))) {
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
+  }
   const out: any = {}
   const key = SVC && SVC !== ANON ? SVC : ANON
   out.using_key = key === SVC ? 'service_role' : 'anon'

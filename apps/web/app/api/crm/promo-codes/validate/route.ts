@@ -9,9 +9,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { validateDiscountCode } from '@/lib/crm/discounts'
 import { findOrCreateCrmCustomer } from '@/lib/crm/identity'
+import { rateLimitResponse } from '@/lib/rateLimit'
 
 // Body: { business_id, van_id, channel, code, subtotal, phone?, email? }
 export async function POST(req: NextRequest) {
+  // Unauthenticated + guesses a code string — the classic brute-force
+  // shape, so this gets a tighter window than the other guest endpoints.
+  const limited = rateLimitResponse('promo-validate', req, 15, 60000)
+  if (limited) return limited
   const { business_id, van_id, channel, code, subtotal, phone, email } = await req.json().catch(() => ({}))
   if (!business_id || !code || subtotal == null) return NextResponse.json({ valid: false, reason: 'missing_fields' }, { status: 400 })
 

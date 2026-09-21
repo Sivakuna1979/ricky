@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/isSuperAdmin'
 
 function getAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
@@ -11,8 +13,15 @@ function getAdmin() {
   })
 }
 
+async function requireSuperAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return isSuperAdmin(supabase, user)
+}
+
 // GET: list all imported businesses
 export async function GET() {
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const db = getAdmin()
   const { data, error } = await db
     .from('imported_businesses')
@@ -24,6 +33,7 @@ export async function GET() {
 
 // POST: add single or array of businesses
 export async function POST(req: NextRequest) {
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const db = getAdmin()
   const body = await req.json()
   const rows = Array.isArray(body) ? body : [body]
@@ -55,6 +65,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH: update status (hide, convert)
 export async function PATCH(req: NextRequest) {
+  if (!(await requireSuperAdmin())) return NextResponse.json({ error: 'Not authorized.' }, { status: 403 })
   const db = getAdmin()
   const { id, status } = await req.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
