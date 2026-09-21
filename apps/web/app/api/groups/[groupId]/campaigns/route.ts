@@ -1,0 +1,46 @@
+// @ts-nocheck
+// M48-M53 — group marketing proposals. A shared DRAFT only — this route
+// never sends anything and never stores a customer list. Each business
+// that opts in creates its OWN real campaign via the existing,
+// unmodified /api/crm/campaigns flow (its own CRM/consent, its own
+// confirm step) and links it back here via group_campaign_participants
+// for visibility only.
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { resolveGroupContext } from '@/lib/groups/context'
+import { hasGroupPermission } from '@/lib/groups/permissions'
+
+export async function GET(req: NextRequest, { params }: { params: { groupId: string } }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await resolveGroupContext(supabase, user.id, params.groupId)
+  if (!ctx) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+
+  const admin = await createAdminClient()
+  const { data } = await admin.from('group_campaign_proposals').select('*, group_campaign_participants(*)').eq('group_id', ctx.groupId).order('created_at', { ascending: false })
+  return NextResponse.json(data ?? [])
+}
+
+// Body: { name, message_draft? }
+export async function POST(req: NextRequest, { params }: { params: { groupId: string } }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await resolveGroupContext(supabase, user.id, params.groupId)
+  if (!ctx || !hasGroupPermission(ctx.role, 'manage_group_announcements')) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+
+  const body = await req.json().catch(() => ({}))
+  if (!body.name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+
+  const admin = await createAdminClient()
+  const { data: proposal, error } = await admin.from('group_campaign_proposals').insert({ group_id: ctx.groupId, name: body.name.trim(), message_draft: body.message_draft ?? null, status: 'PROPOSED', created_by: ctx.userId }).select().single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { data: memberships } = await admin.from('group_memberships').select('business_id').eq('group_id', ctx.groupId).eq('status', 'ACTIVE')
+  if (memberships?.length) {
+    await admin.from('group_campaign_participants').insert(memberships.map((m: any) => ({ proposal_id: proposal.id, business_id: m.business_id })))
+  }
+
+  return NextResponse.json(proposal, { status: 201 })
+}

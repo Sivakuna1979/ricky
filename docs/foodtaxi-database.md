@@ -449,3 +449,54 @@ decline/cancel/timeout. No other column or table changed — every
 `payment_terminals`/`provider_webhook_events` row a Stripe Terminal charge
 produces uses the exact Phase L-A schema unchanged, with `provider =
 'STRIPE_TERMINAL'`.
+
+## Franchise, Group & Multi-Business Management (Phase M)
+
+Migration: `20240061_phase_m_groups.sql`. 23 new tables, 2 additive
+columns on existing tables, 4 new RLS helper functions. **Zero changes to
+any existing table's RLS policy** — every business-level table (orders,
+customers, finance, staff, payment/accounting connections, etc.) is
+completely untouched; see baseline doc §73's Core Security Principle.
+Full architecture write-up: baseline doc §73.
+
+### `business_groups` / `group_regions` / `group_staff` 🟢
+The organisation entity, optional sub-regions, and group-level roles
+(`GROUP_OWNER/GROUP_ADMIN/REGIONAL_MANAGER/GROUP_FINANCE/GROUP_OPERATIONS/GROUP_MARKETING/GROUP_VIEWER` — a genuinely separate model from business `staff`/`user_role`, never FoodTaxi Super Admin). `group_staff` is `UNIQUE(group_id, user_id)` — one role per user per group.
+
+### `group_memberships` 🟢
+The explicit Group↔Business linkage: `INVITED → ACTIVE → REMOVED/LEFT/REJECTED`, never deleted. `CREATE UNIQUE INDEX ... WHERE status = 'ACTIVE'` enforces at most one active group per business (M5's documented "simplest safe model" decision). No cascade onto any business data.
+
+### `group_menu_templates` / `_items` / `_versions` / `_applications` 🟢
+The shared menu template system. Template vs live menu stay structurally distinct — `menu_items.group_template_item_id` (new nullable column, additive) is the only link, provenance-only, never a name match. `_versions` snapshots the item list at publish time (versioning); `_applications` is the per-business propose→apply/reject workflow row (the "central change workflow").
+
+### `group_preferred_suppliers` / `group_purchase_proposals` / `group_purchase_proposal_items` 🟢
+Directory (name/category/notes only — no account numbers/pricing/contact, which stay in the existing, untouched `supplier_records`) and a draft purchasing proposal system that never creates a real `purchase_orders` row itself.
+
+### `group_documents` / `group_document_targets` / `group_document_acknowledgements` 🟢
+Group documents (`url` — an external link; no file-upload/Storage infrastructure exists anywhere in this codebase) with `ALL/REGION/SELECTED` visibility and optional non-certifying "acknowledged" tracking.
+
+### `group_memory` 🟢
+Genuinely separate from Phase F's `business_memory` (same embedding shape, own `match_group_memory()` function) — two different tables, never merged.
+
+### `group_announcements` / `group_announcement_targets` 🟢
+Staff-facing internal announcements; sending fans out into the existing `notifications` table (Phase D), never a new inbox.
+
+### `event_requests.group_id` 🟢
+Additive nullable column — provenance tagging only, participation stays through the existing `event_applications` flow.
+
+### `group_stock_transfers` 🟢
+A↔B stock transfer workflow (`PROPOSED → ACCEPTED/REJECTED/CANCELLED → COMPLETED`), `idempotency_key UNIQUE`. Accepting triggers two real `apply_stock_movement()` RPC calls (Phase C, unmodified) — a genuine, auditable stock movement on both sides, never a silent quantity edit.
+
+### `group_goals` 🟢
+Same shape as Phase K's `business_goals` — a target, never a ranking.
+
+### `group_campaign_proposals` / `group_campaign_participants` 🟢
+A shared marketing DRAFT only — never stores a customer list or sends anything; each business resolves its own audience and sends through the existing, unmodified `/api/crm/campaigns/[id]/confirm` flow.
+
+### `group_bulk_operations` / `group_bulk_operation_results` 🟢
+Generic bulk-action tracking (currently used by menu-template publishing), `idempotency_key UNIQUE`, per-business succeeded/failed/skipped/reason results.
+
+### RLS helper functions — new 🟢
+`my_group_ids()` (groups the caller owns or has an active `group_staff` role in), `my_group_member_business_ids()` (ACTIVE member business ids for those groups), `my_active_member_group_ids()` (the reverse: groups where a business the caller owns/staffs is an ACTIVE member — lets a member business read group-level content without any `group_staff` role), and `match_group_memory()`. All `SETOF UUID`, `STABLE SECURITY DEFINER`, following the exact existing `my_business_ids()`/`my_staff_business_ids()` pattern.
+
+RLS on every new Phase M table: `group_id IN (my_group_ids()) OR group_id IN (my_active_member_group_ids()) OR is_super_admin()` (or the equivalent business-visibility union for membership/application-style rows a business needs to see before it has any group role) — never "same group = full access" to anything beyond that table's own group-level content.

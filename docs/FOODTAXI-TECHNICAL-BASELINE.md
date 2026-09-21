@@ -3061,3 +3061,145 @@ separate credential.
 - Reader de-registration/renaming UI (a business can add a location but not yet remove/rename one from the Integration Centre — only via the Stripe Dashboard directly).
 - Partial-capture / manual-capture PaymentIntent flows — every Terminal PaymentIntent uses `capture_method: 'automatic'` (immediate capture on approval), the simplest and most common till behaviour; delayed capture was judged out of scope.
 - A payout/settlement view inside FoodTaxi (Stripe's own Express dashboard, linked from the connected account, already covers this — duplicating it was judged unnecessary scope).
+
+## 73. Franchise, Group & Multi-Business Management (Phase M)
+
+An OPTIONAL organisation layer above individual businesses:
+Group/Franchise → optional Region → Business → Vans → Routes/Stops.
+**FoodTaxi continues to fully support completely independent businesses
+with no group** — nothing in this phase changes any existing business-only
+code path (see the Core Security Principle below, and the M1 audit
+findings, which confirmed a genuinely green-field addition with zero
+schema/behaviour to migrate away from).
+
+### M1 audit findings (summary)
+
+- `businesses` had zero group/franchise/parent columns, and no prior
+  migration ever added one.
+- `staff.UNIQUE(business_id, user_id)` was already dropped in Phase C —
+  nothing at the DB level stops one user spanning multiple businesses (or
+  now groups); the RLS helper functions (`my_business_ids()`,
+  `my_staff_business_ids()`) are already `SETOF UUID` — genuinely
+  multi-row-safe. The single-business assumption in this app is an
+  API-layer choice (`getStaffContext()`'s "first business found" when no
+  hint is given), not a database constraint.
+- `business_memory` (Phase F) and `notifications` (Phase D) are both
+  strictly single-business/single-user with `NOT NULL` FKs — genuinely new
+  tables were needed for group documents/memory and group announcements
+  (the latter fans out into the existing `notifications` table for
+  delivery, never a parallel inbox).
+- The existing "claim a business" flow (`app/api/places/claim`) keys
+  strictly off `google_place_id`, never a name/brand string — the
+  precedent this phase's group↔business linkage follows throughout: a
+  group always selects an EXISTING business by its real id, and the
+  business owner must explicitly accept (never a silent/automatic claim).
+- `audit_logs` (Phase C) is a generic actor/action/entity table, reused
+  as-is for every group action — no new audit table.
+
+### CORE SECURITY PRINCIPLE (repeated because every table's RLS choice
+depends on it)
+
+Group membership never implies unlimited access. **Business-level RLS
+(orders, customers, finance, staff, documents, payment/accounting
+connections) was not touched by this migration at all** — no policy adds
+"OR business_id IN (a group's businesses)" to any existing table. Every
+group-level aggregate (sales summary, stock summary, attention items,
+etc.) is computed in the API layer by an explicitly permission-checked
+route querying each authorised business_id individually via the
+service-role client — exactly the same pattern Phase K's Command Centre
+already uses across a business's own vans, one level up
+(`lib/groups/dashboard.ts`). New group-scoped tables get their OWN RLS,
+scoped by group membership, never "same group" on an existing business
+table.
+
+### Organisation model (M1-M5) — migration `20240061_phase_m_groups.sql`
+
+- `business_groups` (id, name, slug, type `FRANCHISE|BUSINESS_GROUP|REGIONAL_GROUP|OTHER`, status, branding JSONB, owner_user_id, timestamps). Type is a label only — access is always checked against `group_staff.role`/explicit permissions, never `type`.
+- `group_regions` (optional sub-scoping, `UNIQUE(group_id, name)`).
+- `group_memberships` — explicit Group↔Business linkage. Status `INVITED → ACTIVE` (via the business's own explicit accept) `→ REMOVED/LEFT/REJECTED`. **Never deleted** — full lifecycle audit trail preserved. No cascade from this table onto any business data.
+- **Decision (M5)**: a business may hold at most one **ACTIVE** group membership at a time (`CREATE UNIQUE INDEX ... WHERE status = 'ACTIVE'`). Multi-group membership was audited and rejected for this phase — it would require resolving territory/price-policy/template conflicts across two unrelated franchises simultaneously, a liability question this phase's brief doesn't define. A business can freely leave one group and join another.
+
+### Group roles/permissions/autonomy (M6-M9) — `lib/groups/permissions.ts`
+
+`GROUP_OWNER, GROUP_ADMIN, REGIONAL_MANAGER, GROUP_FINANCE, GROUP_OPERATIONS, GROUP_MARKETING, GROUP_VIEWER` — a genuinely SEPARATE permission model from `lib/permissions.ts` (business roles), mirroring its exact array-per-role shape. **Explicitly not FoodTaxi Super Admin.** Granular permissions split sensitive from ordinary exactly as instructed:
+- Ordinary: `view_group_dashboard/businesses/sales_summary/operations/stock_summary/routes/customer_summary/finance_summary/staff_summary/hygiene/vehicles`, `manage_group_members/templates/brand/catalogue/announcements/events/documents/integrations`, `view_group_audit`.
+- **Sensitive, deliberately separate**: `view_group_finance_detail` (GROUP_FINANCE only), `view_group_staff_personal`, `manage_group_accounting_connections`, `manage_group_payment_connections`, `view_group_private_documents`. **No role grants `view_group_customer_contact` at all** — group-level customer PII access is deliberately not built in this phase (see "CRM/customer privacy" below).
+- `REGIONAL_MANAGER` is scoped server-side (`lib/groups/context.ts`'s `scopedBusinessIds()`) to only their assigned region's member businesses — never enforced client-side, never by trusting a region_id from the request.
+- **Business autonomy (M8)**: if a group is disabled/suspended, a relationship is removed, or a group user loses access, the member business continues operating completely normally — no business-table code path reads `business_groups.status` or `group_memberships` at all for anything operational (orders, POS, finance, etc.).
+
+### Membership lifecycle (M10-M11)
+
+Default flow: `manage_group_members` searches for an EXISTING business by name/id (`GET /api/groups/[groupId]/businesses?q=`, a picker only — never auto-adds) → `POST /members` creates an `INVITED` row → the business's own owner/staff (requiring `manage_business`) explicitly `accept`s or `reject`s via `PATCH /members/[businessId]`. **No brand/name-based claiming exists anywhere in this flow.** Removal (`action: 'remove'`, group-side) or leaving (`action: 'leave'`, business-side) both just update `status` — verified by code review that neither ever touches `businesses`, `vans`, `orders`, `customers`, `finance_*`, documents, `staff`, or routes.
+
+### Group dashboard / regions / KPIs (M12-M20)
+
+`/group/dashboard` (`components/groups/GroupDashboard.tsx`) — every field gated by its own specific permission (a `GROUP_VIEWER` sees only the directory/headline KPIs; finance detail/customer contact/staff personal never appear regardless of role). `lib/groups/dashboard.ts` calls Phase B/H/K's own existing functions (`getSalesSummary`, `getCogsSummary`, `computeAllExceptions`) **once per authorised business, each in its own timezone** (`businesses.timezone`) — never a shared clock, and a cold-start flag for businesses under 14 days old (mirrors K64/K65). Business directory shows status/region/van counts only — no street address (M13). Comparisons are always factual side-by-side figures, never an opaque score (M14/M50).
+
+### Branding/policy (M21)
+
+`business_groups.branding` JSONB, sanitised server-side (`lib/groups/branding.ts`) — a malformed/unset colour always falls back to FoodTaxi's own default palette rather than being stored/rendered as-is.
+
+### Menu templates / versioning / price policy (M21-M30, M84)
+
+`group_menu_templates` (policy `GROUP_LOCKED|GROUP_DEFAULT_BUSINESS_CAN_OVERRIDE|BUSINESS_CONTROLLED`) → `group_menu_template_items` (per-item `price_policy REQUIRED|RECOMMENDED|BUSINESS_CONTROLLED`) → **publish** snapshots a `group_menu_template_versions` row and creates a `PENDING` `group_menu_template_applications` row per targeted active member business (the central change workflow: propose → affected businesses → [impact preview computed client-side from this data] → authorised application — **never a silent overwrite**). A business applies (`lib/groups/menuTemplates.ts`) or rejects via its OWN `manage_menu` permission — the group can never force an application through. TEMPLATE and LIVE menu stay structurally distinct: `menu_items.group_template_item_id` (nullable) is the ONLY link, matched by provenance never by name, so a business's own pre-existing items are never touched. Re-apply behaviour is conservative: `GROUP_LOCKED` templates fully re-sync every field; `price_policy: REQUIRED` items always re-sync price specifically; everything else is left untouched on re-apply (never silently overwritten). Publishing is tracked via the generic `group_bulk_operations`/`group_bulk_operation_results` tables (idempotency key `APPLY_MENU_TEMPLATE:<template>:v<n>` — a duplicate publish attempt is rejected, not re-run).
+
+### Shared product/suppliers/purchasing (M29-M30)
+
+`group_preferred_suppliers` — name/category/notes only; account numbers, pricing, and contact details stay exclusively in each business's own private `supplier_records` (untouched). `group_purchase_proposals`/`group_purchase_proposal_items` — a shared DRAFT demand list only; **never creates a real `purchase_orders` row or any liability**. Converting a proposal line into a business's own real PO is done manually through the business's existing, unmodified purchase-order flow — a dedicated one-click "convert" button was deliberately not built in this pass (listed under Not Built) to avoid rushing a write path that touches real supplier liability without careful review.
+
+### Group documents / Memory / announcements (M31-M35)
+
+`group_documents` (category `MANUAL|SOP|TRAINING|SUPPLIER_LIST|MENU_STANDARD|OTHER`, `url` — an external link, since **no file-upload/Storage infrastructure exists anywhere in apps/web today**, confirmed by audit; consistent with how `businesses.logo_url` etc. already work) with `visibility ALL|REGION|SELECTED` and optional `group_document_acknowledgements` ("I've read this" — never described as certification, per M67/M73). `group_memory` is a genuinely SEPARATE table from Phase F's `business_memory` (same embedding shape, `match_group_memory()` mirrors `match_business_memory()`) — two different tables queried by two different AI tool sets, so neither can leak into the other even by coding mistake. `group_announcements` fan out into the **existing, unmodified `notifications` table** (one row per targeted user, `type: 'group_announcement'`) rather than a parallel inbox — shows up in the same `NotificationCentre` every other alert already uses. Kept entirely separate from Phase I customer marketing.
+
+### Events (M36)
+
+`event_requests.group_id` (nullable, additive) tags an event as group-sourced provenance only — participation stays fully explicit via the EXISTING, unmodified `event_applications` flow per business; this column never triggers an auto-apply.
+
+### Staff / training / hygiene / vehicle oversight (M36-M42)
+
+Group staff view is aggregate role counts via `group_staff`, never personal details beyond name/email needed to manage membership itself. "Shared staff, one identity" (M72) was confirmed already structurally supported — `staff.UNIQUE(business_id, user_id)` was dropped in Phase C, so one `users` row can already have `staff` rows at multiple businesses; Phase M adds no new identity mechanism, only (partially — see Not Built) a way to indicate which business context you're acting in. Training material is just `group_documents` with `category: 'TRAINING'` — document views are never competency certification (M73). Hygiene/vehicle oversight (`getGroupHygieneSummary`/`getGroupVehicleAlerts`) are aggregate factual counts computed from the existing `hygiene_logs`/`vehicle_details` tables — never edits historical compliance, never exposes a private document without permission.
+
+### Finance / subscription (M43-M47)
+
+`GET /api/groups/[groupId]/finance` — `view_group_finance_summary` gets net revenue/gross contribution totals only; `view_group_finance_detail` additionally gets the per-business breakdown. **Never** invoice/cash-count/VAT/accounting-connection detail at group level — that stays entirely inside each business's own Finance Hub, unreachable from any group route. **No franchise-fee/royalty schema was created** — M77 explicitly says "may be documented only if justified"; nothing in this phase's brief justifies it, so no column/table exists at all (avoiding unused scaffolding) — documented here as a deliberate non-decision, not an oversight. **The £19.99/month + first-3-days-free FoodTaxi Business subscription is completely unchanged** — no group/franchise tier was created, no member subscription is auto-consolidated under group billing (verified: no code path anywhere in this phase reads or writes `subscriptions`/`subscription_plans`).
+
+### CRM / customer privacy / consent / loyalty (M48-M53)
+
+`getGroupCustomerGrowthSummary()` returns new-customer COUNTS only, per business — **no group role, including GROUP_FINANCE or GROUP_ADMIN, can ever see a customer's name, phone, or email through any group route or AI tool** (deliberately no `view_group_customer_contact` permission exists at all — see M9 above). Customers are never merged across businesses by matching phone/email/name (no code anywhere does this). Group marketing (`group_campaign_proposals`/`group_campaign_participants`) is a shared DRAFT only — each participating business resolves ITS OWN audience from its OWN CRM/consent and sends through the EXISTING, unmodified `/api/crm/campaigns/[id]/confirm` flow; this table never stores a customer list and never sends anything itself. Consent to Business A never implies consent to Business B/the group (structurally true: consent lives on each business's own customer records, untouched). **Group loyalty was NOT built** — M53 explicitly says "only if scope, eligibility and liability are explicitly defined; otherwise defer," and none of that is defined in this phase's brief, so it was deferred rather than invented.
+
+### Route / territory / stock / transfers (M54-M59)
+
+Territory-overlap detection and a dedicated group live-vehicle map were **not built** in this pass (see Not Built) — genuinely new algorithmic/mapping work judged lower priority than the transfer/template/membership core under this phase's time budget. `group_stock_transfers`: A (the sending business, `manage_stock`) proposes → B (the receiving business, `manage_stock`) accepts, resolving its own matching stock item → **real** `TRANSFER_OUT`/`TRANSFER_IN` movements via the existing, unmodified `apply_stock_movement()` RPC (Phase C), atomically claimed (`status='PROPOSED'` compare-and-set) so a retried accept can never double-move stock. Cost data is preserved (the movement RPC's own existing behaviour); no accounting treatment is invented.
+
+### Command Centre / reports (M60-M64)
+
+`getGroupAttentionItems()` reuses Phase K's `computeAllExceptions()` verbatim, once per business — **zero duplicate alert logic**. `group_goals` mirrors `business_goals`' exact shape (a target, never a punitive ranking). Reports/exports were **not built as a dedicated group export** in this pass (Finance/directory data is viewable in-dashboard, scoped correctly, but no CSV/PDF export route exists yet) — listed under Not Built.
+
+### Group AI (M65-M70)
+
+`lib/ai/tools/group.ts` (`get_group_summary`, `get_group_live_operations`, `get_group_attention_items`, `get_group_business_comparison`, `get_group_stock_summary`, `get_group_hygiene_summary`, `get_group_customer_growth_summary`, `get_group_event_summary`) — every tool **read-only**, computed via `lib/groups/dashboard.ts`'s own functions, never a second calculation. `lib/ai/groupAssistant.ts` is a genuinely SEPARATE tool-use loop from Phase E's business assistant (`lib/ai/assistant.ts`) — a deliberate small duplication of the model-call helper rather than sharing code, so the business and group tool registries can never be merged or confused by a future edit. The AI never sees a raw `group_id`/`business_id` list it could act on — context is resolved server-side from the session only, exactly like the business AI. **Deliberately no group-level `propose_*`/write tool exists in this pass** — M68's safe-action requirement is trivially satisfied by having nothing to confirm; the far more valuable and lower-risk need (querying aggregate summaries) is what's built. **Stateless in this pass**: `ai_conversations.business_id` is `NOT NULL` (Phase E's schema) — widening that core table's constraint for a stateless group feature was judged unnecessary risk; no group AI conversation is persisted server-side (listed under Not Built).
+
+### Audit / Super Admin / onboarding (M71-M76)
+
+Every group write action is logged via the EXISTING, unmodified `audit_logs`/`logAuditEvent()` helper (Phase C) — confirmed structurally reusable, no new audit table. **FoodTaxi Super Admin (`users.role = 'super_admin'`) remains completely distinct from any group role** — every group RLS policy includes `OR is_super_admin()` (visibility only, matching how Super Admin already sees everything else), but no group permission function or route ever grants a group role Super Admin capability, and no Super Admin capability is defined in terms of a group role. The existing business claim flow (`app/api/places/claim`) is untouched and confirmed to key strictly off `google_place_id`, never brand/name matching — the same discipline is followed throughout this phase's group↔business linkage. Onboarding: create group (`POST /api/groups`) → brand (`PATCH /api/groups/[groupId]`) → invite businesses (`POST /members`) → group staff (`POST /staff`) → regions (`POST /regions`) → optional templates → `/group/dashboard` — each step is its own independent API call/page, so the flow is naturally resumable (no monolithic wizard transaction to fail out of). Group creation reuses normal account rules with no separate approval process and no subscription implication of its own.
+
+### Bulk safety / ownership / versioning (M77-M84)
+
+`group_bulk_operations`/`group_bulk_operation_results` (generic, reused by template publishing) carry an `idempotency_key` — a retried trigger is rejected, never re-run — and always record succeeded/failed/skipped/reason per business. Data ownership: group templates/documents/announcements/transfers/purchase-proposals belong to the group (`group_id` FK, `ON DELETE CASCADE` on the group only); live menus, suppliers, CRM, and reports remain business-owned always. **Archiving/deleting a group was not built as a dedicated action in this pass** (only `status: 'ARCHIVED'` via the brand-update route exists) — a true delete-with-cascade-safety-check was judged higher-risk than valuable to rush; `business_groups` has no `ON DELETE CASCADE` from businesses in either direction regardless, so even an eventual delete could never remove a member business. Template versioning is built (`group_menu_template_versions`, current/pending distinguishable via `group_menu_templates.status`/`group_menu_template_applications.status`); no rollback-to-a-prior-version UI exists yet (listed under Not Built) — the version history itself is preserved and queryable.
+
+### Performance / security / scope UI (M85-M91)
+
+Every group aggregation function in `lib/groups/dashboard.ts` uses `Promise.all` across businesses (bounded parallel queries), never a query-per-business-per-field N+1 pattern. Realtime is not used anywhere in this phase (matching K68-70's own precedent — nothing here is a second-by-second feed). Tested by code review, not live load (see Testing below), against the shape of both a 2-business and a 20+-business group — every aggregation function is `O(businesses)` round trips, not `O(businesses × something)`. RLS review: confirmed no policy in the Phase M migration ever combines "same group" with unrestricted access to a sensitive business table — every group table's policy is `group_id IN (my_group_ids()) OR group_id IN (my_active_member_group_ids())`, and member-business visibility is READ-oriented content (templates, documents, announcements, supplier directory) that a business is meant to see, never a business's own sensitive tables. **The Group → Business → Van switcher (M90) is only partially built** — a business can already resolve context explicitly via `getStaffContext`'s existing `businessIdHint` parameter (untouched, no regression risk), and the new Group/My-Group pages are entirely separate top-level areas with their own nav, so there's never ambiguity about which scope you're in *within* this phase's own new pages — but a single unified switcher dropdown usable from every existing business dashboard page was not built (propagating a cookie/hint through 60+ existing pages was judged too large/risky a change for this pass) — listed prominently under Not Built/technical debt.
+
+### Not built in Phase M (all deliberately deferred per the brief's own "if genuinely needed"/"only if explicitly defined" language, or flagged as out of this pass's safe time budget — not overlooked)
+
+- A unified Group → Business → Van scope switcher usable from every existing business page (only the new Group/My-Group areas have clear, unambiguous scope today).
+- Territory/route-overlap detection and a group live-vehicle map.
+- A dedicated group data export (CSV/PDF) route.
+- Group loyalty (explicitly deferred per M53 — scope/eligibility/liability undefined).
+- Franchise-fee/royalty schema (explicitly not built per M77 — "documented only if justified," and nothing justified it here).
+- A one-click "convert group purchase proposal line → real PO" action (manual conversion through the existing PO flow works today).
+- Persisted Group AI conversation history (stateless in this pass — see "Group AI" above).
+- A dedicated group-level consolidated audit-log VIEW (every action IS logged via the existing `audit_logs` table — only a cross-entity filtered query UI for it was deferred, to avoid a rushed, potentially leaky scoping implementation under time pressure).
+- Group-to-group or archive/delete-with-cascade-safety-check for a whole group (only status-level suspend/archive exists).
+- A rollback-to-a-prior-template-version UI (history is preserved and queryable; the UI action isn't built).
