@@ -105,8 +105,13 @@ see §13 for the full Phase B writeup of the first row below.
 | **FoodTaxi Business subscription** (£19.99/mo, 3-day trial, FoodTaxi's own Checkout + Customer Portal) | `app/api/subscriptions/checkout`, `/portal`, `/route.ts` (legacy, unused) | ✅ **Active (Phase B)** |
 | Event booking fee (£29.99, one-off, FoodTaxi's own Checkout) | `app/api/events/pay/route.ts` | ✅ Active — unchanged by Phase B |
 | Webhook | `app/api/webhooks/stripe/route.ts` | ✅ Active for booking fee + subscription lifecycle events, idempotent (`stripe_webhook_events`) |
-| Stripe Connect (marketplace) | `app/api/payments/create-intent/route.ts` | ⚠️ Inactive, unused, and contradicts the confirmed model above. Not touched in Phase B — deletion decision is for later. |
+| Stripe Connect (marketplace) | `app/api/payments/create-intent/route.ts` | ⚠️ Inactive, unused, and contradicts the confirmed model above. Re-confirmed inactive in Phase L (L1/L5 audit) — still not touched, not deleted. |
 | Legacy multi-tier subscription route | `app/api/subscriptions/route.ts` | ⚪ Superseded by `app/api/subscriptions/checkout` in Phase B. Left in place, not deleted, not called by any UI. |
+
+**Phase L update (see §72 for the full write-up):** the four rows above are
+completely unchanged — Phase L's payment/accounting integration work is
+entirely new, additive infrastructure. No live customer card-payment
+provider has been connected for any business as of Phase L.
 
 ---
 
@@ -2626,3 +2631,301 @@ See the completion report for the full, honest breakdown of what was statically 
 - Enhancing the Phase D daily/weekly briefing text itself to reference the new exception/opportunity language.
 - A keyboard-shortcut-driven command palette (the search bar is a type-ahead dropdown, not a `Cmd+K`-style overlay).
 - A dedicated rate-limiting layer for the search/AI endpoints (same pre-existing gap Phase J already documented).
+
+## 72. Payments, Accounting Integrations & External Connectivity (Phase L)
+
+**Two-stage phase.** L-A (this pass): provider-neutral payment architecture,
+Xero/QuickBooks accounting integrations, reconciliation, Integration
+Centre, and a technically-verified provider decision report. L-B (a
+future, separately-approved pass): actual live customer card processing
+against one specific, explicitly-approved provider. **No live payment
+provider has been activated for any business in this pass** — see
+"Provider decision report" below.
+
+### L1 audit findings (summary — full write-up was a background agent report, key facts folded into the rest of this section)
+
+- Real money movement before Phase L was exactly two live Stripe Checkout
+  flows, both FoodTaxi's own account (never a food customer's payment):
+  the £19.99/mo + 3-day-trial subscription and the £29.99 one-off event
+  fee. Both are completely untouched by Phase L.
+- The original `payments` table (`stripe_payment_intent_id`/`stripe_charge_id`)
+  and `app/api/payments/create-intent/route.ts` (a Stripe Connect
+  destination-charge skeleton) are confirmed dead/unreferenced code — no
+  UI calls it, `businesses.stripe_account_id` has never been set by
+  anything. Left exactly as-is; Phase L builds a new, parallel,
+  provider-neutral schema rather than repurposing this dead path.
+- POS `card_at_van` and guest/online `card_online` were confirmed to be
+  payment-method **labels only** — zero provider integration, no card is
+  ever actually processed. `refunds.status` is schema-constrained
+  (`CHECK`) to the single value `'RECORDED'` — a 100% manual bookkeeping
+  entry, no provider refund call anywhere. `card_reconciliations.provider`/
+  `.external_terminal_total` are free-text/manually-typed fields.
+- No OAuth or external-accounting integration existed anywhere in
+  `apps/web` before this phase — Xero/QuickBooks are a genuinely blank
+  slate. (`apps/agent`, a separate app in the monorepo, has its own
+  unrelated Google OAuth — not part of FoodTaxi.)
+
+### Money-flow separation (L2)
+
+Four money flows, kept structurally separate, never mixed in any table or
+calculation:
+1. **Customer → business** (food order payment) — `orders.payment_method`/`total` (unchanged), now optionally corroborated by a `provider_transactions` row (new, Phase L).
+2. **Business → FoodTaxi** (£19.99/mo subscription) — `subscriptions`/`app/api/subscriptions/*` (untouched).
+3. **Business → FoodTaxi** (£29.99 event fee) — `event_applications`/`app/api/events/pay` (untouched).
+4. **Business → supplier** (expenses/supplier invoices, Phase H) — `expenses`/`supplier_invoices` (untouched).
+
+### Stripe Connect status (L3)
+
+Confirmed still fully **INACTIVE** — not activated, not deleted. Re-verified
+by direct code review: `app/api/payments/create-intent/route.ts` is
+unreferenced by any `.tsx` file in `apps/web`, and no code path writes
+`businesses.stripe_account_id`.
+
+### Provider-neutral architecture (L4) — new tables (migration `20240059_phase_l_payments_integrations.sql`)
+
+All new, purely additive — no existing table altered, no destructive
+change, no existing payment/finance data touched.
+
+| Table | Purpose |
+|---|---|
+| `payment_provider_connections` | Per-business, per-provider connection status (`DISCONNECTED`/`CONNECTED`/`ACTION_REQUIRED`/`ERROR`) — non-secret fields only. |
+| `payment_provider_secrets` | OAuth/API tokens. RLS enabled, **zero client-role policies** — only the server's own admin (service-role) client can ever read/write this table. |
+| `accounting_connections` / `accounting_secrets` | Same split, for Xero/QuickBooks. |
+| `oauth_states` | Short-lived CSRF state + PKCE `code_verifier` for every OAuth authorize/callback round-trip (payment and accounting). |
+| `payment_terminals` | Provider-neutral terminal metadata (business, van, provider, label, status) — no device secrets. |
+| `provider_transactions` | Provider-neutral payment transaction log. Idempotent by `UNIQUE(provider, provider_transaction_id)`. |
+| `provider_refunds` | Provider-side refund requests, distinct from the existing manual `refunds` table (which is untouched) but linkable to it via `refund_id`. Idempotent by `UNIQUE(provider, provider_refund_id)` and a caller-supplied `idempotency_key`. |
+| `provider_webhook_events` | Shared webhook idempotency log for every external provider (payment AND accounting), mirroring the exact pattern already proven by `stripe_webhook_events` (Phase B). |
+| `accounting_account_mappings` | Category → external account/tax-code mapping, connection-bound. **Deliberately not an extension of** Phase H's `finance_account_mappings` (a generic, provider-agnostic CSV-export label with no tax code) — a genuinely different purpose. |
+| `accounting_sync_jobs` | Background sync queue — `NOT_SYNCED`/`QUEUED`/`SYNCING`/`SYNCED`/`FAILED`/`NEEDS_REVIEW`, with `attempts`/`next_retry_at` backing exponential backoff and a dead-letter (`NEEDS_REVIEW`) state. Idempotent by `UNIQUE(idempotency_key)`. |
+| `reconciliation_review_items` | Generic review queue for unmatched/mismatched provider records — same shape as Phase H's `finance_review_items`, deliberately a separate table since this one is specifically about *external* provider/accounting discrepancies, never internal document extraction. |
+
+Every table carries the standard `business_id IN (my_business_ids()) OR
+business_id IN (my_staff_business_ids()) OR is_super_admin()` RLS policy
+(the *_secrets and `oauth_states` tables excepted — see above).
+
+### Provider decision report (L5/L6)
+
+A full technically-verified comparison of Stripe Terminal, SumUp, Square,
+Zettle by PayPal, and Dojo (added as the "or another suitable provider"
+option) was produced and presented to the user for explicit approval —
+**not yet given as of this pass.** Sourced from each provider's own
+developer documentation via WebSearch (direct WebFetch to
+`docs.stripe.com`/`developer.sumup.com` was blocked by this session's
+network egress proxy). Key findings, encoded as reference data in
+`lib/payments/types.ts`'s `PAYMENT_PROVIDER_INFO` (used by the Integration
+Centre to explain each option without implying any is active):
+
+- **Stripe Terminal** — confirmed UK-available, confirmed payment-creation
+  API, lowest integration risk (FoodTaxi already has a live Stripe
+  account/webhook pipeline/SDK dependency for the subscription and event
+  fee).
+- **SumUp** — confirmed UK-available, confirmed Cloud API (remote-trigger
+  an existing terminal) and Online Payments API, confirmed refund endpoint
+  and webhook events with signature verification.
+- **Square** — UK Terminal API confirmed, but the in-app Reader SDK is
+  **not available in the UK** — only the terminal-hardware/remote-trigger
+  model works here.
+- **Zettle by PayPal** — confirmed public API surface (Finance/Payout,
+  Purchases read/history, Inventory, Pusher real-time) but **no publicly
+  documented endpoint for creating a new payment was found** — the
+  weakest-verified candidate for FoodTaxi's actual need.
+- **Dojo** — confirmed self-serve Developer Portal, API-key auth,
+  documented in-person/online payment guides — added for breadth, not yet
+  explored to the same depth as the other four.
+
+Fee figures found during research were sourced from third-party comparison
+sites, never a provider's own pricing page (UK card fees are bespoke per
+merchant) — explicitly not asserted as fact anywhere in the app or this
+document.
+
+### Payment lifecycle, statuses, idempotency (L7–L10)
+
+`provider_transactions.status` is the exact set
+`CREATED/PENDING/AUTHORISED/SUCCEEDED/FAILED/CANCELLED/PARTIALLY_REFUNDED/REFUNDED`
+(`lib/payments/types.ts`). `payment_method_type` is
+`CASH/CARD_RECORDED/PROVIDER_VERIFIED_CARD/ONLINE_PROVIDER/OTHER` —
+`PROVIDER_VERIFIED_CARD`/`ONLINE_PROVIDER` may only ever be set by genuine
+provider confirmation, never a staff button tap (enforced structurally: no
+code path sets these from the POS/guest-checkout routes, which are
+untouched). `lib/payments/transactions.ts`'s `upsertProviderTransaction()`
+is the one writer — idempotent via the table's `UNIQUE(provider,
+provider_transaction_id)` constraint (insert-first, unique-violation ⇒
+update-instead, the same pattern as Phase D's `claimRun()`).
+`lib/payments/webhooks.ts`'s `claimWebhookEvent()`/`markWebhookEvent()`
+mirror `stripe_webhook_events`'s proven insert-first-then-process pattern
+for every future payment/accounting webhook receiver.
+
+### Terminal / POS / refunds / receipts / reconciliation foundation (L11–L23)
+
+- **Terminals**: `payment_terminals` + `/api/integrations/payments/terminals` — a business can register/label/assign a terminal record today (dormant metadata, no device secrets, no live provider link since none is connected).
+- **Server-authoritative POS flow**: designed (server creates the transaction record, provider confirms, only then does the order progress) but **not activated** — no code path drives it yet, since it requires an approved, connected provider.
+- **Refunds**: a genuinely new, separate provider-refund architecture (`provider_refunds`, `lib/payments/transactions.ts`'s `draftProviderRefund()`) sits alongside Phase H's existing manual `refunds` table, which is completely untouched. The AI can only ever *draft* a provider refund (`propose_provider_refund` tool → a `PENDING` `ai_pending_actions` row); the confirm step (`app/api/ai/actions/[id]/confirm/route.ts`'s `confirm_provider_refund` branch) re-validates everything server-side and **fails loudly** ("no live payment provider is connected... nothing has been refunded") rather than ever faking success, since no provider is connected for any business today.
+- **Receipts**: `app/receipt/[id]/page.tsx` now also checks for a `SUCCEEDED` `provider_transactions` row (`PROVIDER_VERIFIED_CARD`/`ONLINE_PROVIDER`) and shows "Card — verified by `<provider>`" only when one genuinely exists — dormant today, correct the moment it applies.
+- **Reconciliation**: `lib/payments/reconciliation.ts`'s `runReconciliationSweep()` is a deterministic (never AI-guessed) matcher — a `provider_transactions` row is only ever matched to an order via its own `order_id` column (set at creation time by the future server-authoritative flow), never fuzzy amount/time heuristics. Anything unmatched, unconfirmed, amount-mismatched, or duplicate-candidate is written to `reconciliation_review_items` for a human to resolve via the Integration Centre.
+
+### Multi-business payment isolation (L24 — release blocker)
+
+Verified by code review: every new table's RLS policy is business-scoped
+(`payment_provider_connections`, `provider_transactions`,
+`provider_refunds`, `payment_terminals`, `accounting_connections`,
+`accounting_sync_jobs`, `reconciliation_review_items`), every API route
+resolves `business_id` server-side via `getStaffContext()` (never from a
+request body/query param), and the two secrets tables grant **zero**
+client-role access at all, so even an RLS misconfiguration could not leak
+one business's token to another's session — only the server's own
+admin/service-role client (already scoped to `ctx.businessId` in every
+route) ever reads them.
+
+### Integration Centre / OAuth (L25–L29)
+
+`/dashboard/integrations` (`components/integrations/IntegrationCentre.tsx`)
+shows payment-provider candidates (all `DISCONNECTED` today, with an
+explicit "not yet approved" banner), Xero/QuickBooks connection status
+(`CONNECTED`/`ACTION_REQUIRED`/`ERROR`/`DISCONNECTED`, never a secret
+value), account mappings, sync-job status with manual retry, and the
+reconciliation review queue with resolve/dismiss actions. OAuth
+(`lib/integrations/oauth.ts`) generates server-side state + PKCE
+(`code_verifier`/S256 `code_challenge`), stored in `oauth_states` with a
+10-minute expiry and a one-time-use guard (`used_at`, claimed atomically) —
+the callback route re-derives business/user identity entirely from the
+stored state row, never from anything the redirect query string itself
+claims. Tokens are written only by `lib/integrations/secrets.ts`, only
+into the secrets tables, and are never selected by any route that returns
+JSON to the browser.
+
+### Xero (L30–L37)
+
+`lib/accounting/xero.ts` — a real integration against Xero's own
+documented OAuth2 (`login.xero.com`) + REST API (`api.xero.com`), plain
+`fetch()`-based (no SDK dependency added). Conservative scope
+(`openid profile email accounting.transactions accounting.settings.read
+offline_access`) — no payroll/contact-merge/admin scopes. Read-only
+account/tax-rate fetch for the mapping screen
+(`getXeroAccounts`/`getXeroTaxRates`); a conservative summary-invoice push
+(`pushXeroSalesSummary`/`pushXeroExpense` — one line per van/day or per
+expense, never individual orders). `lib/accounting/mapping.ts`'s
+`requireAccountMapping()` throws (never guesses) if no mapping exists for
+a category — the sync engine turns that into a `NEEDS_REVIEW` job, never a
+guessed submission. Tax codes are never inferred — `tax_code` is only ever
+what a human typed into the mapping screen, and the mapping screen itself
+states this is not tax advice.
+
+**Caveat, stated plainly**: this code is genuinely correct against Xero's
+published API documentation but **could not be live-tested end-to-end in
+this sandboxed session** — no Xero developer app is registered, and this
+environment has no network egress to `xero.com`. It will need a real
+sandbox/demo-org test pass before being relied upon in production (see
+"Manual setup required" below).
+
+### QuickBooks (L38)
+
+`lib/accounting/quickbooks.ts` — built to the **exact same connector
+shape** as Xero (`exchange*Code`/`refresh*Token`/`get*Accounts`/`get*TaxCodes` or `getTaxRates`/`push*SalesSummary`/`push*Expense`), against Intuit's
+own documented OAuth2 (`appcenter.intuit.com`/`oauth.platform.intuit.com`)
++ REST API. Defaults to the **sandbox** host
+(`sandbox-quickbooks.api.intuit.com`) unless `QUICKBOOKS_ENVIRONMENT=production`
+is explicitly set — a misconfigured env var can never accidentally write
+to a live accounting org. Same live-testing caveat as Xero above.
+
+### Sync engine / reconciliation review / integration health (L43–L49)
+
+`lib/accounting/syncEngine.ts`: `enqueueSyncJob()` is idempotent
+(`UNIQUE(idempotency_key)` — a duplicate enqueue is a no-op, not a second
+job). `processSyncJob()`/`processDueSyncJobs()` run from the existing
+Vercel Cron entry point (`app/api/cron/automations`, hourly — no new
+scheduling infrastructure) via the new
+`lib/automations/evaluators/integrations.ts`. Backoff is exponential
+(5/10/20/40/80 minutes); a job failed 5 times moves to `NEEDS_REVIEW`
+(dead-letter) rather than retrying forever, surfaced in both the
+Integration Centre and a new Command Centre exception category
+(`lib/commandCentre/exceptions.ts`'s `integrationExceptions()` — no opaque
+health score, just real connection/job/review counts). A daily digest
+notification (`integration_sync_issue`, reusing Phase D's exact
+`claimRun`/`notify`/`completeRun` engine — no parallel alerting system) is
+sent only when there's genuinely something to report.
+
+### AI tools / protections (L50–L58)
+
+`lib/ai/tools/integrations.ts` — `get_integration_status`,
+`get_unmatched_payments`, `get_accounting_sync_status` (all read-only,
+querying only non-secret tables) and `propose_provider_refund` (drafts
+only — see "Refunds" above). Verified: the AI never receives an OAuth
+token, API key, webhook secret, or card credential anywhere (no tool
+queries `*_secrets`); it cannot connect/disconnect a provider, change a
+payout destination, alter a mapping, or execute a refund — none of those
+exist as tools at all. The £19.99/3-day-trial subscription and the £29.99
+event fee are functionally and structurally untouched (their files were
+not modified). Customers remain free — no new tier was introduced. No
+per-order FoodTaxi commission was introduced. No raw PAN/CVV/card data is
+stored anywhere (the schema has no such column; providers are only ever
+referenced by their own opaque transaction/refund IDs).
+
+### Testing (L59–L71)
+
+Performed as static/code-review-based verification, consistent with every
+prior phase's honest handling of this session having no live
+database/browser environment:
+
+- **Webhook idempotency**: `claimWebhookEvent()`'s insert-first-then-`23505`-short-circuit pattern is identical in shape to the already-production-proven `stripe_webhook_events` handler — verified by direct comparison, not just written fresh.
+- **Transaction/refund idempotency**: `upsertProviderTransaction()` and `draftProviderRefund()` were traced through their retry paths by hand (a `23505` unique-violation on either table recurses into an update/return-existing branch rather than surfacing an error) — a double webhook delivery or a double-click can never create two rows.
+- **Refund safety**: traced the full `propose_provider_refund` → `ai_pending_actions` (`PENDING`) → `confirm_provider_refund` path — confirmed the execute branch re-reads the transaction/connection fresh (never trusts `pending.params` beyond an id), and confirmed it fails (not fakes success) when no provider is connected, which is the state of every business today.
+- **Cross-tenant isolation**: every new table's RLS policy and every new route's `ctx.businessId` scoping was reviewed line-by-line (see "Multi-business payment isolation" above) — this is a release blocker per the phase brief and was treated as such.
+- **Permissions**: `view_integrations`/`manage_payment_integrations`/`manage_accounting_integrations` role grants reviewed against the same reasoning as every prior phase's permission table (see "Permissions" below).
+- **Xero/QuickBooks sandbox testing**: **not performed** — no developer app is registered for either provider in this environment and there is no network egress to test against a real sandbox org from this session. Flagged explicitly rather than claimed.
+- **Regression**: `npm run type-check` and `npm run build` both pass cleanly after all Phase L changes (see the completion report for exact output). `npm run lint` could not run — this repository has no `.eslintrc` and `next lint`'s interactive setup prompt cannot be answered non-interactively in this environment; this is a **pre-existing condition** (confirmed absent before Phase L too), not a Phase L regression.
+
+### Permissions (L25/L35)
+
+Three new permissions added to `lib/permissions.ts`: `view_integrations`,
+`manage_payment_integrations`, `manage_accounting_integrations`.
+- **BUSINESS_ADMIN**: all three (matches their existing full finance access).
+- **VAN_MANAGER**: `view_integrations` only (can see e.g. "terminal offline" for their own van; cannot connect/disconnect anything).
+- **ACCOUNTANT**: `view_integrations` + `manage_accounting_integrations` only — Xero/QuickBooks is a natural extension of running the books; the payment-provider/terminal side is deliberately excluded (not bookkeeping).
+- **DRIVER/STAFF**: none of the three.
+
+### RLS / PCI / secrets (release-blocker level, reviewed throughout)
+
+No raw card number, CVV, or other sensitive authentication data is stored
+anywhere in the schema — every payment table references a provider's own
+opaque transaction/refund id only. OAuth/API tokens live exclusively in
+`payment_provider_secrets`/`accounting_secrets`, RLS-enabled with zero
+client-role policies (service-role/admin-client only). No token is ever
+logged (`console.log`/audit events only ever record IDs, provider names,
+and status — never a token value — verified by review of every new file).
+No long-lived secret is ever sent to the browser or stored in
+`localStorage`.
+
+### Manual setup required for Phase L
+
+None of the following is configured in this environment — all are needed
+before Xero/QuickBooks (or, later, an approved payment provider) can
+actually be connected in production:
+
+- Register a Xero developer app (`developer.xero.com`) — set redirect URI to `<APP_URL>/api/integrations/accounting/xero/callback`, note the Client ID/Secret.
+- Register a QuickBooks developer app (`developer.intuit.com`) — same redirect URI pattern for `quickbooks`, note the Client ID/Secret, decide sandbox vs production.
+- Set the environment variables listed below in Vercel (names only — see "Environment variables").
+- Test both connections against a real Xero demo company / QuickBooks sandbox company before relying on any live sync.
+- **Payment provider**: nothing to configure yet — pending the user's explicit provider approval (see "Provider decision report" above).
+
+### Environment variables (names/placeholders only — never real values in this document)
+
+| Variable | Purpose |
+|---|---|
+| `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET` | Xero OAuth2 app credentials. |
+| `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | QuickBooks (Intuit) OAuth2 app credentials. |
+| `QUICKBOOKS_ENVIRONMENT` | `sandbox` (default) or `production` — defaults to sandbox if unset. |
+| `NEXT_PUBLIC_APP_URL` | Already in use (Phase B) — reused as the OAuth redirect-URI base for both providers. |
+
+No payment-provider environment variable is documented yet — that will be
+added once a specific provider is approved (L-B), named separately from
+the platform's own `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` (Phase B,
+unchanged) so the two can never be confused.
+
+### Not built in Phase L (L-A scope; all deliberately deferred, not overlooked)
+
+- **Live customer card processing of any kind** — the entire point of the L-A/L-B split. No provider is connected; `payment_provider_connections` will always show `DISCONNECTED` for every business until the user approves a specific provider.
+- Real (not sandbox-caveated) end-to-end testing of the Xero/QuickBooks OAuth and sync flows — blocked by this environment having no registered developer app for either and no network egress to their APIs.
+- `SUPPLIER_INVOICE`/`CUSTOMER_INVOICE`/`REFUND` accounting sync job types are supported structurally by the sync engine and schema but have no UI trigger creating them yet — only `SALES_SUMMARY`/`EXPENSE` are wired end-to-end in this pass, matching L36's conservative-scope instruction.
+- A payment-provider OAuth authorize/callback implementation — deliberately not built for an unapproved, unverified specific provider (would require asserting implementation details for a provider that might not even be the one approved); will be built in L-B against the actual approved provider.
+- A dedicated rate-limiting layer for the new Integration Centre endpoints (same pre-existing gap Phases J/K already documented).

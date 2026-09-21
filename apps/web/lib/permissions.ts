@@ -37,6 +37,14 @@ export const PERMISSIONS = [
   'view_command_centre', 'view_business_intelligence', 'view_finance_intelligence',
   'view_customer_intelligence', 'view_stock_intelligence', 'manage_business_goals',
   'use_ai_owner_brief',
+  // Phase L (L25/L35) — payments/accounting integrations, deliberately
+  // split three ways: seeing the Integration Centre at all; managing the
+  // higher-stakes payment-provider/terminal side (connect/disconnect a
+  // real card-payment provider, confirm a provider refund); and managing
+  // the accounting side (Xero/QuickBooks connect/mappings/sync retry),
+  // which an ACCOUNTANT reasonably needs without touching payment
+  // providers or terminals at all.
+  'view_integrations', 'manage_payment_integrations', 'manage_accounting_integrations',
 ] as const
 export type Permission = typeof PERMISSIONS[number]
 
@@ -65,6 +73,9 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     'view_command_centre', 'view_business_intelligence', 'view_finance_intelligence',
     'view_customer_intelligence', 'view_stock_intelligence', 'manage_business_goals',
     'use_ai_owner_brief',
+    // L25/L35 — a trusted manager gets the full Integration Centre, same
+    // reasoning as their full finance access above.
+    'view_integrations', 'manage_payment_integrations', 'manage_accounting_integrations',
   ],
   // Runs the operational side of the van(s) they're assigned to — enough
   // finance access to log a cash count and an expense at their own van,
@@ -85,6 +96,10 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     // owner-brief (that's framed as whole-business decision support).
     'view_command_centre', 'view_business_intelligence', 'view_finance_intelligence',
     'view_customer_intelligence', 'view_stock_intelligence',
+    // L25 — can see terminal/connection status for their own van(s) (e.g.
+    // "terminal offline") but cannot connect/disconnect a real provider or
+    // touch accounting — that stays Owner/Admin/Accountant only.
+    'view_integrations',
   ],
   // Business memory notes are deliberately low-stakes (operational
   // observations, not financial/destructive actions), so every active
@@ -107,6 +122,11 @@ const ROLE_PERMISSIONS: Record<Exclude<BusinessRole, 'OWNER'>, Permission[]> = {
     'manage_finance_settings', 'manage_business_memory',
     // K60 — finance-scoped only, same as every other Accountant grant.
     'view_finance_intelligence', 'use_ai_owner_brief',
+    // L35 — an accountant/bookkeeper manages the Xero/QuickBooks side
+    // (connect, mappings, retry sync) as a natural extension of running
+    // the books, but never the payment-provider/terminal side (that's not
+    // bookkeeping — it's operational money infrastructure).
+    'view_integrations', 'manage_accounting_integrations',
   ],
 }
 

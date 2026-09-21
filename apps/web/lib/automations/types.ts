@@ -15,6 +15,7 @@ export type AutomationType =
   | 'end_of_route_review'
   | 'invoice_due_reminder' | 'finance_review_digest' | 'vat_period_reminder' | 'daily_finance_summary'
   | 'promo_expiring' | 'feedback_request'
+  | 'integration_sync_issue'
 
 export const DEFAULT_IN_APP_ONLY = { in_app: true, email: false, sms: false, whatsapp: false }
 export const DEFAULT_IN_APP_EMAIL = { in_app: true, email: true, sms: false, whatsapp: false }
@@ -53,6 +54,8 @@ export const AUTOMATIONS: Record<AutomationType, {
   // Phase I — CRM/loyalty/marketing automations.
   promo_expiring:  { label: 'Promo code expiring',   description: 'Alert 3 days before an active promo code ends.', category: 'marketing', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'manage_promotions' },
   feedback_request: { label: 'Feedback request',      description: 'Ask a customer to rate their order by email, once, a few hours after collection.', category: 'marketing', defaultEnabled: false, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'manage_reviews' },
+  // Phase L — payments/accounting integration health.
+  integration_sync_issue: { label: 'Integration sync issues', description: 'A daily digest when accounting sync jobs fail/need review, or a payment/accounting connection has an error.', category: 'reports', defaultEnabled: true, defaultChannels: DEFAULT_IN_APP_ONLY, permission: 'view_integrations' },
 }
 
 export const AUTOMATION_TYPE_LIST = Object.keys(AUTOMATIONS) as AutomationType[]

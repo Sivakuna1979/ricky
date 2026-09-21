@@ -224,8 +224,42 @@ export async function routeExceptions(admin: any, businessId: string, vanIds: st
   return out
 }
 
+// L47 — integration-health exceptions: connection errors and open
+// reconciliation/sync-review items. No opaque health score (K7) — just the
+// real counts and connection statuses, same as every other category here.
+export async function integrationExceptions(admin: any, businessId: string): Promise<Exception[]> {
+  const out: Exception[] = []
+  const [{ data: connections }, { count: needsReview }, { count: openReview }] = await Promise.all([
+    admin.from('accounting_connections').select('id, provider, status, last_error').eq('business_id', businessId).in('status', ['ERROR', 'ACTION_REQUIRED']),
+    admin.from('accounting_sync_jobs').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('status', 'NEEDS_REVIEW'),
+    admin.from('reconciliation_review_items').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('status', 'OPEN'),
+  ])
+  for (const c of connections ?? []) {
+    out.push({
+      dedupeKey: `integration_connection:${c.id}`, category: 'integrations', priority: c.status === 'ERROR' ? 'IMPORTANT' : 'ACTION',
+      title: `${c.provider === 'XERO' ? 'Xero' : 'QuickBooks'} needs attention`, detail: c.last_error ?? `Connection status: ${c.status}.`,
+      evidence: { connection_id: c.id, status: c.status }, actionUrl: '/dashboard/integrations',
+    })
+  }
+  if (needsReview) {
+    out.push({
+      dedupeKey: `integration_sync_needs_review:${businessId}`, category: 'integrations', priority: 'ACTION',
+      title: `${needsReview} accounting sync job${needsReview === 1 ? '' : 's'} need review`, detail: 'Stuck after repeated automatic retries.',
+      evidence: { needs_review_count: needsReview }, actionUrl: '/dashboard/integrations',
+    })
+  }
+  if (openReview) {
+    out.push({
+      dedupeKey: `integration_reconciliation_open:${businessId}`, category: 'integrations', priority: 'ACTION',
+      title: `${openReview} reconciliation item${openReview === 1 ? '' : 's'} open`, detail: 'Unmatched or mismatched payment/provider records awaiting review.',
+      evidence: { open_review_count: openReview }, actionUrl: '/dashboard/integrations',
+    })
+  }
+  return out
+}
+
 export async function computeAllExceptions(admin: any, businessId: string, vanIds: string[], todayStart: string): Promise<Exception[]> {
-  const [stock, repeated, hygiene, vehicle, staff, finance, wastage, route] = await Promise.all([
+  const [stock, repeated, hygiene, vehicle, staff, finance, wastage, route, integrations] = await Promise.all([
     stockExceptions(admin, businessId),
     repeatedStockoutExceptions(admin, businessId),
     hygieneExceptions(admin, businessId, vanIds, todayStart),
@@ -234,6 +268,7 @@ export async function computeAllExceptions(admin: any, businessId: string, vanId
     financeExceptions(admin, businessId),
     wastageExceptions(admin, businessId, vanIds),
     routeExceptions(admin, businessId, vanIds),
+    integrationExceptions(admin, businessId),
   ])
-  return [...stock, ...repeated, ...hygiene, ...vehicle, ...staff, ...finance, ...wastage, ...route]
+  return [...stock, ...repeated, ...hygiene, ...vehicle, ...staff, ...finance, ...wastage, ...route, ...integrations]
 }

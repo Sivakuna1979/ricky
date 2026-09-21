@@ -325,6 +325,14 @@ function CashCardTab({ vans, currency }: any) {
 
   return (
     <div>
+      {/* L23 — this manual entry (type in a terminal total) is unchanged.
+          The Integration Centre is where a real, provider-verified
+          reconciliation will appear once a card-payment provider is
+          approved and connected — linked here rather than duplicating it. */}
+      <div style={{ ...card, background: '#f9fafb', fontSize: 12, color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Card totals below are still typed in by hand. Provider-verified payments and refunds (once a payment provider is connected) appear in Integrations.</span>
+        <a href="/dashboard/integrations" style={{ color: '#059669', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', marginLeft: 12 }}>Open Integrations →</a>
+      </div>
       <div style={card}>
         <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           <select value={vanId} onChange={e => setVanId(e.target.value)} style={input}>{vans.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}</select>

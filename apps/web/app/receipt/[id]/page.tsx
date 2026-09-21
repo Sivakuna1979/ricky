@@ -24,8 +24,25 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
   const items = order.order_items ?? []
   const van = order.vans
   const bizName = van?.businesses?.name
-  const paymentLabel = { card_online: 'Card (online)', cash_at_van: 'Cash', card_at_van: 'Card' }[order.payment_method] ?? order.payment_method
+  let paymentLabel = { card_online: 'Card (online)', cash_at_van: 'Cash', card_at_van: 'Card' }[order.payment_method] ?? order.payment_method
   const change = order.cash_tendered != null ? Number(order.cash_tendered) - Number(order.total) : null
+
+  // L21 — a receipt only ever says "verified by <provider>" when a real
+  // provider_transactions row confirms it (SUCCEEDED, PROVIDER_VERIFIED_CARD
+  // or ONLINE_PROVIDER) — never inferred from the staff-recorded
+  // payment_method label alone. No provider is connected for any business
+  // today, so this branch is dormant until Phase L-B, but the receipt is
+  // ready to show it correctly the moment it applies.
+  const { data: verifiedTxn } = await admin
+    .from('provider_transactions')
+    .select('provider, payment_method_type')
+    .eq('order_id', order.id).eq('status', 'SUCCEEDED')
+    .in('payment_method_type', ['PROVIDER_VERIFIED_CARD', 'ONLINE_PROVIDER'])
+    .maybeSingle()
+  if (verifiedTxn) {
+    const providerLabel = verifiedTxn.provider.replace('_', ' ')
+    paymentLabel = `Card — verified by ${providerLabel}`
+  }
 
   return (
     <div className="receipt-page" style={{ minHeight: '100vh', background: '#f5f6fa', padding: '24px 16px', fontFamily: '-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif' }}>

@@ -386,3 +386,46 @@ RLS on every new Phase K table: the standard `my_business_ids() OR my_staff_busi
 
 ### `lib/permissions.ts` — seven new permissions 🟢
 `view_command_centre`, `view_business_intelligence`, `view_finance_intelligence`, `view_customer_intelligence`, `view_stock_intelligence`, `manage_business_goals`, `use_ai_owner_brief`. No schema change (the `PERMISSIONS`/`ROLE_PERMISSIONS` arrays in `lib/permissions.ts` are TypeScript constants, not a DB enum) — see baseline doc §71's "Permissions" section for exactly which roles get which.
+
+## Payments, Accounting Integrations & External Connectivity (Phase L)
+
+Migration: `20240059_phase_l_payments_integrations.sql`. Purely additive —
+no existing table altered or destructively changed; every existing
+payment/finance row is preserved exactly as it was. Full architecture
+write-up: baseline doc §72. **No live customer card-payment provider is
+connected for any business** — see the provider decision report in §72.
+
+### `payment_provider_connections` / `payment_provider_secrets` 🟢
+Per-business, per-provider (`STRIPE_TERMINAL`/`SUMUP`/`SQUARE`/`ZETTLE`/`DOJO`/`OTHER`) connection status (`DISCONNECTED`/`CONNECTED`/`ACTION_REQUIRED`/`ERROR`), non-secret fields only, `UNIQUE(business_id, provider)`. Real OAuth/API tokens live in the separate `payment_provider_secrets` table, RLS-enabled with **zero client-role policies** — only the server's own service-role client can read/write it; no API route selects it.
+
+### `accounting_connections` / `accounting_secrets` 🟢
+The same non-secret/secret split, for `XERO`/`QUICKBOOKS`. `external_org_id`/`external_org_name` hold the connected Xero tenant / QuickBooks realm identity.
+
+### `oauth_states` 🟢
+Short-lived (10-minute) CSRF state + PKCE `code_verifier` for every OAuth authorize/callback round-trip, `provider_kind` (`PAYMENT`/`ACCOUNTING`) + `provider`, one-time-use (`used_at`, claimed atomically so a state can never be replayed).
+
+### `payment_terminals` 🟢
+Provider-neutral terminal metadata: business, optional van, optional connection, provider, `provider_device_id`, label, status (`ACTIVE`/`OFFLINE`/`UNASSIGNED`/`ERROR`). No device secrets stored. Dormant until a payment provider is connected.
+
+### `provider_transactions` 🟢
+The provider-neutral payment transaction log. `status` is the full lifecycle (`CREATED/PENDING/AUTHORISED/SUCCEEDED/FAILED/CANCELLED/PARTIALLY_REFUNDED/REFUNDED`), `payment_method_type` distinguishes `CASH/CARD_RECORDED/PROVIDER_VERIFIED_CARD/ONLINE_PROVIDER/OTHER`. Idempotent by `UNIQUE(provider, provider_transaction_id)` — the sole writer, `lib/payments/transactions.ts`'s `upsertProviderTransaction()`, treats a unique-violation as "already recorded, update instead" rather than an error.
+
+### `provider_refunds` 🟢
+Provider-side refund requests — distinct from Phase H's existing manual `refunds` table (untouched), linkable via `refund_id`. `status` `PENDING/SUCCEEDED/FAILED/CANCELLED`. Idempotent by both `UNIQUE(provider, provider_refund_id)` (once a provider assigns one) and a caller-supplied `UNIQUE idempotency_key` (before one exists). The AI can only ever create a `PENDING` row (`propose_provider_refund` tool) — the confirm step is the only path that can move it further, and today always fails safely (`no_active_payment_provider`) since no provider is connected.
+
+### `provider_webhook_events` 🟢
+Shared webhook idempotency log for every external provider (payment and accounting), `UNIQUE(provider, event_id)` — the exact insert-first pattern already proven by Phase B's `stripe_webhook_events`. Stores only minimal metadata (event id/type/status), never a full raw payload.
+
+### `accounting_account_mappings` 🟢
+`UNIQUE(business_id, provider, category)` — category is one of `sales/food_stock/packaging/fuel/vehicle/repairs/equipment/marketing/professional_fees/other`, mapping to a real `external_account_id`/`external_account_name`/`tax_code`. **Not** the same table as Phase H's `finance_account_mappings` (a generic, provider-agnostic CSV-export label with no tax code and no real connection) — deliberately separate since this one is connection-bound and feeds a real sync. `tax_code` is only ever what a human typed in; never guessed.
+
+### `accounting_sync_jobs` 🟢
+The background sync queue. `status` `NOT_SYNCED/QUEUED/SYNCING/SYNCED/FAILED/NEEDS_REVIEW`, `attempts`/`next_retry_at` back exponential backoff, `UNIQUE(idempotency_key)` makes re-queueing the same underlying fact a no-op. A job failed 5 times moves to `NEEDS_REVIEW` (dead-letter) rather than retrying forever.
+
+### `reconciliation_review_items` 🟢
+Generic review queue (`category` + `reference` JSONB + `detail`), `status` `OPEN/RESOLVED/DISMISSED`. Written only by `lib/payments/reconciliation.ts`'s deterministic `runReconciliationSweep()` — never resolves anything itself, only surfaces unmatched/mismatched provider records for a human.
+
+RLS on every new Phase L table (except the two secrets tables and `oauth_states`, which grant no client-role policy at all): the standard `my_business_ids() OR my_staff_business_ids() OR is_super_admin()` pattern used since Phase C.
+
+### `lib/permissions.ts` — three new permissions 🟢
+`view_integrations`, `manage_payment_integrations`, `manage_accounting_integrations`. No schema change (TypeScript constants, not a DB enum) — see baseline doc §72's "Permissions" section for exactly which roles get which.

@@ -45,6 +45,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     create_stock_transfer: 'manage_stock',
     create_expense: 'create_expense',
     create_campaign_draft: 'manage_campaigns',
+    // L18/L57 — a real provider refund is a higher-stakes money-movement
+    // action than a manual bookkeeping refund entry (approve_expense),
+    // so it requires the dedicated payment-integrations permission, not
+    // reused from Finance.
+    confirm_provider_refund: 'manage_payment_integrations',
   }
   const requiredPermission = PERMISSION_BY_ACTION[pending.action_type]
   if (requiredPermission && !hasPermission(ctx.role, requiredPermission)) {
@@ -117,6 +122,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }).select().single()
       if (error) throw error
       result = { campaign_id: campaign.id }
+    } else if (pending.action_type === 'confirm_provider_refund') {
+      // L18 — the ONLY place a provider_refunds row can move off PENDING.
+      // Server revalidates everything independently of what was proposed
+      // (E24) — the original provider_transaction is re-read fresh, never
+      // trusted from `pending.params`. If no real provider connection is
+      // CONNECTED (true for every business today, since no provider is
+      // yet approved), this fails loudly rather than pretending a refund
+      // happened — nothing here ever fakes success.
+      const { provider_refund_id } = pending.params
+      const { data: refundRow } = await admin.from('provider_refunds').select('*, provider_transactions(*)').eq('id', provider_refund_id).maybeSingle()
+      if (!refundRow || refundRow.business_id !== ctx.businessId) throw new Error('refund_not_found')
+      if (refundRow.status !== 'PENDING') throw new Error('refund_already_handled')
+
+      const { data: connection } = await admin.from('payment_provider_connections').select('status').eq('id', refundRow.provider_transactions.connection_id).maybeSingle()
+      if (!connection || connection.status !== 'CONNECTED') {
+        await admin.from('provider_refunds').update({ status: 'FAILED', confirmed_by: ctx.userId, updated_at: new Date().toISOString() }).eq('id', refundRow.id)
+        throw new Error('no_active_payment_provider — no live payment provider is connected for this business, so nothing has been refunded.')
+      }
+      // Real provider refund API call would happen here once a provider
+      // is approved and connected (L-B) — intentionally not implemented
+      // against a specific provider yet (see the Phase L decision report).
+      throw new Error('provider_refund_not_yet_implemented')
     } else {
       throw new Error('unknown_action_type')
     }
