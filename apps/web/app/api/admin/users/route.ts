@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   if (action === 'reset') {
     const { error } = await admin.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://food-taxi.vercel.app'}/reset-password`,
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/reset-password`,
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, message: `Reset email sent to ${email}` })

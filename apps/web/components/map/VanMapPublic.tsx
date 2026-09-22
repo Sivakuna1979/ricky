@@ -68,7 +68,7 @@ function pinHtml(emoji: string, color: string, border = 'rgba(255,255,255,0.85)'
   return `<div style="background:${color};border:2.5px solid ${border};border-radius:50% 50% 50% 0;width:34px;height:34px;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,0.35)"><span style="transform:rotate(45deg);font-size:15px">${emoji}</span></div>`
 }
 function buildInviteMessage(name: string, placeId: string) {
-  const url = `https://food-taxi.vercel.app/claim/${placeId}`
+  const url = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/claim/${placeId}`
   return `Hi ${name}, we found your food business on Google and would like to invite you to join FoodTaxi — a platform where customers can find local mobile food businesses, request event bookings, view menus, and navigate to you. Claim your free business profile here: ${url}`
 }
 
@@ -93,7 +93,7 @@ function InviteModal({ place, onClose }: { place: GooglePlace; onClose: () => vo
   const [website, setWebsite] = useState<string|null>(null)
   const [fetching, setFetching] = useState(true)
   const msg  = buildInviteMessage(place.name, place.place_id)
-  const link = `https://food-taxi.vercel.app/claim/${place.place_id}`
+  const link = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/claim/${place.place_id}`
 
   // Auto-fetch the business contact details so buttons connect directly.
   useEffect(() => {

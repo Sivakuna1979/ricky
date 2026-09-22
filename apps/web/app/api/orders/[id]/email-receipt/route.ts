@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const bizName = order.vans?.businesses?.name ?? order.vans?.name ?? 'FoodTaxi'
   const ref = (order.order_number ?? order.id.slice(0, 8)).toUpperCase()
   const lines = items.map((it: any) => `${it.quantity}x ${it.name} — £${Number(it.item_total).toFixed(2)}`).join('\n')
-  const receiptUrl = `https://food-taxi.vercel.app/receipt/${order.id}`
+  const receiptUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/receipt/${order.id}`
 
   const text = `Receipt from ${bizName}\nOrder #${ref}\n${new Date(order.created_at).toLocaleString('en-GB')}\n\n${lines}\n\nTotal: £${Number(order.total).toFixed(2)}\n\nView online: ${receiptUrl}\n\nThank you!`
 

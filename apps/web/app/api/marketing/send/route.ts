@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < emails.length; i += 100) {
     const chunk = emails.slice(i, i + 100)
     const batch = chunk.map(email => {
-      const unsubscribeUrl = `https://food-taxi.vercel.app/api/marketing/unsubscribe?email=${encodeURIComponent(email)}`
+      const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/api/marketing/unsubscribe?email=${encodeURIComponent(email)}`
       return {
         from,
         to: email,

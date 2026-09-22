@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'
+
 const NAV = [
   { label:'Dashboard',   icon:'📊', href:'/admin/dashboard'   },
   { label:'Businesses',  icon:'🚐', href:'/admin/businesses'  },
@@ -62,7 +64,7 @@ export default function AdminInvitationsPage() {
     for (let idx=0; idx<targets.length; idx++) {
       const t = targets[idx]
       setBulkIdx(idx+1)
-      const msg = `Hi ${t.name}, we found your food business on FoodTaxi! Customers near you are already discovering your listing. Claim your free profile here: https://food-taxi.vercel.app/claim/${t.google_place_id}\n\nAdd your menu, enable live GPS tracking, accept online orders and event bookings — completely free!`
+      const msg = `Hi ${t.name}, we found your food business on FoodTaxi! Customers near you are already discovering your listing. Claim your free profile here: ${APP_URL}/claim/${t.google_place_id}\n\nAdd your menu, enable live GPS tracking, accept online orders and event bookings — completely free!`
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
       await new Promise(r=>setTimeout(r,1500))
     }
@@ -72,7 +74,7 @@ export default function AdminInvitationsPage() {
   const [copiedId, setCopiedId] = useState('')
   const [notesEdit, setNotesEdit] = useState<Record<string, string>>({})
 
-  const claimLink = (inv: Invite) => `https://food-taxi.vercel.app/claim/${inv.google_place_id}`
+  const claimLink = (inv: Invite) => `${APP_URL}/claim/${inv.google_place_id}`
   const inviteMsg = (inv: Invite) =>
     `Hi ${inv.name}, we found your food business on Google and would like to invite you to join FoodTaxi — a platform where customers can find local mobile food businesses, request event bookings, view menus, and navigate to you. Claim your free business profile here: ${claimLink(inv)}`
 

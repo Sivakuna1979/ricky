@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=gb&limit=1&format=json`
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'FoodTaxi/1.0 (food-taxi.vercel.app)' },
+      headers: { 'User-Agent': `FoodTaxi/1.0 (${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app').replace(/^https?:\/\//, '')})` },
     })
     const data = await res.json()
     if (!data?.length) return NextResponse.json({ error: 'Not found' }, { status: 404 })

@@ -366,7 +366,7 @@ async function notifyOwner(admin: any, channel: any, van: any, order_number: str
     if (!biz?.phone) return
     const to = String(biz.phone).replace(/[^\d]/g, '').replace(/^0/, '44')
     const warn = hasUnresolved ? ' ⚠️ Contains an item we couldn\'t match to your menu — check the price before the customer collects.' : ''
-    await sendWhatsApp(channel, to, `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}.${warn} Open your dashboard: https://food-taxi.vercel.app/dashboard/orders`)
+    await sendWhatsApp(channel, to, `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}.${warn} Open your dashboard: ${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/dashboard/orders`)
   } catch {}
 }
 

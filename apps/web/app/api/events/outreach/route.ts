@@ -7,13 +7,14 @@ import { isSuperAdmin } from '@/lib/isSuperAdmin'
 // Used as the outreach signature/reply-to address below — not an
 // authorization check (see isSuperAdmin for that).
 const SUPER_ADMIN_EMAIL = 'sivakuna@icloud.com'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'
 
 function emailBody(e: any) {
   return `Hi${e.organiser_name ? ` ${e.organiser_name}` : ''},
 
 We came across ${e.name}${e.date ? ` (${e.date})` : ''}${e.location ? ` at ${e.location}` : ''} and would love to be involved.
 
-We're FoodTaxi (food-taxi.vercel.app) — a UK platform of registered mobile food businesses: fish & chips, burgers, coffee, street food and more. Our vans are fully set up for events: food hygiene records ready for inspection, online ordering for shorter queues, and reliable, professional operators.
+We're FoodTaxi (${APP_URL.replace(/^https?:\/\//, '')}) — a UK platform of registered mobile food businesses: fish & chips, burgers, coffee, street food and more. Our vans are fully set up for events: food hygiene records ready for inspection, online ordering for shorter queues, and reliable, professional operators.
 
 We have vans interested in trading at your event. Could you let us know:
 - whether catering pitches are still available,

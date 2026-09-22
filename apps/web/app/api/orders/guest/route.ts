@@ -59,7 +59,7 @@ async function notifyOwner(van_id: string, order_number: string, total: number, 
       headers: { Authorization: `Bearer ${ch.access_token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messaging_product: 'whatsapp', to, type: 'text',
-        text: { body: `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}. Open your dashboard: https://food-taxi.vercel.app/dashboard/orders` },
+        text: { body: `🔔 New FoodTaxi order #${order_number} — £${Number(total).toFixed(2)}${name ? ` from ${name}` : ''}. Open your dashboard: ${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/dashboard/orders` },
       }),
     }).catch(() => {})
   } catch {}

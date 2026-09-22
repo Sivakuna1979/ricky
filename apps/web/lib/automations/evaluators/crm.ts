@@ -66,7 +66,7 @@ export async function runFeedbackRequests(admin: any, business: { id: string; ti
     const claimed = await markFeedbackRequested(admin, business.id, order.id)
     if (!claimed) continue // already requested for this order
     await sendAutomationEmail(order.guest_email, `How was your order from ${business.name}?`,
-      `<p>Hi ${order.guest_name || ''},</p><p>We'd love to know how order ${order.order_number} went.</p><p><a href="https://food-taxi.vercel.app/feedback/${order.id}">Leave feedback</a></p>`)
+      `<p>Hi ${order.guest_name || ''},</p><p>We'd love to know how order ${order.order_number} went.</p><p><a href="${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/feedback/${order.id}">Leave feedback</a></p>`)
   }
 }
 

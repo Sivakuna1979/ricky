@@ -3,13 +3,15 @@ import { AdminShell } from '../_shared'
 
 export const dynamic = 'force-dynamic'
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'
+
 const SETTINGS = [
   {
     icon: '🌐',
     title: 'Site URL',
-    desc: 'food-taxi.vercel.app',
+    desc: APP_URL.replace(/^https?:\/\//, ''),
     action: 'Open Site',
-    href: 'https://food-taxi.vercel.app',
+    href: APP_URL,
     external: true,
   },
   {

@@ -79,7 +79,7 @@ export async function sendQueuedCampaign(admin: any, businessId: string, campaig
   for (const r of recipients ?? []) {
     let result: { ok: boolean; error?: string } = { ok: false, error: 'unknown' }
     if (campaign.channel === 'email') {
-      const unsubscribeUrl = `https://food-taxi.vercel.app/api/marketing/unsubscribe?email=${encodeURIComponent(r.contact)}`
+      const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://food-taxi.vercel.app'}/api/marketing/unsubscribe?email=${encodeURIComponent(r.contact)}`
       result = await sendAutomationEmail(r.contact, campaign.subject ?? 'A message from your favourite food van', `<p>${campaign.message.replace(/\n/g, '<br/>')}</p><p style="font-size:11px;color:#888">Don't want these emails? <a href="${unsubscribeUrl}">Unsubscribe</a>.</p>`)
     } else if (campaign.channel === 'sms') {
       result = await sendAutomationSms(r.contact, campaign.message)
