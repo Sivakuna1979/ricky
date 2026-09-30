@@ -4,6 +4,8 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },
   poweredByHeader: false,
+  // pdfkit reads its font metrics from node_modules at runtime, so it must not be bundled.
+  experimental: { serverComponentsExternalPackages: ['pdfkit'] },
   async headers() {
     return [
       {

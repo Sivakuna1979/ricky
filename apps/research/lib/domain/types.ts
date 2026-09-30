@@ -267,6 +267,12 @@ export interface CompanySnapshot {
   fcfYield: Num // %
   evToEbitda: Num
   dividendYield: Num // %
+  price?: Num
+  epsGrowth?: Num // %
+  peg?: Num
+  ps?: Num
+  grossMargin?: Num // %
+  debtToEquity?: Num
   sourceId: string
 }
 

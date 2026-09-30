@@ -25,6 +25,7 @@ const ITEMS: [string, string][] = [
   ['outlook', 'Outlook'],
   ['scenarios', 'Scenarios'],
   ['performance', 'Performance'],
+  ['ask', 'Ask AI'],
   ['checklist', 'Checklist'],
   ['picture', 'Summary'],
   ['data-quality', 'Data quality'],

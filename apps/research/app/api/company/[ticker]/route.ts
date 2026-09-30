@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getCompanyDataset, normaliseTicker } from '@/lib/data/dataset'
 import { buildAnalysis } from '@/lib/analysis/build'
 import { clientKey, rateLimit } from '@/lib/security/rate-limit'
+import { getViewer } from '@/lib/auth/viewer'
+import { hasFeature } from '@/lib/plans'
 
 /**
  * JSON analysis for a ticker. Every figure in the response carries a sourceId
@@ -9,6 +11,7 @@ import { clientKey, rateLimit } from '@/lib/security/rate-limit'
  * payload small (a weekly series is included as `chartPrices`).
  */
 export async function GET(req: Request, { params }: { params: { ticker: string } }) {
+  if (!hasFeature((await getViewer()).plan, 'api_access')) return NextResponse.json({ error: 'API access is a Professional feature' }, { status: 403 })
   const rl = rateLimit(`company:${clientKey(req)}`, 30)
   if (!rl.ok) return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   const ticker = normaliseTicker(params.ticker)

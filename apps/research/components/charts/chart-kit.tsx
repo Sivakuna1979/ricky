@@ -2,28 +2,9 @@
 
 import clsx from 'clsx'
 
-export type ValueFormat = 'money' | 'pct' | 'num' | 'price' | 'shares'
+import { formatValue, type ValueFormat } from '@/lib/format-value'
 
-export function formatValue(v: number | null | undefined, f: ValueFormat, sym = '$'): string {
-  if (v === null || v === undefined || !Number.isFinite(v)) return '—'
-  const a = Math.abs(v)
-  const sign = v < 0 ? '−' : ''
-  switch (f) {
-    case 'money':
-      if (a >= 1e12) return `${sign}${sym}${(a / 1e12).toFixed(2)}T`
-      if (a >= 1e9) return `${sign}${sym}${(a / 1e9).toFixed(1)}B`
-      if (a >= 1e6) return `${sign}${sym}${(a / 1e6).toFixed(0)}M`
-      return `${sign}${sym}${a.toFixed(0)}`
-    case 'shares':
-      return a >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : `${(v / 1e6).toFixed(0)}M`
-    case 'pct':
-      return `${v.toFixed(1)}%`
-    case 'price':
-      return `${sym}${v.toFixed(2)}`
-    default:
-      return v.toFixed(2)
-  }
-}
+export { formatValue, type ValueFormat }
 
 export const AXIS = { stroke: '#2a3a5c', tick: { fill: '#7f8ea9', fontSize: 11 }, tickLine: false, axisLine: false }
 export const GRID = { stroke: '#1d2a45', strokeDasharray: '0', vertical: false }

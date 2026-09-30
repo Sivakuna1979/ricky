@@ -28,6 +28,12 @@ export function toSnapshot(a: CompanyAnalysis): CompanySnapshot {
     fcfYield: a.valuation.fcfYield,
     evToEbitda: a.valuation.evToEbitda,
     dividendYield: a.valuation.dividendYield,
+    price: a.valuation.price,
+    epsGrowth: a.fp.latest.epsGrowth,
+    peg: a.valuation.peg,
+    ps: a.valuation.ps,
+    grossMargin: a.fp.latest.grossMargin,
+    debtToEquity: a.fp.latest.debtToEquity,
     sourceId: L.sourceId,
   }
 }

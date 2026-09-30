@@ -222,11 +222,13 @@ create table public.watchlists (
   name       text not null default 'Watchlist',
   created_at timestamptz not null default now()
 );
+-- User tables key on ticker (not companies.id) so users can track any symbol
+-- before it has been ingested; ticker validity is enforced by the API layer.
 create table public.watchlist_items (
   watchlist_id uuid not null references public.watchlists(id) on delete cascade,
-  company_id   uuid not null references public.companies(id) on delete cascade,
+  ticker       text not null check (ticker ~ '^[A-Z0-9][A-Z0-9.\-]{0,9}$'),
   added_at     timestamptz not null default now(),
-  primary key (watchlist_id, company_id)
+  primary key (watchlist_id, ticker)
 );
 
 create table public.portfolios (
@@ -239,7 +241,7 @@ create table public.portfolios (
 create table public.portfolio_holdings (
   id            uuid primary key default gen_random_uuid(),
   portfolio_id  uuid not null references public.portfolios(id) on delete cascade,
-  company_id    uuid not null references public.companies(id),
+  ticker        text not null check (ticker ~ '^[A-Z0-9][A-Z0-9.\-]{0,9}$'),
   quantity      numeric not null check (quantity > 0),
   purchase_price numeric not null check (purchase_price >= 0),
   purchased_at  date,
@@ -249,8 +251,8 @@ create table public.portfolio_holdings (
 create table public.alerts (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references auth.users(id) on delete cascade,
-  company_id  uuid not null references public.companies(id) on delete cascade,
-  kind        text not null check (kind in ('earnings','price_change','new_filing','dividend_change','estimate_change','major_news','score_change','valuation_range')),
+  ticker      text not null check (ticker ~ '^[A-Z0-9][A-Z0-9.\-]{0,9}$'),
+  kind        text not null check (kind in ('price_above','price_below','daily_move','pe_below','pe_above','score_below','score_above','earnings','new_filing','dividend_change','estimate_change','major_news')),
   params      jsonb not null default '{}',
   active      boolean not null default true,
   last_fired_at timestamptz,
@@ -286,7 +288,20 @@ alter table public.portfolio_holdings enable row level security;
 alter table public.alerts             enable row level security;
 alter table public.valuations         enable row level security;
 
-create policy "own profile" on public.users for all using (auth.uid() = id) with check (auth.uid() = id);
+-- Users can read their own profile but not change their plan (plan changes go through the service role / billing).
+create policy "own profile read" on public.users for select using (auth.uid() = id);
+create policy "own profile update" on public.users for update using (auth.uid() = id)
+  with check (auth.uid() = id and plan = (select u.plan from public.users u where u.id = auth.uid()));
+
+-- Create a profile row (free plan) for every new auth user.
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.users (id) values (new.id) on conflict do nothing;
+  insert into public.watchlists (user_id, name) values (new.id, 'Watchlist');
+  return new;
+end $$;
+create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();
 create policy "own watchlists" on public.watchlists for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own watchlist items" on public.watchlist_items for all
   using (exists (select 1 from public.watchlists w where w.id = watchlist_id and w.user_id = auth.uid()))

@@ -15,6 +15,11 @@ import { Analysts, Earnings, Filings, News, Risk, Technical } from '@/components
 import { Checklist, InvestmentPicture, Outlook, Psychology } from '@/components/company/sections-future'
 import { Callout } from '@/components/ui/section'
 import { DISCLAIMER } from '@/components/layout/site-footer'
+import { getViewer } from '@/lib/auth/viewer'
+import { hasFeature, type Feature } from '@/lib/plans'
+import { LockedCard } from '@/components/ui/locked'
+import { Section } from '@/components/ui/section'
+import { Chat } from '@/components/assistant/chat'
 
 export const revalidate = 3600
 
@@ -78,6 +83,10 @@ export default async function CompanyPage({ params }: { params: { ticker: string
   const ds = await getCompanyDataset(ticker)
   const a = ds ? buildAnalysis(ds) : null
   if (!a) return <NoData ticker={ticker} />
+  const viewer = await getViewer()
+  const can = (f: Feature) => hasFeature(viewer.plan, f)
+  const gate = (f: Feature, title: string, node: React.ReactNode) => (can(f) ? node : <LockedCard key={title} feature={f} title={title} />)
+  const name = a.dataset.profile.name.replace(/ Inc\.?$/, '')
 
   return (
     <div className="mx-auto max-w-[1440px] px-4 sm:px-6">
@@ -88,7 +97,7 @@ export default async function CompanyPage({ params }: { params: { ticker: string
         </div>
       )}
       <div className="mt-4">
-        <CompanyHeader a={a} />
+        <CompanyHeader a={a} canReport={can('reports')} />
       </div>
       <SectionNav />
       <div className="mt-6 space-y-6">
@@ -101,24 +110,40 @@ export default async function CompanyPage({ params }: { params: { ticker: string
         <Profitability a={a} />
         <CashFlow a={a} />
         <BalanceSheet a={a} />
-        <Valuation a={a} />
-        <Dcf a={a} />
-        <Moat a={a} />
-        <Management a={a} />
-        <Dividend a={a} />
-        <CompetitorSection a={a} />
-        <Industry a={a} />
-        <Risk a={a} />
-        <Frameworks a={a} />
-        <Technical a={a} />
-        <Analysts a={a} />
-        <Earnings a={a} />
-        <Filings a={a} />
-        <News a={a} />
-        <Outlook a={a} />
-        <Scenarios a={a} />
-        <Performance a={a} />
-        <Checklist a={a} />
+        {can('full_analysis') ? (
+          <>
+            <Valuation a={a} />
+            {gate('dcf', 'Interactive DCF', <Dcf a={a} />)}
+            <Moat a={a} />
+            <Management a={a} />
+            <Dividend a={a} />
+            {gate('competitors', 'Competitor analysis', <CompetitorSection a={a} />)}
+            <Industry a={a} />
+            <Risk a={a} />
+            {gate('frameworks', 'Investor strategy frameworks', <Frameworks a={a} />)}
+            <Technical a={a} />
+            <Analysts a={a} />
+            <Earnings a={a} />
+            <Filings a={a} />
+            <News a={a} />
+            <Outlook a={a} />
+            {gate('dcf', 'Scenario analysis', <Scenarios a={a} />)}
+            <Performance a={a} />
+          </>
+        ) : (
+          <LockedCard feature="full_analysis" title="Full fundamental analysis">
+            Valuation, DCF, moat, management, competitors, risk, investor frameworks, technicals, earnings, filings, outlook and scenarios are part of Premium.
+          </LockedCard>
+        )}
+        <Section id="ask" kicker="AI research assistant" title={`Ask about ${name}`} description="Answers are grounded in the figures on this page and label facts, expectations, assumptions and uncertainty.">
+          <Chat
+            compact
+            enabled={can('ai')}
+            tickers={[a.dataset.profile.ticker]}
+            suggestions={[`Explain ${name}’s debt.`, `Why has ${name}’s ROIC changed?`, `Is ${name}’s valuation historically expensive?`, `What are ${name}’s biggest risks?`, `What could ${name}’s business look like in 10 years?`]}
+          />
+        </Section>
+        {can('full_analysis') && <Checklist a={a} />}
         <Psychology />
         <InvestmentPicture a={a} />
         <DataQuality a={a} />

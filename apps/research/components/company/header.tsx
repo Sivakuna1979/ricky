@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowDownRight, ArrowUpRight, FileDown, GitCompare, Star } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Bot, FileDown, GitCompare } from 'lucide-react'
 import type { CompanyAnalysis } from '@/lib/analysis/build'
 import { categoryScore } from '@/lib/scoring/engine'
 import { fmtDate, fmtMoney, fmtPct, fmtPrice } from '@/lib/format'
@@ -7,6 +7,7 @@ import { ScoreRing } from '@/components/ui/score'
 import { SourceTag } from '@/components/ui/source-tag'
 import { scoreTone, TONE_TEXT } from '@/components/ui/rating'
 import { PrintButton } from './print-button'
+import { WatchButton } from './watch-button'
 
 function Mini({ label, score, href, word }: { label: string; score: number | null; href: string; word?: string | null }) {
   const tone = scoreTone(score)
@@ -22,7 +23,7 @@ function Mini({ label, score, href, word }: { label: string; score: number | nul
   )
 }
 
-export function CompanyHeader({ a }: { a: CompanyAnalysis }) {
+export function CompanyHeader({ a, canReport }: { a: CompanyAnalysis; canReport: boolean }) {
   const { dataset: ds, valuation: v } = a
   const q = ds.quote
   const up = (q.change ?? 0) >= 0
@@ -84,15 +85,17 @@ export function CompanyHeader({ a }: { a: CompanyAnalysis }) {
         <a href="#summary" className="btn btn-primary">
           View full analysis
         </a>
-        <Link href="/sign-in?next=watchlist" className="btn">
-          <Star className="h-4 w-4" /> Watchlist
-        </Link>
+        <WatchButton ticker={ds.profile.ticker} />
         <Link href={`/compare?tickers=${ds.profile.ticker}`} className="btn">
           <GitCompare className="h-4 w-4" /> Compare
         </Link>
-        <PrintButton>
-          <FileDown className="h-4 w-4" /> Export report
-        </PrintButton>
+        <a href={canReport ? `/api/report/${ds.profile.ticker}` : '/pricing'} className="btn" title={canReport ? 'Download PDF research report' : 'PDF reports are a Premium feature'}>
+          <FileDown className="h-4 w-4" /> Export report (PDF)
+        </a>
+        <PrintButton>Print view</PrintButton>
+        <a href="#ask" className="btn">
+          <Bot className="h-4 w-4" /> Ask AI
+        </a>
       </div>
     </div>
   )
