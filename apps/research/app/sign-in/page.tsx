@@ -15,16 +15,15 @@ export default function SignInPage({ searchParams }: { searchParams: { next?: st
           <SignInForm next={searchParams.next} />
         ) : (
           <div className="space-y-3 text-sm text-fg-2">
-            <Callout tone="demo" title="Authentication is not configured in this deployment">
-              This instance runs as an open demo: every module is unlocked and your watchlists, portfolios and alerts are saved in this browser only. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and{' '}
-              <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to enable email, Google and Apple sign-in.
+            <Callout title="No sign-in needed during the free beta">
+              Every feature is open to everyone. Your watchlists, portfolios and alerts are saved in this browser only. Accounts (to sync across devices) will come later.
             </Callout>
             <div className="flex gap-2">
               <Link href="/watchlist" className="btn btn-primary">
                 Open watchlist
               </Link>
-              <Link href="/pricing" className="btn">
-                See plans
+              <Link href="/" className="btn">
+                Home
               </Link>
             </div>
           </div>

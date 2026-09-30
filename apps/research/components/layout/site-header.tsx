@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { SearchBox } from './search-box'
 import { getViewer } from '@/lib/auth/viewer'
-import { PLAN_INFO } from '@/lib/plans'
 
 const NAV = [
   { href: '/company/AAPL', label: 'Research' },
@@ -47,7 +46,7 @@ export async function SiteHeader() {
           <SearchBox />
         </div>
         <Link href={viewer.user ? '/account' : viewer.authConfigured ? '/sign-in' : '/account'} className="btn hidden shrink-0 sm:inline-flex">
-          {viewer.user ? 'Account' : viewer.authConfigured ? 'Sign in' : `Demo · ${PLAN_INFO[viewer.plan].name}`}
+          {viewer.user ? 'Account' : viewer.authConfigured ? 'Sign in' : 'Free beta'}
         </Link>
       </div>
       <nav className="scrollbar-thin flex gap-1 overflow-x-auto border-t border-ink-800 px-4 py-1.5 xl:hidden" aria-label="Main mobile">

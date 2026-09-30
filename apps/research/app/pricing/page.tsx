@@ -23,7 +23,9 @@ export default async function PricingPage({ searchParams }: { searchParams: { bi
       )}
       {(searchParams.billing === 'unavailable' || !billing) && (
         <div className="mx-auto mt-6 max-w-xl">
-          <Callout tone="demo">Payments are not connected in this deployment yet, so the free trial can’t be started online. {viewer.demoUnlocked ? 'This demo has every feature unlocked.' : ''}</Callout>
+          <Callout title="Everything is free during the beta">
+            All features are unlocked for everyone while the site is in beta — no card, no sign-up. Paid plans below are planned for later and cannot be purchased yet.
+          </Callout>
         </div>
       )}
       <div className="mt-10 grid gap-4 md:grid-cols-3">

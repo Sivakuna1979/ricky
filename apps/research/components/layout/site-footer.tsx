@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { billingConfigured } from '@/lib/billing/stripe'
 
 import { DISCLAIMER_TEXT } from '@/lib/content/disclaimer'
 
@@ -20,8 +21,16 @@ export function SiteFooter() {
           <Link href="/academy" className="hover:text-fg">
             Investment Academy
           </Link>
-          <Link href="/pricing" className="hover:text-fg">
-            Plans
+          {billingConfigured() && (
+            <Link href="/pricing" className="hover:text-fg">
+              Plans
+            </Link>
+          )}
+          <Link href="/privacy" className="hover:text-fg">
+            Privacy
+          </Link>
+          <Link href="/terms" className="hover:text-fg">
+            Terms
           </Link>
           <span>© {new Date().getFullYear()} Evidentia Research</span>
         </div>

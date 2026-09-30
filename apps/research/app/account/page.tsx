@@ -21,8 +21,8 @@ export default async function AccountPage({ searchParams }: { searchParams: { ch
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-14 sm:px-6">
       <h1 className="text-2xl font-semibold text-fg">Account</h1>
       {v.demoUnlocked && (
-        <Callout tone="demo" title="Demo deployment">
-          Authentication isn&apos;t configured, so this instance runs with the {PLAN_INFO[v.plan].name} plan unlocked for everyone and stores your data in this browser.
+        <Callout title="Free beta">
+          Every feature is unlocked for everyone during the beta. No account is needed — your watchlists and portfolios are saved in this browser only (clearing your browser data removes them).
         </Callout>
       )}
       {searchParams.checkout === 'success' && <Callout title="Welcome to Premium">Your free trial has started. It can take a few seconds for your plan to update — refresh if it still shows Free.</Callout>}
