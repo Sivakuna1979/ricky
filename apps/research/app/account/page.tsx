@@ -3,14 +3,20 @@ import { redirect } from 'next/navigation'
 import { getViewer } from '@/lib/auth/viewer'
 import { FEATURE_MIN_PLAN, hasFeature, LIMITS, PLAN_INFO, type Feature } from '@/lib/plans'
 import { Callout } from '@/components/ui/section'
+import { supabaseAdmin } from '@/lib/auth/admin'
+import { fmtDate } from '@/lib/format'
 
 export const metadata = { title: 'Account' }
 export const dynamic = 'force-dynamic'
 
-export default async function AccountPage() {
+export default async function AccountPage({ searchParams }: { searchParams: { checkout?: string } }) {
   const v = await getViewer()
   if (v.authConfigured && !v.user) redirect('/sign-in?next=/account')
   const features = Object.keys(FEATURE_MIN_PLAN) as Feature[]
+  const db = v.user ? supabaseAdmin() : null
+  const billing = db
+    ? (await db.from('users').select('subscription_status,trial_ends_at,current_period_end,cancel_at_period_end,stripe_customer_id').eq('id', v.user!.id).maybeSingle()).data
+    : null
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-14 sm:px-6">
       <h1 className="text-2xl font-semibold text-fg">Account</h1>
@@ -18,6 +24,30 @@ export default async function AccountPage() {
         <Callout tone="demo" title="Demo deployment">
           Authentication isn&apos;t configured, so this instance runs with the {PLAN_INFO[v.plan].name} plan unlocked for everyone and stores your data in this browser.
         </Callout>
+      )}
+      {searchParams.checkout === 'success' && <Callout title="Welcome to Premium">Your free trial has started. It can take a few seconds for your plan to update — refresh if it still shows Free.</Callout>}
+      {billing?.subscription_status && (
+        <div className="card card-pad text-sm text-fg-2">
+          <h2 className="mb-2 font-semibold text-fg">Subscription</h2>
+          {billing.subscription_status === 'trialing' && (
+            <p>
+              Free trial until <strong className="text-fg">{fmtDate(billing.trial_ends_at ?? undefined)}</strong>
+              {billing.cancel_at_period_end ? ' — cancelled; you will not be charged.' : ', then £9.99/month.'}
+            </p>
+          )}
+          {billing.subscription_status === 'active' && (
+            <p>
+              Premium · £9.99/month · {billing.cancel_at_period_end ? 'ends' : 'renews'} on <strong className="text-fg">{fmtDate(billing.current_period_end ?? undefined)}</strong>
+            </p>
+          )}
+          {billing.subscription_status === 'past_due' && <p className="text-neu">Your last payment failed. Please update your card to keep Premium.</p>}
+          {['canceled', 'unpaid', 'incomplete_expired'].includes(billing.subscription_status) && <p>Your subscription has ended.</p>}
+          {billing.stripe_customer_id && (
+            <form action="/api/billing/portal" method="post" className="mt-3">
+              <button className="btn">Manage billing · cancel · invoices</button>
+            </form>
+          )}
+        </div>
       )}
       <div className="card card-pad">
         <div className="flex flex-wrap items-center justify-between gap-3">

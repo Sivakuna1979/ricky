@@ -146,3 +146,23 @@ describe('PDF report', () => {
     expect(pdf.length).toBeGreaterThan(5000)
   })
 })
+
+describe('billing', () => {
+  it('maps subscription status to plan and records trial/period dates', async () => {
+    const { planForStatus, recordFromSubscription } = await import('@/lib/billing/stripe')
+    expect(planForStatus('trialing')).toBe('premium')
+    expect(planForStatus('active')).toBe('premium')
+    expect(planForStatus('past_due')).toBe('premium')
+    expect(planForStatus('canceled')).toBe('free')
+    expect(planForStatus('incomplete')).toBe('free')
+    const rec = recordFromSubscription({
+      id: 'sub_1',
+      status: 'trialing',
+      trial_end: 1_800_000_000,
+      cancel_at_period_end: false,
+      customer: 'cus_1',
+      items: { data: [{ current_period_end: 1_800_000_000 }] },
+    } as never)
+    expect(rec).toMatchObject({ plan: 'premium', stripe_customer_id: 'cus_1', has_used_trial: true, trial_ends_at: new Date(1_800_000_000_000).toISOString() })
+  })
+})

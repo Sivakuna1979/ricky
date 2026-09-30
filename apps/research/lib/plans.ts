@@ -58,13 +58,13 @@ export const PLAN_INFO: Record<Plan, { name: string; price: string; blurb: strin
   },
   premium: {
     name: 'Premium',
-    price: '£12 / month',
-    blurb: 'The full research toolkit for long-term investors.',
+    price: '3 months free, then £9.99 / month',
+    blurb: 'The full research toolkit for long-term investors. Cancel any time during the trial and you pay nothing.',
     features: ['Full fundamental analysis', 'Investor frameworks', 'Interactive DCF & scenarios', 'Competitor comparison (up to 5)', 'AI research assistant', 'Advanced screener', 'PDF reports', 'Watchlists & alerts'],
   },
   professional: {
     name: 'Professional',
-    price: '£39 / month',
+    price: 'Coming soon',
     blurb: 'For serious analysts who need data out and history in.',
     features: ['Everything in Premium', 'Advanced exporting (CSV / JSON)', 'Portfolio analytics', 'Historical datasets', 'Score backtesting', 'More AI queries', 'API access'],
   },
