@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 7rem;
+}
+
+body {
+  background: #060a13;
+  color: #e8edf6;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-ink-700/80 bg-ink-850 shadow-card;
+  }
+  .card-pad {
+    @apply p-5 sm:p-6;
+  }
+  .label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3;
+  }
+  .tbl {
+    @apply w-full text-sm;
+  }
+  /* :where() keeps specificity at a single class so utilities (text-right, text-fg…) on cells win. */
+  .tbl :where(th) {
+    @apply whitespace-nowrap border-b border-ink-700 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-fg-3;
+  }
+  .tbl :where(td) {
+    @apply whitespace-nowrap border-b border-ink-750 px-3 py-2 text-fg-2;
+  }
+  .tbl :where(tr:hover td) {
+    @apply bg-ink-800/60;
+  }
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm font-medium text-fg transition hover:border-ink-500 hover:bg-ink-750 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
+  }
+  .btn-primary {
+    @apply border-accent-strong bg-accent-strong text-white hover:border-accent hover:bg-accent;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium;
+  }
+  .input {
+    @apply w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-fg placeholder:text-fg-4 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+  }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #2a3a5c;
+  border-radius: 3px;
+}
+
+/* Grid items default to min-width:auto, which lets wide tables push the page sideways on phones. */
+.grid > * {
+  min-width: 0;
+}
