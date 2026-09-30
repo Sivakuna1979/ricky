@@ -36,7 +36,7 @@ function NoData({ ticker }: { ticker: string }) {
       <div className="mt-4">
         <Callout title="Full analysis unavailable">
           {liveDataEnabled()
-            ? 'The connected data provider returned no usable financial statements for this ticker.'
+            ? 'The connected data provider returned no usable annual financial statements for this ticker (it may not file with the SEC, or the provider could not be reached). Nothing has been estimated in their place.'
             : 'No live financial data provider is connected, and the demo dataset only includes a full model for Apple (AAPL). Rather than invent figures, this page shows only what is available.'}
         </Callout>
       </div>
@@ -94,6 +94,17 @@ export default async function CompanyPage({ params }: { params: { ticker: string
         <div className="mt-4 rounded-lg border border-neu/40 bg-neu-soft px-4 py-2.5 text-sm text-fg-2">
           <strong className="text-neu">DEMO DATA.</strong> No live data provider is connected. Every figure on this page comes from an illustrative dataset and is labelled as such — it is not a verified or current
           record of {a.dataset.profile.name}’s results or share price.
+        </div>
+      )}
+      {a.dataset.mode === 'live' && (
+        <div className="mt-4 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-fg-2">
+          <strong className="text-accent">Live data.</strong> Sourced from {Object.values(a.dataset.sources).map((s) => s.name.split(' —')[0]).join(', ')}. Hover any source badge for the filing period and update date.
+          {a.dataset.quote.price === null && (
+            <span className="mt-1 block text-neu">
+              No price provider is connected, so valuation, DCF, scenarios and technical sections show “Data unavailable” and are excluded from the score. Set ALPHA_VANTAGE_API_KEY or FMP_API_KEY to add prices.
+            </span>
+          )}
+          {a.dataset.pricesInterval === 'weekly' && <span className="mt-1 block text-fg-3">Price history is weekly, so daily technical indicators (RSI, MACD, moving averages) are not computed.</span>}
         </div>
       )}
       <div className="mt-4">

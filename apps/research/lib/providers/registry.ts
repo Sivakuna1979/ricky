@@ -1,19 +1,21 @@
 import type { Capability, DataProvider } from './types'
 import { fmpProvider } from './fmp'
 import { secEdgarProvider } from './sec-edgar'
+import { alphaVantageProvider } from './alpha-vantage'
 
 /**
- * All known adapters. Add Polygon, Finnhub, Tiingo, Twelve Data, Alpha Vantage,
+ * All known adapters. Add Polygon, Finnhub, Tiingo, Twelve Data,
  * Nasdaq Data Link or FRED by implementing `DataProvider` and listing it here.
  */
-const ALL: DataProvider[] = [fmpProvider, secEdgarProvider]
+const ALL: DataProvider[] = [secEdgarProvider, fmpProvider, alphaVantageProvider]
 
 /**
  * DATA_PROVIDER_PRIORITY (comma-separated ids) controls which configured
- * adapter wins for each capability, e.g. "fmp,sec-edgar".
+ * adapter wins for each capability. Default: SEC EDGAR first (primary-source
+ * filings) for financials/profile/filings, then FMP, then Alpha Vantage.
  */
 function priority(): string[] {
-  return (process.env.DATA_PROVIDER_PRIORITY ?? 'fmp,sec-edgar')
+  return (process.env.DATA_PROVIDER_PRIORITY ?? 'sec-edgar,fmp,alpha-vantage')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)

@@ -302,6 +302,8 @@ export interface CompanyDataset {
   annual: AnnualFinancials[] // ascending by fiscalYear
   prices: PricePoint[] // ascending by date
   pricesSynthetic: boolean
+  /** Daily unless a provider only supplies weekly bars (then daily-based technicals are skipped). */
+  pricesInterval?: 'daily' | 'weekly'
   segments: SegmentBreakdown | null
   estimates: AnalystEstimates | null
   earnings: EarningsQuarter[]

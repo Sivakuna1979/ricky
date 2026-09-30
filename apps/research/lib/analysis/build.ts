@@ -139,7 +139,7 @@ export function buildAnalysis(ds: CompanyDataset): CompanyAnalysis | null {
   if (!fp) return null
   const valuation = computeCurrentValuation(ds, fp)
   const multiples = compareMultiples(ds, fp, valuation)
-  const technical = ds.prices.length >= 60 ? technicalSnapshot(ds.prices) : null
+  const technical = ds.prices.length >= 60 && ds.pricesInterval !== 'weekly' ? technicalSnapshot(ds.prices) : null
   const dilution = dilutionProfile(ds.annual)
   const dcf = dcfCases(fp, valuation, ds)
   const base = dcf.find((d) => d.name === 'Base')
@@ -203,7 +203,7 @@ export function buildAnalysis(ds: CompanyDataset): CompanyAnalysis | null {
 
   return {
     dataset: ds,
-    chartPrices: downsample(ds.prices, 5).map((p) => ({ date: p.date, close: p.close })),
+    chartPrices: downsample(ds.prices, ds.pricesInterval === 'weekly' ? 1 : 5).map((p) => ({ date: p.date, close: p.close })),
     fp,
     valuation,
     multiples,

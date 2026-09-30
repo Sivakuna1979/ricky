@@ -12,11 +12,25 @@
 
 | Adapter | Capabilities | Env vars | Cost |
 |---|---|---|---|
-| `fmp` — Financial Modeling Prep (`/stable` API) | search, profile, quote, prices, financials, estimates, earnings | `FMP_API_KEY` | Paid tiers; some endpoints need higher plans |
-| `sec-edgar` — SEC EDGAR submissions | filings (10-K, 10-Q, 8-K, DEF 14A, Form 4, 20-F) | `SEC_USER_AGENT` (required by SEC: "Name email") | Free, 10 req/s |
+| `sec-edgar` — SEC EDGAR (XBRL company facts, submissions, ticker list) | search (all SEC tickers), profile, **financials**, filings | `SEC_USER_AGENT` ("Name email", required by SEC) | **Free**, 10 req/s |
+| `fmp` — Financial Modeling Prep (`/stable` API) | search, profile, quote, prices (daily), financials, estimates, earnings | `FMP_API_KEY` | Paid tiers |
+| `alpha-vantage` — Alpha Vantage | quote, prices (weekly adjusted) | `ALPHA_VANTAGE_API_KEY` | Free tier (low limits) + paid |
 | `demo` | everything, for AAPL only | — | — |
 
-Planned adapters (same interface): **Polygon** (prices, quotes), **Finnhub** (estimates, earnings, news sentiment, insider), **Tiingo** / **Twelve Data** / **Alpha Vantage** (prices, fundamentals), **Nasdaq Data Link** (datasets), **FRED** (macro: rates, inflation, GDP, unemployment). SEC **XBRL company-facts** (`data.sec.gov/api/xbrl/companyfacts`) is the planned free primary source for US statements.
+Default priority is `sec-edgar,fmp,alpha-vantage`: statements come from primary-source filings when SEC is configured; quotes and prices come from the first configured price provider.
+
+### SEC XBRL parsing rules (`lib/providers/sec-edgar/xbrl.ts`)
+
+- Fiscal years are identified from the period each annual report (10-K / 20-F / 40-F) actually covers — comparative columns do not create years.
+- Flow items use full-year durations (300–400 days) from annual reports only; quarterly and Q4-only facts are ignored. Balance-sheet items are instants at the fiscal-year end.
+- Restated figures: the most recently filed value wins.
+- Concept names that changed over time (e.g. `SalesRevenueNet` → `RevenueFromContractWithCustomerExcludingAssessedTax`) are tried per year.
+- **Stock splits:** older filings report pre-split per-share data while price histories are split-adjusted. A year-over-year diluted share jump close to a standard ratio (2, 3, 4, 5, 7, 8, 10, 15, 20 — or the inverse for reverse splits) is treated as a split, and earlier years' shares, EPS and DPS are restated to today's basis.
+- Market cap = price × cover-page shares outstanding (`dei:EntityCommonStockSharesOutstanding`).
+- Anything not reported is `null`. Company-facts files can exceed the Next.js data-cache item limit, so parsed data is cached in memory (12 h).
+- Not covered by XBRL: segment/geographic revenue (varies by filer), business description, analyst estimates, prices.
+
+Planned adapters (same interface): **Polygon** (prices), **Finnhub** (estimates, earnings, news sentiment, insider), **Tiingo** / **Twelve Data**, **Nasdaq Data Link**, **FRED** (macro).
 
 Do not assume any API is free: check each vendor's pricing and **redistribution licence** before exposing data via exports or the API plan.
 

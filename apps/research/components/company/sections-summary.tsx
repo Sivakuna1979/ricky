@@ -134,7 +134,9 @@ export function Overview({ a }: { a: CompanyAnalysis }) {
       title="What does this company actually do?"
       actions={q && <SourceTag source={ds.sources[q.sourceId]} />}
     >
-      <p className="max-w-4xl text-sm leading-relaxed text-fg-2">{ds.profile.description}</p>
+      <p className="max-w-4xl text-sm leading-relaxed text-fg-2">
+        {ds.profile.description || `${ds.profile.name} is classified as “${ds.profile.industry}” (${ds.profile.sector}). A written business description needs a profile provider or a reviewed editorial profile.`}
+      </p>
       <div className="mt-5 grid gap-6 lg:grid-cols-2">
         <div>
           <h3 className="mb-2 text-sm font-semibold text-fg">How it makes money</h3>
