@@ -6,7 +6,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Scheduled alert evaluation (e.g. Vercel cron, hourly). Evaluates price,
+ * Scheduled alert evaluation (Vercel cron, daily at 08:00 UTC — Hobby-plan compatible). Evaluates price,
  * valuation and score rules for all users with the service role, and records
  * last_fired_at (at most once per 24h per alert). Delivery (email/push) plugs in
  * where noted. Protected by CRON_SECRET.
