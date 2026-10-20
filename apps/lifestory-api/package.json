@@ -1,0 +1,33 @@
+{
+  "name": "@ricky/lifestory-api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3004",
+    "build": "next build",
+    "start": "next start -p 3004",
+    "worker": "tsx worker/index.ts",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "music": "tsx scripts/make-music.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@supabase/supabase-js": "^2.117.2",
+    "next": "^14.2.33",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.34.4",
+    "tsx": "^4.20.6",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.5",
+    "@types/react": "^18.3.3",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
