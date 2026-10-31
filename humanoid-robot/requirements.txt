@@ -1,0 +1,7 @@
+# The robot software uses ONLY Python's built-in standard library.
+# Nothing needs to be installed with pip for version 0.1.
+#
+# Optional (later stages, not needed now):
+# pytest          # nicer test output:  py -m pip install pytest
+# opencv-python   # Stage 3: real camera
+# pyserial        # Stage 2: real motor controllers

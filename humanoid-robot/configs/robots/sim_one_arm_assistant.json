@@ -1,0 +1,10 @@
+{
+  "extends": "base.json",
+  "model": "A1-sim",
+  "description": "Budget one-arm assistant version - 100% simulated. Shows how product versions share the same core software.",
+  "hardware": {
+    "arms":     {"left": null},
+    "grippers": {"left": null, "right": {"max_payload_kg": 0.5}}
+  },
+  "limits": {"max_linear_speed_mps": 0.3, "max_payload_kg_per_arm": 0.5}
+}

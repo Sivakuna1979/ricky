@@ -1,0 +1,22 @@
+{
+  "extends": "base.json",
+  "model": "R1-mk1-hardware",
+  "description": "TEMPLATE for the first physical prototype. The real drivers are NOT IMPLEMENTED yet, so this config will refuse to start. Do not connect motors until the hardware safety checklist is complete.",
+  "allow_real_hardware": false,
+  "hardware": {
+    "drive":   {"driver": "serial_motor_controller", "port": "COM3", "baud": 115200},
+    "arms": {
+      "right": {"driver": "serial_bus_servo_arm", "port": "COM4", "joints": 6},
+      "left":  {"driver": "serial_bus_servo_arm", "port": "COM5", "joints": 6}
+    },
+    "grippers": {
+      "right": {"driver": "serial_bus_servo_gripper", "port": "COM4", "max_payload_kg": 0.3},
+      "left":  {"driver": "serial_bus_servo_gripper", "port": "COM5", "max_payload_kg": 0.3}
+    },
+    "camera":      {"driver": "usb_camera", "device_index": 0},
+    "speaker":     {"driver": "sim"},
+    "battery":     {"driver": "ina219_battery_monitor"},
+    "estop_input": {"driver": "gpio_estop_monitor", "pin": 17}
+  },
+  "limits": {"max_linear_speed_mps": 0.2, "max_angular_speed_dps": 30, "max_payload_kg_per_arm": 0.3}
+}

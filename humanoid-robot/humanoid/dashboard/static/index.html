@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f172a">
+  <title>Robot Control</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <strong id="robot-name">Robot</strong>
+      <span id="robot-model" class="muted"></span>
+      <span class="pill sim" id="sim-pill" title="No real motors are connected">SIMULATION</span>
+    </div>
+    <div class="status-row">
+      <span id="mode" class="pill mode-idle">IDLE</span>
+      <span id="battery" class="pill">🔋 --%</span>
+      <span id="conn" class="pill">connecting…</span>
+    </div>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <main class="grid">
+    <section class="card map-card">
+      <div class="card-head">
+        <h2>Simulated home</h2>
+        <span class="muted small" id="pose"></span>
+      </div>
+      <canvas id="map" aria-label="Top-down map of the simulated home"></canvas>
+      <p class="muted small" id="message">Loading…</p>
+    </section>
+
+    <section class="card">
+      <h2>Tell the robot what to do</h2>
+      <form id="plan-form">
+        <textarea id="instruction" rows="2" maxlength="500"
+          placeholder="e.g. Pick up the red cup and place it in the basket"></textarea>
+        <div class="chips" id="examples"></div>
+        <div class="row">
+          <button type="submit" class="btn primary">1. Make a plan</button>
+          <button type="button" class="btn go" id="run-plan" disabled>2. Run plan</button>
+        </div>
+      </form>
+      <div id="plan-out" class="plan-out"></div>
+    </section>
+
+    <section class="card">
+      <h2>Manual control</h2>
+      <div class="pad">
+        <span></span>
+        <button class="btn" data-cmd="move" data-val="0.5" title="Forward 0.5 m">▲<small>forward</small></button>
+        <span></span>
+        <button class="btn" data-cmd="turn" data-val="45" title="Turn left 45°">⟲<small>left</small></button>
+        <button class="btn" id="cancel" title="Stop the current task (not an emergency stop)">■<small>cancel</small></button>
+        <button class="btn" data-cmd="turn" data-val="-45" title="Turn right 45°">⟳<small>right</small></button>
+        <span></span>
+        <button class="btn" data-cmd="move" data-val="-0.5" title="Back 0.5 m">▼<small>back</small></button>
+        <span></span>
+      </div>
+      <div class="row">
+        <select id="goto" aria-label="Place to drive to"></select>
+        <button class="btn" id="goto-btn">Go</button>
+        <button class="btn" id="charge-btn">Charge</button>
+      </div>
+      <div class="row">
+        <input id="say" maxlength="300" placeholder="Something to say">
+        <button class="btn" id="say-btn">Say</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Robot status</h2>
+      <dl class="kv" id="status"></dl>
+      <h3>Recent actions</h3>
+      <ol class="history" id="history"></ol>
+    </section>
+
+    <section class="card safety-card">
+      <h2>Safety</h2>
+      <p class="warn small"><strong>Software safety only.</strong> A real robot must also have a physical
+        e-stop button that cuts motor power in hardware, independent of this computer.</p>
+      <div class="row">
+        <span>Software e-stop:</span> <strong id="estop-state">-</strong>
+        <button class="btn" id="reset-btn">Reset e-stop</button>
+      </div>
+      <h3>Active faults</h3>
+      <ul id="faults" class="faults"></ul>
+      <h3>Test the safety system (simulation)</h3>
+      <div class="row">
+        <select id="fault-select" aria-label="Fault to simulate"></select>
+        <button class="btn" id="fault-btn">Simulate fault</button>
+        <button class="btn" id="clear-btn">Clear faults</button>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="phys-estop"> Simulate pressing the physical e-stop button</label>
+      </div>
+      <div class="row">
+        <label for="batt">Battery</label>
+        <input type="range" id="batt" min="0" max="100" value="90">
+        <button class="btn" id="batt-btn">Set</button>
+        <button class="btn" id="world-reset">Reset simulation</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>What works today</h2>
+      <p class="muted small">Nothing below runs on physical hardware yet.</p>
+      <ul class="features" id="features"></ul>
+    </section>
+
+    <section class="card log-card">
+      <h2>Diagnostic log</h2>
+      <div id="log" class="log" role="log" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <button id="estop" class="estop" aria-label="Emergency stop">STOP</button>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

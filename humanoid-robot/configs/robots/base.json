@@ -1,0 +1,45 @@
+{
+  "_comment": "Shared settings for every robot version. Other files 'extend' this one and only change what is different.",
+  "name": "Ricky",
+  "model": "base",
+  "version": "0.1.0",
+  "description": "Base settings shared by all robot versions.",
+  "world_file": "configs/worlds/home_v0.json",
+  "allow_real_hardware": false,
+  "body": {
+    "radius_m": 0.3,
+    "arm_reach_m": 0.7,
+    "approach_distance_m": 0.45,
+    "height_m": 1.5
+  },
+  "hardware": {
+    "drive":       {"driver": "sim", "type": "differential wheeled base"},
+    "arms": {
+      "right": {"driver": "sim", "joints": 6},
+      "left":  {"driver": "sim", "joints": 6}
+    },
+    "grippers": {
+      "right": {"driver": "sim", "max_payload_kg": 1.0},
+      "left":  {"driver": "sim", "max_payload_kg": 1.0}
+    },
+    "camera":      {"driver": "sim", "range_m": 4.0},
+    "speaker":     {"driver": "sim"},
+    "battery":     {"driver": "sim", "start_percent": 90, "drain_percent_per_metre": 0.3},
+    "estop_input": {"driver": "sim"}
+  },
+  "limits": {
+    "max_linear_speed_mps": 0.5,
+    "max_angular_speed_dps": 60,
+    "max_single_move_m": 3.0,
+    "max_turn_deg": 360,
+    "max_payload_kg_per_arm": 1.0,
+    "max_wait_s": 60,
+    "max_action_duration_s": 120,
+    "min_battery_percent_to_start": 15,
+    "critical_battery_percent": 5,
+    "max_speech_chars": 300,
+    "max_plan_steps": 30
+  },
+  "dashboard": {"host": "127.0.0.1", "port": 8080},
+  "simulation": {"tick_hz": 20, "speed_factor": 1.0}
+}

@@ -1,0 +1,5 @@
+{
+  "extends": "base.json",
+  "model": "R1-sim",
+  "description": "Full humanoid (two arms, wheeled base) - 100% simulated. Safe to run on any PC."
+}
