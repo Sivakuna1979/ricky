@@ -7,6 +7,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { claudeToolDefinitions, TOOLS_BY_NAME } from './tools'
 import type { AiContext } from './context'
+import { withAiUsageLog } from './usageLog'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -72,7 +73,10 @@ export async function runAssistant(admin: any, ctx: AiContext, conversationId: s
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let response
     try {
-      response = await callModel(system, messages, tools)
+      response = await withAiUsageLog(
+        { feature: 'business_assistant', requestedModel: PRIMARY_MODEL, businessId: ctx.businessId },
+        () => callModel(system, messages, tools)
+      )
     } catch (e: any) {
       return { text: "FoodTaxi AI is temporarily unavailable — please try again in a moment.", toolCalls: toolCallLog, error: e.message }
     }

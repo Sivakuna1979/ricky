@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { Resend } from 'resend'
+import { withAiUsageLog } from '@/lib/ai/usageLog'
+
+const LEAD_EMAIL_MODEL = 'claude-opus-4-8'
 
 const getResend = () => new Resend(process.env.RESEND_API_KEY ?? 're_placeholder')
 
@@ -67,8 +70,8 @@ export async function POST(req: NextRequest) {
   if (auto_send_email && email) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-8',
+    const message = await withAiUsageLog({ feature: 'lead_intro_email', requestedModel: LEAD_EMAIL_MODEL }, () => anthropic.messages.create({
+      model: LEAD_EMAIL_MODEL,
       max_tokens: 500,
       messages: [{
         role: 'user',
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
 
         Return ONLY the email body (no subject line).`,
       }],
-    })
+    }))
 
     const emailBody = (message.content[0] as { text: string }).text
 
