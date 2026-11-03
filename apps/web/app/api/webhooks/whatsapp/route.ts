@@ -5,6 +5,7 @@ import { waitUntil } from '@vercel/functions'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { log } from '@/lib/logging'
+import { withAiUsageLog } from '@/lib/ai/usageLog'
 
 // ============================================================================
 // WhatsApp Cloud API webhook — fully automatic ordering, MULTI-TENANT and
@@ -238,26 +239,27 @@ WhatsApp message from ${profileName || 'customer'}:
 ${text}`
 }
 
-async function askClaude(admin: any, msgId: string, prompt: string) {
+async function askClaude(admin: any, msgId: string, prompt: string, businessId?: string | null) {
   // Order-reading must be FAST (webhook runs under tight platform limits).
   // Haiku is the same model that powers the proven menu/schedule scanners —
   // 1-3s replies. Opus is the quality fallback if Haiku errors.
-  let message
-  try {
-    await admin.from('whatsapp_messages').update({ outcome: 'ai_haiku' }).eq('id', msgId)
-    message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1536,
-      messages: [{ role: 'user', content: prompt }],
-    })
-  } catch (e1: any) {
-    await admin.from('whatsapp_messages').update({ outcome: `ai_opus (haiku: ${e1.message})`.slice(0, 120) }).eq('id', msgId)
-    message = await client.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 1536,
-      messages: [{ role: 'user', content: prompt }],
-    })
-  }
+  const message = await withAiUsageLog({ feature: 'whatsapp_webhook_order', requestedModel: 'claude-haiku-4-5-20251001', businessId }, async () => {
+    try {
+      await admin.from('whatsapp_messages').update({ outcome: 'ai_haiku' }).eq('id', msgId)
+      return await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1536,
+        messages: [{ role: 'user', content: prompt }],
+      })
+    } catch (e1: any) {
+      await admin.from('whatsapp_messages').update({ outcome: `ai_opus (haiku: ${e1.message})`.slice(0, 120) }).eq('id', msgId)
+      return await client.messages.create({
+        model: 'claude-opus-4-8',
+        max_tokens: 1536,
+        messages: [{ role: 'user', content: prompt }],
+      })
+    }
+  })
   const raw = message.content?.find((b: any) => b.type === 'text')?.text?.trim() ?? '{}'
   return JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
 }
@@ -447,7 +449,7 @@ async function handleMessage(admin: any, channel: any, msg: any, profileName: st
     await admin.from('whatsapp_messages').update({ outcome: 'ai_start' }).eq('id', msg.id)
     // Hard cap the AI think-time so a stall can never leave the customer hanging.
     const parsed = await Promise.race([
-      askClaude(admin, msg.id, buildPrompt({ menu: menu ?? [], weekSchedule, pendingOrder, profileName, text })),
+      askClaude(admin, msg.id, buildPrompt({ menu: menu ?? [], weekSchedule, pendingOrder, profileName, text }), van.business_id),
       new Promise((_, rej) => setTimeout(() => rej(new Error('AI timeout after 35s')), 35000)),
     ])
     await admin.from('whatsapp_messages').update({ outcome: `ai:${parsed.action ?? 'unknown'}` }).eq('id', msg.id)

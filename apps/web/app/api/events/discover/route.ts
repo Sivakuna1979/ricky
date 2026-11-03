@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { waitUntil } from '@vercel/functions'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { isSuperAdmin } from '@/lib/isSuperAdmin'
+import { withAiUsageLog } from '@/lib/ai/usageLog'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -108,20 +109,21 @@ async function runDiscovery(id: string, area: string, months: number, types: str
 Instead of searching, extract the events from these Google search results and page contents (look for organiser emails in the page text):
 
 ${gathered}`
-      let message
-      try {
-        message = await client.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: extractPrompt }],
-        })
-      } catch {
-        message = await client.messages.create({
-          model: 'claude-opus-4-8',
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: extractPrompt }],
-        })
-      }
+      const message = await withAiUsageLog({ feature: 'event_discovery_extract', requestedModel: 'claude-haiku-4-5-20251001' }, async () => {
+        try {
+          return await client.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: extractPrompt }],
+          })
+        } catch {
+          return await client.messages.create({
+            model: 'claude-opus-4-8',
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: extractPrompt }],
+          })
+        }
+      })
       const raw = (message.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
       const events = extractEvents(raw)
       if (Array.isArray(events) && events.length) {
@@ -153,16 +155,21 @@ ${gathered}`
       return message
     }
 
-    let message
-    try {
-      message = await call('claude-fable-5', true, tools)
-    } catch {
+    // Note: call() can loop internally on 'pause_turn' (web search continuing
+    // across turns) — usage logged here is the final message's own token
+    // count, not the summed cost of every turn in that loop. Documented
+    // undercount, not a bug: see docs/AI-COST-CACHING.md.
+    const message = await withAiUsageLog({ feature: 'event_discovery_search', requestedModel: 'claude-fable-5' }, async () => {
       try {
-        message = await call('claude-opus-4-8', false, tools)
+        return await call('claude-fable-5', true, tools)
       } catch {
-        message = await call('claude-opus-4-8', false, [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }])
+        try {
+          return await call('claude-opus-4-8', false, tools)
+        } catch {
+          return await call('claude-opus-4-8', false, [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }])
+        }
       }
-    }
+    })
 
     const raw = (message.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
     const events = extractEvents(raw)

@@ -15,8 +15,10 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { getStaffContext } from '@/lib/staffContext'
 import { hasPermission } from '@/lib/permissions'
 import Anthropic from '@anthropic-ai/sdk'
+import { withAiUsageLog } from '@/lib/ai/usageLog'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MODEL = 'claude-opus-4-8'
 
 const EXTRACTION_PROMPT = `You are a receipt/invoice scanning assistant for a small UK food business's bookkeeping. Extract the following from this image and return ONLY a valid JSON object, nothing else:
 {
@@ -48,16 +50,19 @@ export async function POST(req: NextRequest) {
   }).select().single()
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-opus-4-8', max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType ?? 'image/jpeg', data: imageBase64 } },
-          { type: 'text', text: EXTRACTION_PROMPT },
-        ],
-      }],
-    })
+    const response = await withAiUsageLog(
+      { feature: 'finance_document_extract', requestedModel: MODEL, businessId: ctx.businessId },
+      () => client.messages.create({
+        model: MODEL, max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType ?? 'image/jpeg', data: imageBase64 } },
+            { type: 'text', text: EXTRACTION_PROMPT },
+          ],
+        }],
+      })
+    )
     const text = response.content.find((b: any) => b.type === 'text')?.text ?? '{}'
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     const extracted = jsonMatch ? JSON.parse(jsonMatch[0]) : { confidence: 'low', gross_amount: 0 }

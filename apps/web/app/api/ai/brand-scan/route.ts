@@ -1,8 +1,10 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { withAiUsageLog } from '@/lib/ai/usageLog'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MODEL = 'claude-haiku-4-5-20251001'
 
 const PROMPT = `You are a brand designer. Look at this business design (menu, van livery, flyer or logo).
 Extract the brand identity so we can theme their web page to match.
@@ -26,17 +28,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 })
     }
 
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } },
-          { type: 'text', text: PROMPT },
-        ],
-      }],
-    })
+    const message = await withAiUsageLog(
+      { feature: 'brand_scan', requestedModel: MODEL },
+      () => client.messages.create({
+        model: MODEL,
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } },
+            { type: 'text', text: PROMPT },
+          ],
+        }],
+      })
+    )
 
     const raw = message.content[0]?.type === 'text' ? message.content[0].text.trim() : '{}'
     const jsonMatch = raw.match(/\{[\s\S]*\}/)
