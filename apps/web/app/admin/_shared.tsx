@@ -11,6 +11,7 @@ export const ADMIN_NAV = [
   { label: 'Settings',   icon: '⚙️', href: '/admin/settings'  },
   { label: 'Discovery',  icon: '🔍', href: '/admin/discovery' },
   { label: 'Import',     icon: '📥', href: '/admin/import'    },
+  { label: 'AI Costs',   icon: '🤖', href: '/admin/ai-costs'  },
 ]
 
 export function AdminShell({ children, active }: { children: ReactNode; active: string }) {

@@ -17,6 +17,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { groupToolDefinitions, GROUP_TOOLS_BY_NAME } from './tools/group'
 import type { GroupContext } from '@/lib/groups/context'
+import { withAiUsageLog } from './usageLog'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const PRIMARY_MODEL = process.env.ANTHROPIC_FOODTAXI_MODEL ?? 'claude-fable-5'
@@ -56,7 +57,10 @@ export async function runGroupAssistant(admin: any, ctx: GroupContext, history: 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let response
     try {
-      response = await callModel(system, messages, tools)
+      response = await withAiUsageLog(
+        { feature: 'group_assistant', requestedModel: PRIMARY_MODEL },
+        () => callModel(system, messages, tools)
+      )
     } catch (e: any) {
       return { text: 'FoodTaxi Group AI is temporarily unavailable — please try again in a moment.', toolCalls: toolCallLog }
     }

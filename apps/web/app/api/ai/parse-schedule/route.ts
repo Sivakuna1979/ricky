@@ -1,8 +1,10 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { withAiUsageLog } from '@/lib/ai/usageLog'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MODEL = 'claude-haiku-4-5-20251001'
 
 const PROMPT = `You are reading a food van schedule. Extract every location stop you can find.
 Return ONLY a valid JSON array, no other text, no markdown.
@@ -43,11 +45,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ stops: [] })
     }
 
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content }],
-    })
+    const message = await withAiUsageLog(
+      { feature: 'schedule_parse', requestedModel: MODEL },
+      () => client.messages.create({ model: MODEL, max_tokens: 1024, messages: [{ role: 'user', content }] })
+    )
 
     const raw = message.content[0]?.type === 'text' ? message.content[0].text.trim() : '[]'
     const jsonMatch = raw.match(/\[[\s\S]*\]/)

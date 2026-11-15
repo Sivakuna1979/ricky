@@ -6,16 +6,18 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { withAiUsageLog } from '@/lib/ai/usageLog'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MODEL = 'claude-opus-4-8'
 
 export async function POST(req: NextRequest) {
   try {
     const { imageBase64, mediaType } = await req.json()
     if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 })
 
-    const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+    const response = await withAiUsageLog({ feature: 'menu_scan', requestedModel: MODEL }, () => client.messages.create({
+      model: MODEL,
       max_tokens: 2048,
       messages: [{
         role: 'user',
@@ -61,7 +63,7 @@ Rules:
           },
         ],
       }],
-    })
+    }))
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
 
