@@ -10,12 +10,19 @@
 // process — copying it in would mean standing up a whole new deployment
 // target just for FoodTaxi's automation, for no benefit at this scale).
 //
-// Runs hourly (vercel.json: '0 * * * *'). Individual automations decide
-// for themselves whether they're actually due right now — e.g. the daily
-// briefing checks isDueNow(timezone, 8, 0) — so an hourly tick is enough
-// resolution for every automation in this phase (D40: don't scan
-// everything every minute) while each one still fires close to its
-// configured time in the business's own timezone (D28).
+// Runs once daily at 08:00 UTC (vercel.json: '0 8 * * *') — dropped from
+// the original hourly schedule because Vercel's Hobby plan rejects any
+// cron more frequent than once/day; a deploy with the hourly schedule
+// fails outright. This degrades time-sensitive checks (late clock-in,
+// missing clock-out) to a once-a-day catch rather than near-real-time —
+// an accepted tradeoff to keep the app deployable at all on Hobby.
+// Upgrading to Vercel Pro would restore hourly resolution; until then,
+// individual automations still decide for themselves whether they're
+// actually due right now — e.g. the daily briefing checks
+// isDueNow(timezone, 8, 0) — so this one daily tick is enough resolution
+// for most automations in this phase (D40: don't scan everything every
+// minute) while each one still fires close to its configured time in the
+// business's own timezone (D28).
 //
 // Every automation write goes through claimRun()'s UNIQUE(business_id,
 // trigger_key) constraint first (D4/D3) — an hourly tick that catches the
