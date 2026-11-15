@@ -55,8 +55,16 @@ const TYPE_FILTERS = [
   { key: 'ice_cream', label: 'Ice Cream' },         { key: 'kebab', label: 'Kebab' },
   { key: 'street_food', label: 'Street Food' },     { key: 'catering_trailer', label: 'Event Catering' },
 ]
-const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+// CARTO's basemap tiles now require a registered API key (their free
+// anonymous access was discontinued) — swapped to plain OpenStreetMap
+// tiles as a zero-signup stopgap. OSM has no official dark style without
+// a key either, so TILE_DARK is the same URL for now; the Dark toggle is
+// cosmetically a no-op until a real tile provider key is added. OSM's
+// own tile servers aren't meant for sustained high-volume commercial
+// traffic — fine at launch scale, worth moving to a registered provider
+// (CARTO/Mapbox/MapTiler) once this gets real traffic.
+const TILE_LIGHT = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const TILE_DARK  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -316,7 +324,12 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
   const [locating, setLocating]         = useState(false)
   const [locError, setLocError]         = useState('')
   const [showFoodTaxi, setShowFoodTaxi] = useState(true)
-  const [showGoogle, setShowGoogle]     = useState(true)
+  // Off by default — /api/map-data (fetchGoogle's backend) is deliberately
+  // super_admin-only (it mixes business owner emails and unfiltered raw
+  // data with no public field allowlist), so every real visitor's fetch
+  // here always 403s. A real public "Google Businesses" layer needs its
+  // own field-scoped endpoint — explicitly a LATER item, not fixed here.
+  const [showGoogle, setShowGoogle]     = useState(false)
   const [typeFilters, setTypeFilters]   = useState<Set<string>>(new Set())
 
   const toggleType = (key: string) => setTypeFilters(prev => {
@@ -402,7 +415,7 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
         shadowUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       })
       const map = L.map(mapElRef.current!, { zoomControl:true, scrollWheelZoom:true })
-      tileRef.current = L.tileLayer(TILE_LIGHT, { attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19 }).addTo(map)
+      tileRef.current = L.tileLayer(TILE_LIGHT, { attribution:'© OpenStreetMap contributors', maxZoom:19 }).addTo(map)
       map.setView([centerLat??51.505, centerLng??-0.09], 13)
       mapRef.current = map
       if (centerLat!=null && centerLng!=null) { lastFetchRef.current=0; fetchGoogle(centerLat,centerLng); fetchFoodTaxi(centerLat,centerLng) }
@@ -565,14 +578,13 @@ export function VanMapPublic({ height='500px', centerLat, centerLng, searchLabel
       {/* ── Controls ── */}
       <div style={{ marginBottom:8, display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
         <button onClick={()=>setShowFoodTaxi(v=>!v)} style={tog(showFoodTaxi,'#22c55e')}>🚐 FoodTaxi Vans</button>
-        <button onClick={()=>setShowGoogle(v=>!v)}   style={tog(showGoogle,'#f97316')}>🌍 Google Businesses</button>
         <button onClick={useMyLocation} disabled={locating} style={{ padding:'6px 13px', borderRadius:20, border:'1.5px solid rgba(96,165,250,0.5)', background:'rgba(96,165,250,0.12)', color:'#93c5fd', fontSize:12, fontWeight:700, cursor:locating?'wait':'pointer', display:'flex', alignItems:'center', gap:5 }}>
           {locating ? '⏳ Locating…' : '📍 My Location'}
         </button>
         {/* Map style toggle */}
         <div style={{ marginLeft:'auto', display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:20, overflow:'hidden', border:'1px solid rgba(255,255,255,0.1)' }}>
-          <button onClick={()=>{ mapDarkRef.current=false; setMapDark(false); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_LIGHT,{attribution:'© OpenStreetMap contributors © CARTO',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:!mapDark?'#fff':'transparent', color:!mapDark?'#111':'rgba(255,255,255,0.5)', transition:'background .15s' }}>☀️ Light</button>
-          <button onClick={()=>{ mapDarkRef.current=true; setMapDark(true); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_DARK,{attribution:'© OpenStreetMap contributors © CARTO',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:mapDark?'#334155':'transparent', color:mapDark?'#fff':'rgba(255,255,255,0.5)', transition:'background .15s' }}>🌙 Dark</button>
+          <button onClick={()=>{ mapDarkRef.current=false; setMapDark(false); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_LIGHT,{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:!mapDark?'#fff':'transparent', color:!mapDark?'#111':'rgba(255,255,255,0.5)', transition:'background .15s' }}>☀️ Light</button>
+          <button onClick={()=>{ mapDarkRef.current=true; setMapDark(true); if(mapRef.current&&LRef.current){const L=LRef.current;if(tileRef.current)tileRef.current.remove();tileRef.current=L.tileLayer(TILE_DARK,{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(mapRef.current)} }} style={{ padding:'6px 14px', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:mapDark?'#334155':'transparent', color:mapDark?'#fff':'rgba(255,255,255,0.5)', transition:'background .15s' }}>🌙 Dark</button>
         </div>
       </div>
 

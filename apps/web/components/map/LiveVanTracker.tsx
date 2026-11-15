@@ -69,7 +69,10 @@ export function LiveVanTracker({ vanId, vanName, logo, pickup, height = '300px' 
       if (!mapRef.current) {
         mapRef.current = L.map(divRef.current, { zoomControl: true, attributionControl: false })
           .setView([loc.latitude, loc.longitude], 14)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(mapRef.current)
+        // CARTO's basemap tiles now require a registered API key — swapped
+        // to plain OpenStreetMap tiles as a zero-signup stopgap (see the
+        // same note in VanMapPublic.tsx).
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapRef.current)
       }
       const vanIcon = L.divIcon({
         className: '',
