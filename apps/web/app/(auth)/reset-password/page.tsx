@@ -11,12 +11,21 @@ function ResetPasswordForm() {
   const [loading, setLoading]     = useState(false)
   const [done, setDone]           = useState(false)
   const [error, setError]         = useState('')
+  const [ready, setReady]         = useState(false)
   const searchParams              = useSearchParams()
 
   useEffect(() => {
-    // Supabase sends access_token + refresh_token as hash params
-    // The browser client picks them up automatically
-  }, [])
+    // Supabase's recovery link uses the PKCE flow: it lands here with
+    // ?code=... rather than tokens in the URL hash, so we have to exchange
+    // that code for a session ourselves before updateUser() has anything
+    // to update.
+    const code = searchParams.get('code')
+    const supabase = createClient()
+    if (!code) { setReady(true); return }
+    supabase.auth.exchangeCodeForSession(code)
+      .catch((err) => setError(err?.message || 'This reset link is invalid or has expired.'))
+      .finally(() => setReady(true))
+  }, [searchParams])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -69,9 +78,9 @@ function ResetPasswordForm() {
               <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Repeat your new password" autoComplete="new-password"
                 style={{ width:'100%', padding:'12px 14px', background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:10, color:'#fff', fontSize:15, outline:'none', boxSizing:'border-box' }} />
             </div>
-            <button type="submit" disabled={loading}
-              style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#fbbf24,#f59e0b)', border:'none', borderRadius:50, color:'#0a0a14', fontWeight:800, fontSize:15, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1, fontFamily:'inherit' }}>
-              {loading ? 'Updating…' : 'Set New Password'}
+            <button type="submit" disabled={loading || !ready}
+              style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#fbbf24,#f59e0b)', border:'none', borderRadius:50, color:'#0a0a14', fontWeight:800, fontSize:15, cursor: (loading || !ready) ? 'wait' : 'pointer', opacity: (loading || !ready) ? 0.7 : 1, fontFamily:'inherit' }}>
+              {!ready ? 'Verifying link…' : loading ? 'Updating…' : 'Set New Password'}
             </button>
             <div style={{ textAlign:'center', marginTop:18 }}>
               <a href="/login" style={{ fontSize:13, color:'rgba(255,255,255,.35)', textDecoration:'none' }}>← Back to Sign In</a>
